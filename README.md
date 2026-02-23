@@ -1,6 +1,6 @@
 # QR Event Attendance System
 
-QR-based event attendance tracking system for PRU Life UK
+QR-based event attendance tracking system for A1 Prime Branch - PRU Life UK
 
 ## 🎯 Project Overview
 
@@ -64,9 +64,9 @@ npm run dev
 ## 👥 Team
 
 - Thomas Joseph Almorin - Lead Developer
-- [Team Member 2] - Frontend Developer
-- [Team Member 3] - Documentation & Testing
-- [Team Member 4] - Documentation & Testing
+- Kurt Russel Gliponeo -
+- Andrea Laganas - 
+- Princes Angelie Subido - Documentation & Testing
 
 ## 📅 Timeline
 
@@ -77,7 +77,7 @@ npm run dev
 ## 🏢 Client
 
 PRU Life UK - Specific Branch
-Supervisor: Sir Jayson
+Supervisor: Mr. Jayson Frias Vitalicio 
 
 ## 📝 License
 
