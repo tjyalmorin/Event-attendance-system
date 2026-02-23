@@ -8,8 +8,8 @@ const { Pool } = pg;
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'event_attendance',
-  password: process.env.DB_PASSWORD || 'postgres',
+  database: process.env.DB_NAME || 'primelog_local',
+  password: process.env.DB_PASSWORD,
   port: parseInt(process.env.DB_PORT || '5432'),
 });
 

@@ -1,89 +1,162 @@
 import pool from '../config/database.js';
 
-const createTables = async (): Promise<void> => {
+const migrate = async (): Promise<void> => {
   try {
-    console.log('Creating database tables...');
+    console.log('🚀 Running database migration...');
 
-    // Users table
+    // Enable UUID support
+    await pool.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
+
+    // ── users ──────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        full_name VARCHAR(100) NOT NULL,
-        role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'staff', 'data_analyst')),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        user_id         UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
+        agent_code      VARCHAR(50)     UNIQUE,
+        full_name       VARCHAR(255)    NOT NULL,
+        email           VARCHAR(255)    NOT NULL UNIQUE,
+        password_hash   VARCHAR(255)    NOT NULL,
+        branch_name     VARCHAR(255),
+        team_name       VARCHAR(255),
+        role            VARCHAR(50)     NOT NULL,
+        created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        deleted_at      TIMESTAMPTZ
       );
     `);
 
-    // Events table
+    // ── events ─────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS events (
-        id SERIAL PRIMARY KEY,
-        title VARCHAR(200) NOT NULL,
-        description TEXT,
-        event_date DATE NOT NULL,
-        start_time TIME NOT NULL,
-        end_time TIME NOT NULL,
-        venue VARCHAR(200),
-        allowed_checkout_time TIME NOT NULL,
-        registration_link VARCHAR(255) UNIQUE,
-        created_by INTEGER REFERENCES users(id),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        event_id            SERIAL          PRIMARY KEY,
+        created_by          UUID            NOT NULL REFERENCES users(user_id),
+        title               VARCHAR(255)    NOT NULL,
+        description         TEXT,
+        event_date          DATE            NOT NULL,
+        start_time          TIME            NOT NULL,
+        end_time            TIME            NOT NULL,
+        registration_start  TIMESTAMPTZ,
+        registration_end    TIMESTAMPTZ,
+        venue               VARCHAR(255),
+        capacity            INT,
+        checkin_cutoff      TIME,
+        registration_link   VARCHAR(500)    UNIQUE,
+        status              VARCHAR(50)     NOT NULL DEFAULT 'draft',
+        version             INT             NOT NULL DEFAULT 1,
+        created_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        deleted_at          TIMESTAMPTZ
       );
     `);
 
-    // Participants table
+    // ── event_permissions ──────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS event_permissions (
+        permission_id   SERIAL          PRIMARY KEY,
+        user_id         UUID            NOT NULL REFERENCES users(user_id),
+        event_id        INT             NOT NULL REFERENCES events(event_id),
+        created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, event_id)
+      );
+    `);
+
+    // ── participants ───────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS participants (
-        id SERIAL PRIMARY KEY,
-        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
-        agent_code VARCHAR(50) NOT NULL,
-        full_name VARCHAR(100) NOT NULL,
-        branch_name VARCHAR(100) NOT NULL,
-        team_name VARCHAR(100) NOT NULL,
-        phone_number VARCHAR(20) NOT NULL,
-        photo_url TEXT,
-        qr_code VARCHAR(255) UNIQUE NOT NULL,
-        registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(event_id, agent_code)
+        participant_id      SERIAL          PRIMARY KEY,
+        event_id            INT             NOT NULL REFERENCES events(event_id),
+        agent_code          VARCHAR(50),
+        full_name           VARCHAR(255)    NOT NULL,
+        branch_name         VARCHAR(255),
+        team_name           VARCHAR(255),
+        qr_token            VARCHAR(500)    UNIQUE,
+        qr_generated_at     TIMESTAMPTZ,
+        qr_expires_at       TIMESTAMPTZ,
+        registration_status VARCHAR(50)     NOT NULL DEFAULT 'pending',
+        registered_at       TIMESTAMPTZ,
+        updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        deleted_at          TIMESTAMPTZ
       );
     `);
 
-    // Attendance table
+    // ── attendance_sessions ────────────────────────────────
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS attendance (
-        id SERIAL PRIMARY KEY,
-        participant_id INTEGER REFERENCES participants(id) ON DELETE CASCADE,
-        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
-        check_in_time TIMESTAMP,
-        check_out_time TIMESTAMP,
-        status VARCHAR(20) CHECK (status IN ('checked_in', 'checked_out', 'early_out', 'completed')),
-        duration_minutes INTEGER,
-        early_checkout_reason VARCHAR(50),
-        early_checkout_notes TEXT,
-        approved_by INTEGER REFERENCES users(id),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(participant_id, event_id)
+      CREATE TABLE IF NOT EXISTS attendance_sessions (
+        session_id              SERIAL          PRIMARY KEY,
+        participant_id          INT             NOT NULL REFERENCES participants(participant_id),
+        event_id                INT             NOT NULL REFERENCES events(event_id),
+        check_in_time           TIMESTAMPTZ,
+        check_out_time          TIMESTAMPTZ,
+        check_in_method         VARCHAR(50),
+        check_out_method        VARCHAR(50),
+        early_out_reason        TEXT,
+        early_out_recorded_by   UUID            REFERENCES users(user_id),
+        created_at              TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ     NOT NULL DEFAULT NOW()
       );
     `);
 
-    // Indexes
+    // ── scan_logs ──────────────────────────────────────────
     await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_participants_event ON participants(event_id);
-      CREATE INDEX IF NOT EXISTS idx_participants_qr ON participants(qr_code);
-      CREATE INDEX IF NOT EXISTS idx_attendance_participant ON attendance(participant_id);
-      CREATE INDEX IF NOT EXISTS idx_attendance_event ON attendance(event_id);
+      CREATE TABLE IF NOT EXISTS scan_logs (
+        scan_id         SERIAL          PRIMARY KEY,
+        participant_id  INT             NOT NULL REFERENCES participants(participant_id),
+        event_id        INT             NOT NULL REFERENCES events(event_id),
+        scanned_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        qr_token        VARCHAR(500)    NOT NULL,
+        scan_type       VARCHAR(50)     NOT NULL,
+        denial_reason   TEXT,
+        created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+      );
     `);
 
-    console.log('✅ All tables created successfully!');
+    // ── Indexes ────────────────────────────────────────────
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_agent_code              ON users(agent_code);
+      CREATE INDEX IF NOT EXISTS idx_users_deleted_at              ON users(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_events_created_by             ON events(created_by);
+      CREATE INDEX IF NOT EXISTS idx_events_event_date             ON events(event_date);
+      CREATE INDEX IF NOT EXISTS idx_events_status                 ON events(status);
+      CREATE INDEX IF NOT EXISTS idx_events_deleted_at             ON events(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_event_permissions_user_id     ON event_permissions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_event_permissions_event_id    ON event_permissions(event_id);
+      CREATE INDEX IF NOT EXISTS idx_participants_event_id         ON participants(event_id);
+      CREATE INDEX IF NOT EXISTS idx_participants_agent_code       ON participants(agent_code);
+      CREATE INDEX IF NOT EXISTS idx_participants_reg_status       ON participants(registration_status);
+      CREATE INDEX IF NOT EXISTS idx_participants_deleted_at       ON participants(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_attendance_participant_id     ON attendance_sessions(participant_id);
+      CREATE INDEX IF NOT EXISTS idx_attendance_event_id           ON attendance_sessions(event_id);
+      CREATE INDEX IF NOT EXISTS idx_scan_logs_participant_id      ON scan_logs(participant_id);
+      CREATE INDEX IF NOT EXISTS idx_scan_logs_event_id            ON scan_logs(event_id);
+      CREATE INDEX IF NOT EXISTS idx_scan_logs_scanned_at          ON scan_logs(scanned_at);
+    `);
+
+    // ── Auto-update updated_at trigger ────────────────────
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION trigger_set_updated_at()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.updated_at = NOW();
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+
+    const triggerTables = ['users', 'events', 'participants', 'attendance_sessions'];
+    for (const table of triggerTables) {
+      await pool.query(`
+        DROP TRIGGER IF EXISTS set_updated_at_${table} ON ${table};
+        CREATE TRIGGER set_updated_at_${table}
+          BEFORE UPDATE ON ${table}
+          FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
+      `);
+    }
+
+    console.log('✅ Migration complete! All tables and indexes created.');
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error creating tables:', error);
+    console.error('❌ Migration failed:', error);
     process.exit(1);
   }
 };
 
-createTables();
+migrate();
