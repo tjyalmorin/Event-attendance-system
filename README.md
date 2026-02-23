@@ -12,7 +12,7 @@ A web-based attendance management system that automates event registration, QR c
 - **QR Scanner**: Physical barcode scanner integration for fast check-ins/check-outs
 - **Event Management**: Create and manage events with real-time stats
 - **Participant Management**: CRUD operations, search, filter, export
-- **Time-based Check-out Control**: Automated early check-out blocking with Data Analyst override
+- **Time-based Check-out Control**: Automated early check-out blocking with Admin override
 - **Real-time Dashboard**: Live attendance tracking and analytics
 
 ## 🛠️ Tech Stack
