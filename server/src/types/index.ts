@@ -34,7 +34,6 @@ export interface Participant {
   team_name: string;
   phone_number: string;
   photo_url?: string;
-  qr_code: string;
   registered_at: Date;
 }
 
