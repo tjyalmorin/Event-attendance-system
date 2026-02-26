@@ -1,13 +1,14 @@
 import { Router } from 'express'
 import authenticate from '../../middlewares/authenticate'
 import { scanAgentCode, getSessionsByEvent, getScanLogsByEvent } from './scan.controller'
+import { scanLimiter } from '../../middlewares/rateLimiters'
 
 const router = Router()
 
 router.use(authenticate)
 
-router.post('/scan', scanAgentCode)                                    // scan a QR code
-router.get('/sessions/:event_id', getSessionsByEvent)           // get all check-ins for an event
-router.get('/logs/:event_id', getScanLogsByEvent)               // get all scan logs for an event
+router.post('/scan', scanLimiter, scanAgentCode)
+router.get('/sessions/:event_id', getSessionsByEvent)
+router.get('/logs/:event_id', getScanLogsByEvent)
 
 export default router

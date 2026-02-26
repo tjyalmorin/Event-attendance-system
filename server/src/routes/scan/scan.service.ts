@@ -2,6 +2,11 @@ import pool from '../../config/database'
 
 export const scanAgentCodeService = async (agent_code: string, event_id: number) => {
 
+  // Validate inputs
+  if (!agent_code?.trim()) throw new Error('Agent code is required')
+  if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
+  if (agent_code.length > 50) throw new Error('Invalid agent code')
+
   // 1. Find participant by agent_code
   const participantResult = await pool.query(
     `SELECT * FROM participants

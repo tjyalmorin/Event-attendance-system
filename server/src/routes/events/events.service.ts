@@ -65,20 +65,21 @@ export const getEventByIdService = async (event_id: number) => {
 
 export const updateEventService = async (event_id: number, payload: UpdateEventPayload) => {
   const current = await getEventByIdService(event_id)
-
   const merged = { ...current, ...payload }
 
   const result = await pool.query(
     `UPDATE events
      SET title=$1, description=$2, event_date=$3, start_time=$4, end_time=$5,
          venue=$6, capacity=$7, status=$8, checkin_cutoff=$9,
+         registration_start=$10, registration_end=$11,
          version=version+1, updated_at=NOW()
-     WHERE event_id=$10 AND deleted_at IS NULL
+     WHERE event_id=$12 AND deleted_at IS NULL
      RETURNING *`,
     [
       merged.title, merged.description, merged.event_date, merged.start_time,
       merged.end_time, merged.venue, merged.capacity, merged.status,
-      merged.checkin_cutoff, event_id
+      merged.checkin_cutoff, merged.registration_start, merged.registration_end,
+      event_id
     ]
   )
   return result.rows[0]
