@@ -1,6 +1,6 @@
-# QR Event Attendance System
+# Event Attendance System
 
-QR-based event attendance tracking system for A1 Prime Branch - PRU Life UK
+Event attendance tracking system for A1 Prime Branch - PRU Life UK
 
 ## 🎯 Project Overview
 
