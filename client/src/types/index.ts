@@ -142,3 +142,17 @@ export interface GrantAdminPayload {
   event_id: number
   is_edit_allowed: boolean
 }
+
+// Override types
+export interface OverrideLog {
+  override_id: number
+  override_type: 'fix_checkin' | 'force_checkout' | 'early_out'
+  reason: string
+  original_time: string | null
+  adjusted_time: string | null
+  early_out_cutoff: string | null
+  created_at: string
+  full_name: string
+  agent_code: string
+  admin_name: string
+}
