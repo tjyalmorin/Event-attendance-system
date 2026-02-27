@@ -16,6 +16,15 @@ export const scanLimiter = rateLimit({
   legacyHeaders: false
 })
 
+// Relaxed limiter for lookup — just fetches data, no state change
+export const lookupLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 120,
+  message: { error: 'Too many lookup attempts, please slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false
+})
+
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,

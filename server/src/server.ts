@@ -2,10 +2,15 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import dotenv from 'dotenv'
-import router from './routes/index'
-import { globalLimiter } from './middlewares/rateLimiters'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import router from './routes/index.js'
+import { globalLimiter } from './middlewares/rateLimiters.js'
 
 dotenv.config()
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const app = express()
 

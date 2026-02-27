@@ -13,7 +13,7 @@ export interface OverrideLog {
 }
 
 export interface FixCheckinPayload {
-  attendance_session_id: number
+  session_id: number        // ← was attendance_session_id
   participant_id: number
   event_id: number
   adjusted_time: string
@@ -21,7 +21,7 @@ export interface FixCheckinPayload {
 }
 
 export interface ForceCheckoutPayload {
-  attendance_session_id: number
+  session_id: number        // ← was attendance_session_id
   participant_id: number
   event_id: number
   adjusted_time: string
@@ -29,7 +29,7 @@ export interface ForceCheckoutPayload {
 }
 
 export interface EarlyOutPayload {
-  attendance_session_id: number
+  session_id: number        // ← was attendance_session_id
   participant_id: number
   event_id: number
   early_out_cutoff: string

@@ -1,5 +1,5 @@
-import pool from '../../config/database'
-import { RegisterPayload } from '../../types/participant.types'
+import pool from '../../config/database.js'
+import { RegisterPayload } from '../../types/participant.types.js'
 
 export const registerParticipantService = async (event_id: number, payload: RegisterPayload) => {
   const { agent_code, full_name, branch_name, team_name } = payload
@@ -43,28 +43,53 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   )
   if (duplicate.rows.length > 0) throw new Error('This agent is already registered for this event')
 
-  // 5. Insert participant
+  // 5. Check if this agent already has a photo from a previous event
+  const existingPhoto = await pool.query(
+    `SELECT photo_url FROM participants
+     WHERE agent_code = $1 AND photo_url IS NOT NULL
+     LIMIT 1`,
+    [agent_code.trim()]
+  )
+  const photo_url = existingPhoto.rows[0]?.photo_url || null
+
+  // 6. Insert participant — include photo_url if one already exists
   const result = await pool.query(
     `INSERT INTO participants
       (event_id, agent_code, full_name, branch_name, team_name,
-       registration_status, registered_at)
-     VALUES ($1,$2,$3,$4,$5,'confirmed', NOW())
+       registration_status, registered_at, photo_url)
+     VALUES ($1,$2,$3,$4,$5,'confirmed', NOW(), $6)
      RETURNING *`,
-    [event_id, agent_code.trim(), full_name.trim(), branch_name.trim(), team_name.trim()]
+    [event_id, agent_code.trim(), full_name.trim(), branch_name.trim(), team_name.trim(), photo_url]
   )
 
   return { participant: result.rows[0] }
 }
 
-export const getParticipantsByEventService = async (event_id: number) => {
+export const getParticipantsByEventService = async (event_id: number, branch_name?: string) => {
   if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
 
-  const result = await pool.query(
-    `SELECT * FROM participants
-     WHERE event_id = $1 AND deleted_at IS NULL
-     ORDER BY registered_at DESC`,
-    [event_id]
-  )
+  const result = branch_name
+    ? await pool.query(
+        `SELECT
+           participant_id, event_id, agent_code, full_name,
+           branch_name, team_name, registration_status,
+           registered_at, updated_at, photo_url
+         FROM participants
+         WHERE event_id = $1 AND deleted_at IS NULL AND branch_name = $2
+         ORDER BY registered_at DESC`,
+        [event_id, branch_name]
+      )
+    : await pool.query(
+        `SELECT
+           participant_id, event_id, agent_code, full_name,
+           branch_name, team_name, registration_status,
+           registered_at, updated_at, photo_url
+         FROM participants
+         WHERE event_id = $1 AND deleted_at IS NULL
+         ORDER BY registered_at DESC`,
+        [event_id]
+      )
+
   return result.rows
 }
 
