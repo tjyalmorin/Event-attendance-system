@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loginApi } from '../../api/auth.api'
-import { useDarkMode } from '../../contexts/DarkModeContext'
 
 // ── SVG Icons ──────────────────────────────────────────────────────────────
 const LayersIcon = () => (
@@ -48,40 +47,11 @@ const SignInIcon = () => (
   </svg>
 )
 
-const EyeIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-  </svg>
-)
-
-const EyeOffIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
-  </svg>
-)
-
-const MoonIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-  </svg>
-)
-
-const SunIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-    <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-  </svg>
-)
-
 // ── Component ──────────────────────────────────────────────────────────────
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { isDarkMode, toggleDarkMode } = useDarkMode()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -94,13 +64,14 @@ export default function LoginPage() {
       localStorage.setItem('authToken', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
 
+      // Role-based redirect
       if (data.user.role === 'admin') {
         navigate('/admin/events')
       } else {
         navigate('/staff/events')
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Something went wrong. Please try again.')
+      setError(err.response?.data?.error || 'Login failed. Please check your credentials.')
     } finally {
       setLoading(false)
     }
@@ -113,9 +84,9 @@ export default function LoginPage() {
   ]
 
   return (
-    <div className="flex h-screen w-full overflow-hidden font-sans bg-white dark:bg-gray-900">
+    <div className="flex h-screen w-full overflow-hidden font-sans">
 
-      {/* ── LEFT PANEL ── */}
+      {/* ── LEFT PANEL (50%) ── */}
       <div className="relative flex w-1/2 flex-shrink-0 flex-col justify-between overflow-hidden bg-[#DC143C] px-16 py-14">
 
         {/* Decorative circles */}
@@ -123,6 +94,8 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute top-[-120px] left-[-100px] h-[400px] w-[400px] rounded-full bg-black/[0.07]" />
         <div className="pointer-events-none absolute top-[200px] right-[-60px] h-[200px] w-[200px] rounded-full bg-white/[0.04]" />
         <div className="pointer-events-none absolute bottom-[120px] left-10 h-[130px] w-[130px] rounded-full bg-white/[0.03]" />
+
+        {/* Slash accents */}
         <div className="pointer-events-none absolute right-[80px] top-[-40px] bottom-[-40px] w-[2px] rotate-[10deg] bg-white/[0.06]" />
         <div className="pointer-events-none absolute right-[130px] top-[-40px] bottom-[-40px] w-[2px] rotate-[10deg] bg-white/[0.03]" />
 
@@ -149,6 +122,7 @@ export default function LoginPage() {
             <br />
             Track, manage, and monitor agent attendance across all your events — in real time.
           </div>
+
           <div className="mt-2 flex flex-col gap-3">
             {features.map((f, i) => (
               <div key={i} className="flex items-center gap-3 text-sm text-white/75">
@@ -167,16 +141,16 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ── RIGHT PANEL ── */}
-      <div className="relative flex w-1/2 flex-col items-stretch justify-center bg-white dark:bg-gray-900 px-16 py-14">
+      {/* ── RIGHT PANEL (50%) ── */}
+      <div className="flex w-1/2 flex-col items-stretch justify-center bg-white px-16 py-14">
         <div className="flex flex-col gap-8 w-full max-w-[420px] mx-auto">
 
           {/* Heading */}
           <div className="flex flex-col gap-1.5">
-            <h1 className="text-[30px] font-extrabold leading-none tracking-[-1.2px] text-gray-800 dark:text-white">
+            <h1 className="text-[30px] font-extrabold leading-none tracking-[-1.2px] text-gray-800">
               Welcome back<span className="text-[#DC143C]">.</span>
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-gray-500">
               Sign in to your PrimeLog account to continue.
             </p>
           </div>
@@ -186,7 +160,7 @@ export default function LoginPage() {
 
             {/* Email */}
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="email" className="text-[11px] font-bold uppercase tracking-[1px] text-gray-600 dark:text-gray-400">
+              <label htmlFor="email" className="text-[11px] font-bold uppercase tracking-[1px] text-gray-600">
                 Email Address
               </label>
               <div className="relative">
@@ -197,18 +171,18 @@ export default function LoginPage() {
                   type="email"
                   id="email"
                   value={email}
-                  onChange={e => { setEmail(e.target.value); setError('') }}
+                  onChange={e => setEmail(e.target.value)}
                   placeholder="you@pluk.com"
                   required
                   autoFocus
-                  className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-11 pr-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-gray-800 focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
+                  className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 bg-gray-50 pl-11 pr-4 text-sm text-gray-800 outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
                 />
               </div>
             </div>
 
             {/* Password */}
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="password" className="text-[11px] font-bold uppercase tracking-[1px] text-gray-600 dark:text-gray-400">
+              <label htmlFor="password" className="text-[11px] font-bold uppercase tracking-[1px] text-gray-600">
                 Password
               </label>
               <div className="relative">
@@ -216,22 +190,14 @@ export default function LoginPage() {
                   <LockIcon />
                 </span>
                 <input
-                  type={showPassword ? 'text' : 'password'}
+                  type="password"
                   id="password"
                   value={password}
-                  onChange={e => { setPassword(e.target.value); setError('') }}
+                  onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-11 pr-11 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-gray-800 focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
+                  className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 bg-gray-50 pl-11 pr-4 text-sm text-gray-800 outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
                 />
-                {/* Show/Hide toggle */}
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-                >
-                  {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                </button>
               </div>
               <div className="flex justify-end mt-0.5">
                 <a href="#" className="text-[12px] font-semibold text-[#DC143C] hover:underline">
@@ -242,10 +208,7 @@ export default function LoginPage() {
 
             {/* Error */}
             {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 flex-shrink-0">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
                 {error}
               </div>
             )}
@@ -275,24 +238,15 @@ export default function LoginPage() {
 
           {/* Divider + note */}
           <div className="flex flex-col gap-4">
-            <div className="h-px w-full bg-gray-100 dark:bg-gray-800" />
-            <p className="text-center text-xs leading-relaxed text-gray-400 dark:text-gray-500">
+            <div className="h-px w-full bg-gray-100" />
+            <p className="text-center text-xs leading-relaxed text-gray-400">
               Access is restricted to{' '}
-              <span className="font-semibold text-gray-600 dark:text-gray-300">authorized personnel only</span>.<br />
+              <span className="font-semibold text-gray-600">authorized personnel only</span>.<br />
               Contact your system administrator if you need access.
             </p>
           </div>
 
         </div>
-
-        {/* ── Dark Mode Toggle (bottom right) ── */}
-        <button
-          onClick={toggleDarkMode}
-          className="absolute bottom-6 right-6 flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all shadow-sm text-xs font-medium"
-        >
-          {isDarkMode ? <SunIcon /> : <MoonIcon />}
-          {isDarkMode ? 'Light Mode' : 'Dark Mode'}
-        </button>
       </div>
     </div>
   )
