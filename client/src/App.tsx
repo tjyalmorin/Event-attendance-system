@@ -1,6 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { DarkModeProvider } from './contexts/DarkModeContext'
-import { DarkModeProvider } from './contexts/DarkModeContext'
 
 // Client pages
 import RegistrationPage from './pages/client/RegistrationPage'
