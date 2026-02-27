@@ -60,7 +60,6 @@ const migrate = async (): Promise<void> => {
     `);
 
     // ── admin_grants ───────────────────────────────────────
-    // SuperAdmin grants temporary admin access to staff for specific event
     await pool.query(`
       CREATE TABLE IF NOT EXISTS admin_grants (
         grant_id              SERIAL          PRIMARY KEY,
@@ -143,10 +142,18 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── Safe column additions for existing tables ─────────
+    // ── Safe column additions for existing tables ──────────
     await pool.query(`
       ALTER TABLE participants
         ADD COLUMN IF NOT EXISTS photo_url VARCHAR(500);
+    `);
+
+    // ── OTP columns for forgot password (admin only) ───────
+    await pool.query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS otp_code     VARCHAR(6),
+        ADD COLUMN IF NOT EXISTS otp_expires  TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS otp_verified BOOLEAN DEFAULT FALSE;
     `);
 
     // ── Indexes ────────────────────────────────────────────
@@ -175,7 +182,7 @@ const migrate = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_scan_logs_scanned_at          ON scan_logs(scanned_at);
     `);
 
-    // ── Auto-update updated_at trigger ────────────────────
+    // ── Auto-update updated_at trigger ─────────────────────
     await pool.query(`
       CREATE OR REPLACE FUNCTION trigger_set_updated_at()
       RETURNS TRIGGER AS $$
@@ -194,6 +201,25 @@ const migrate = async (): Promise<void> => {
           BEFORE UPDATE ON ${table}
           FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
       `);
+    }
+
+    // ── Seed SuperAdmin ────────────────────────────────────
+    const bcrypt = await import('bcryptjs')
+    const existingSuperAdmin = await pool.query(
+      `SELECT user_id FROM users WHERE email = 'kurtrusselgliponeo@gmail.com'`
+    )
+    if (existingSuperAdmin.rows.length === 0) {
+      const hash = await bcrypt.default.hash('Admin@1234', 10)
+      await pool.query(
+        `INSERT INTO users (full_name, email, password_hash, role, branch_name)
+         VALUES ($1, $2, $3, 'admin', 'A1 Prime')`,
+        ['Kurt Russel Gliponeo', 'kurtrusselgliponeo@gmail.com', hash]
+      )
+      console.log('✅ SuperAdmin seeded!')
+      console.log('   Email   : kurtrusselgliponeo@gmail.com')
+      console.log('   Password: Admin@1234')
+    } else {
+      console.log('ℹ️  SuperAdmin already exists, skipping.')
     }
 
     console.log('✅ Migration complete! All tables and indexes created.');

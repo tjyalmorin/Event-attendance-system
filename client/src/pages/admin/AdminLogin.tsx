@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { loginApi } from '../../api/auth.api'
 import { useDarkMode } from '../../contexts/DarkModeContext'
 
@@ -233,10 +233,14 @@ export default function LoginPage() {
                   {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
               </div>
+              {/* ── Forgot Password — wired to actual route ── */}
               <div className="flex justify-end mt-0.5">
-                <a href="#" className="text-[12px] font-semibold text-[#DC143C] hover:underline">
+                <Link
+                  to="/admin/forgot-password"
+                  className="text-[12px] font-semibold text-[#DC143C] hover:underline"
+                >
                   Forgot password?
-                </a>
+                </Link>
               </div>
             </div>
 

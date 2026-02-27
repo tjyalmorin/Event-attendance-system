@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { DarkModeProvider } from './contexts/DarkModeContext'
+import { DarkModeProvider } from './contexts/DarkModeContext'
 
 // Client pages
 import RegistrationPage from './pages/client/RegistrationPage'
@@ -9,8 +10,14 @@ import ConfirmationPage from './pages/client/ConfirmationPage'
 import AdminLogin from './pages/admin/AdminLogin'
 import EventManagement from './pages/admin/EventManagement'
 import CreateEvent from './pages/admin/CreateEvent'
+import EventList from './pages/admin/EventList'
 import EventDetail from './pages/admin/EventDetail'
 import ScannerPage from './pages/admin/ScannerPage'
+
+// Forgot Password pages
+import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
+import VerifyOtpPage from './pages/admin/VerifyOtpPage'
+import ResetPasswordPage from './pages/admin/ResetPasswordPage'
 
 // Protected route wrapper
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -26,9 +33,22 @@ function App() {
           {/* Public Client Routes */}
           <Route path="/register/:eventId" element={<RegistrationPage />} />
           <Route path="/confirmation" element={<ConfirmationPage />} />
+    <DarkModeProvider>
+      <div className="min-h-screen bg-gray-50">
+        <Routes>
+          {/* Public Client Routes */}
+          <Route path="/register/:eventId" element={<RegistrationPage />} />
+          <Route path="/confirmation" element={<ConfirmationPage />} />
 
           {/* Auth */}
           <Route path="/admin/login" element={<AdminLogin />} />
+          {/* Auth */}
+          <Route path="/admin/login" element={<AdminLogin />} />
+
+          {/* Forgot Password (public — user is not logged in) */}
+          <Route path="/admin/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/admin/verify-otp" element={<VerifyOtpPage />} />
+          <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
 
           {/* Protected Admin Routes */}
           <Route path="/admin/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
@@ -38,7 +58,20 @@ function App() {
 
           {/* Staff Routes */}
           <Route path="/staff/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
+          {/* Protected Admin Routes */}
+          <Route path="/admin/events" element={<PrivateRoute><EventList /></PrivateRoute>} />
+          <Route path="/admin/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
+          <Route path="/admin/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
 
+          {/* Staff Routes */}
+          <Route path="/staff/events" element={<PrivateRoute><EventList /></PrivateRoute>} />
+
+          {/* Default */}
+          <Route path="/" element={<Navigate to="/admin/login" />} />
+          <Route path="*" element={<Navigate to="/admin/login" />} />
+        </Routes>
+      </div>
+    </DarkModeProvider>
           {/* Default */}
           <Route path="/" element={<Navigate to="/admin/login" />} />
           <Route path="*" element={<Navigate to="/admin/login" />} />
