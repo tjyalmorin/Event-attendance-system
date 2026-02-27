@@ -90,7 +90,8 @@ const migrate = async (): Promise<void> => {
         registration_status VARCHAR(50)     NOT NULL DEFAULT 'pending',
         registered_at       TIMESTAMPTZ,
         updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-        deleted_at          TIMESTAMPTZ
+        deleted_at          TIMESTAMPTZ,
+        photo_url           VARCHAR(500)
       );
     `);
 
@@ -111,11 +112,28 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
+    // ── override_logs ──────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS override_logs (
+        override_id             SERIAL          PRIMARY KEY,
+        attendance_session_id   INT             REFERENCES attendance_sessions(session_id),
+        participant_id          INT             REFERENCES participants(participant_id),
+        event_id                INT             REFERENCES events(event_id),
+        admin_id                UUID            REFERENCES users(user_id),
+        override_type           VARCHAR         NOT NULL,
+        reason                  TEXT            NOT NULL,
+        original_time           TIMESTAMPTZ,
+        adjusted_time           TIMESTAMPTZ,
+        early_out_cutoff        TIMESTAMPTZ,
+        created_at              TIMESTAMPTZ     DEFAULT NOW()
+      );
+    `);
+
     // ── scan_logs ──────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS scan_logs (
         scan_id         SERIAL          PRIMARY KEY,
-        participant_id  INT             NOT NULL REFERENCES participants(participant_id),
+        participant_id  INT             REFERENCES participants(participant_id),
         event_id        INT             NOT NULL REFERENCES events(event_id),
         scanned_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
         qr_token        VARCHAR(500)    NOT NULL,
@@ -123,6 +141,12 @@ const migrate = async (): Promise<void> => {
         denial_reason   TEXT,
         created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
       );
+    `);
+
+    // ── Safe column additions for existing tables ─────────
+    await pool.query(`
+      ALTER TABLE participants
+        ADD COLUMN IF NOT EXISTS photo_url VARCHAR(500);
     `);
 
     // ── Indexes ────────────────────────────────────────────
@@ -144,6 +168,8 @@ const migrate = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_participants_deleted_at       ON participants(deleted_at);
       CREATE INDEX IF NOT EXISTS idx_attendance_participant_id     ON attendance_sessions(participant_id);
       CREATE INDEX IF NOT EXISTS idx_attendance_event_id           ON attendance_sessions(event_id);
+      CREATE INDEX IF NOT EXISTS idx_override_logs_event_id        ON override_logs(event_id);
+      CREATE INDEX IF NOT EXISTS idx_override_logs_participant_id  ON override_logs(participant_id);
       CREATE INDEX IF NOT EXISTS idx_scan_logs_participant_id      ON scan_logs(participant_id);
       CREATE INDEX IF NOT EXISTS idx_scan_logs_event_id            ON scan_logs(event_id);
       CREATE INDEX IF NOT EXISTS idx_scan_logs_scanned_at          ON scan_logs(scanned_at);
