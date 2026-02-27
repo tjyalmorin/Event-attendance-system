@@ -59,6 +59,22 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
+    // ── admin_grants ───────────────────────────────────────
+    // SuperAdmin grants temporary admin access to staff for specific event
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS admin_grants (
+        grant_id              SERIAL          PRIMARY KEY,
+        granted_to_user_id    UUID            NOT NULL REFERENCES users(user_id),
+        granted_by_user_id    UUID            NOT NULL REFERENCES users(user_id),
+        event_id              INT             NOT NULL REFERENCES events(event_id),
+        is_edit_allowed       BOOLEAN         NOT NULL DEFAULT FALSE,
+        expires_at            TIMESTAMPTZ     NOT NULL,
+        created_at            TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        revoked_at            TIMESTAMPTZ,
+        UNIQUE (granted_to_user_id, event_id)
+      );
+    `);
+
     // ── participants ───────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS participants (
@@ -119,6 +135,9 @@ const migrate = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_events_deleted_at             ON events(deleted_at);
       CREATE INDEX IF NOT EXISTS idx_event_permissions_user_id     ON event_permissions(user_id);
       CREATE INDEX IF NOT EXISTS idx_event_permissions_event_id    ON event_permissions(event_id);
+      CREATE INDEX IF NOT EXISTS idx_admin_grants_granted_to       ON admin_grants(granted_to_user_id);
+      CREATE INDEX IF NOT EXISTS idx_admin_grants_event_id         ON admin_grants(event_id);
+      CREATE INDEX IF NOT EXISTS idx_admin_grants_expires_at       ON admin_grants(expires_at);
       CREATE INDEX IF NOT EXISTS idx_participants_event_id         ON participants(event_id);
       CREATE INDEX IF NOT EXISTS idx_participants_agent_code       ON participants(agent_code);
       CREATE INDEX IF NOT EXISTS idx_participants_reg_status       ON participants(registration_status);
