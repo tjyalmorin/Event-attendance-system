@@ -61,13 +61,13 @@ const EyeOffIcon = () => (
 )
 
 const MoonIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
   </svg>
 )
 
 const SunIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
     <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
     <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
     <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
@@ -201,7 +201,7 @@ export default function LoginPage() {
                   placeholder="you@pluk.com"
                   required
                   autoFocus
-                  className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-11 pr-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-gray-800 focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
+                  className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-11 pr-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-gray-800 focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)] [&:-webkit-autofill]:bg-gray-50 dark:[&:-webkit-autofill]:[box-shadow:0_0_0_1000px_#1f2937_inset] dark:[&:-webkit-autofill]:[-webkit-text-fill-color:white]"
                 />
               </div>
             </div>
@@ -224,7 +224,6 @@ export default function LoginPage() {
                   required
                   className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-11 pr-11 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-gray-800 focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
                 />
-                {/* Show/Hide toggle */}
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -289,13 +288,13 @@ export default function LoginPage() {
 
         </div>
 
-        {/* ── Dark Mode Toggle (bottom right) ── */}
+        {/* ── Dark Mode Toggle (bottom right) — icon only ── */}
         <button
           onClick={toggleDarkMode}
-          className="absolute bottom-6 right-6 flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all shadow-sm text-xs font-medium"
+          title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          className="absolute bottom-6 right-6 flex items-center justify-center w-[52px] h-[52px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-all shadow-sm"
         >
           {isDarkMode ? <SunIcon /> : <MoonIcon />}
-          {isDarkMode ? 'Light Mode' : 'Dark Mode'}
         </button>
       </div>
     </div>
