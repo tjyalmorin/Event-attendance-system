@@ -9,7 +9,6 @@ import ConfirmationPage from './pages/client/ConfirmationPage'
 import AdminLogin from './pages/admin/AdminLogin'
 import EventManagement from './pages/admin/EventManagement'
 import CreateEvent from './pages/admin/CreateEvent'
-import EventList from './pages/admin/EventList'
 import EventDetail from './pages/admin/EventDetail'
 import ScannerPage from './pages/admin/ScannerPage'
 
@@ -32,15 +31,7 @@ function App() {
           {/* Public Client Routes */}
           <Route path="/register/:eventId" element={<RegistrationPage />} />
           <Route path="/confirmation" element={<ConfirmationPage />} />
-    <DarkModeProvider>
-      <div className="min-h-screen bg-gray-50">
-        <Routes>
-          {/* Public Client Routes */}
-          <Route path="/register/:eventId" element={<RegistrationPage />} />
-          <Route path="/confirmation" element={<ConfirmationPage />} />
 
-          {/* Auth */}
-          <Route path="/admin/login" element={<AdminLogin />} />
           {/* Auth */}
           <Route path="/admin/login" element={<AdminLogin />} />
 
@@ -57,20 +48,7 @@ function App() {
 
           {/* Staff Routes */}
           <Route path="/staff/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
-          {/* Protected Admin Routes */}
-          <Route path="/admin/events" element={<PrivateRoute><EventList /></PrivateRoute>} />
-          <Route path="/admin/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
-          <Route path="/admin/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
 
-          {/* Staff Routes */}
-          <Route path="/staff/events" element={<PrivateRoute><EventList /></PrivateRoute>} />
-
-          {/* Default */}
-          <Route path="/" element={<Navigate to="/admin/login" />} />
-          <Route path="*" element={<Navigate to="/admin/login" />} />
-        </Routes>
-      </div>
-    </DarkModeProvider>
           {/* Default */}
           <Route path="/" element={<Navigate to="/admin/login" />} />
           <Route path="*" element={<Navigate to="/admin/login" />} />
