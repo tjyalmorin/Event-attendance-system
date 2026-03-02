@@ -75,7 +75,6 @@ const CreateEvent: React.FC = () => {
     title: '',
     description: '',
     venue: '',
-    capacity: '',
   });
 
   const [showDescription, setShowDescription] = useState(false);
@@ -130,7 +129,6 @@ const CreateEvent: React.FC = () => {
         start_time: formatTime(startTime),
         end_time: formatTime(endTime),
         venue: formData.venue,
-        capacity: formData.capacity ? parseInt(formData.capacity) : null,
         checkin_cutoff: checkinCutoff ? formatTime(checkinCutoff) : null,
         registration_start: registrationStart.toISOString(),
         registration_end: registrationEnd.toISOString(),
@@ -144,7 +142,7 @@ const CreateEvent: React.FC = () => {
   };
 
   const handleClear = () => {
-    setFormData({ title: '', description: '', venue: '', capacity: '' });
+    setFormData({ title: '', description: '', venue: '' });
     setEventDate(null);
     setStartTime(null);
     setEndTime(null);
@@ -307,14 +305,8 @@ const CreateEvent: React.FC = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{formData.venue.length}/200 characters</p>
               </div>
 
-              {/* Capacity + Checkin Cutoff */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Capacity (Optional)</label>
-                  <input type="number" name="capacity" value={formData.capacity} onChange={handleChange} placeholder="e.g., 150" min="1"
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all"
-                  />
-                </div>
+              {/* Checkin Cutoff */}
+              <div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Check-in Cutoff (Optional)</label>
                   <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}

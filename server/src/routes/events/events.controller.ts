@@ -9,6 +9,7 @@ export const createEvent = async (req: Request, res: Response): Promise<void> =>
     const event = await createEventService(req.user!.user_id, req.body)
     res.status(201).json(event)
   } catch (err: any) {
+    console.error('❌ createEvent error:', err)
     res.status(400).json({ error: err.message })
   }
 }
@@ -19,6 +20,7 @@ export const getAllEvents = async (req: Request, res: Response): Promise<void> =
     const events = await getAllEventsService(user?.user_id, user?.role, user?.branch_name)
     res.json(events)
   } catch (err: any) {
+    console.error('❌ getAllEvents error:', err)
     res.status(500).json({ error: err.message })
   }
 }
@@ -28,6 +30,7 @@ export const getEventById = async (req: Request, res: Response): Promise<void> =
     const event = await getEventByIdService(Number(req.params.event_id))
     res.json(event)
   } catch (err: any) {
+    console.error('❌ getEventById error:', err)
     res.status(404).json({ error: err.message })
   }
 }
@@ -37,6 +40,7 @@ export const updateEvent = async (req: Request, res: Response): Promise<void> =>
     const event = await updateEventService(Number(req.params.event_id), req.body)
     res.json(event)
   } catch (err: any) {
+    console.error('❌ updateEvent error:', err)
     res.status(400).json({ error: err.message })
   }
 }
@@ -46,6 +50,7 @@ export const deleteEvent = async (req: Request, res: Response): Promise<void> =>
     await softDeleteEventService(Number(req.params.event_id))
     res.json({ message: 'Event deleted successfully' })
   } catch (err: any) {
+    console.error('❌ deleteEvent error:', err)
     res.status(404).json({ error: err.message })
   }
 }
@@ -56,6 +61,7 @@ export const assignPermission = async (req: Request, res: Response): Promise<voi
     const permission = await assignPermissionService(Number(req.params.event_id), user_id)
     res.status(201).json(permission)
   } catch (err: any) {
+    console.error('❌ assignPermission error:', err)
     res.status(400).json({ error: err.message })
   }
 }

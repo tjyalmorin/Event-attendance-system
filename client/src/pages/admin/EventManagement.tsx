@@ -19,12 +19,6 @@ const LocationIcon = () => (
   </svg>
 );
 
-const CalendarIcon2 = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-  </svg>
-);
-
 const GridIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
@@ -34,12 +28,6 @@ const GridIcon = () => (
 const UsersIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-  </svg>
-);
-
-const MoreIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <circle cx="12" cy="12" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>
   </svg>
 );
 
@@ -272,9 +260,10 @@ const statusConfig: Record<string, { gradient: string; badge: string; label: str
   closed:    { gradient: 'from-gray-600 to-gray-400',   badge: 'bg-gray-100 text-gray-700 dark:bg-[#1c1c1c] dark:text-gray-400',       label: 'CLOSED'    },
 };
 
-const timeStrToDate = (timeStr: string): Date | null => {
+const timeStrToDate = (timeStr: string | null | undefined): Date | null => {
   if (!timeStr) return null;
   const [h, m] = timeStr.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return null;
   const d = new Date();
   d.setHours(h, m, 0, 0);
   return d;
@@ -454,22 +443,30 @@ interface EditModalProps {
 }
 
 const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
+  const safeDate = (val: string | null | undefined): Date | null => {
+    if (!val) return null;
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const [title, setTitle] = useState(event.title || '');
   const [description, setDescription] = useState(event.description || '');
-  const [eventDate, setEventDate] = useState<Date | null>(
-    event.event_date ? new Date(event.event_date) : null
-  );
+  const [eventDate, setEventDate] = useState<Date | null>(() => {
+    if (!event.event_date) return null;
+    const d = new Date(event.event_date);
+    if (isNaN(d.getTime())) return null;
+    // event_date from DB is stored as midnight PH time but comes as UTC
+    // e.g. "2026-03-28T16:00:00.000Z" = March 29 00:00 PHT
+    // So we use UTC date parts and add the PH offset (UTC+8)
+    const phDate = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+    return new Date(phDate.getUTCFullYear(), phDate.getUTCMonth(), phDate.getUTCDate());
+  });
   const [startTime, setStartTime] = useState<Date | null>(timeStrToDate(event.start_time));
   const [endTime, setEndTime] = useState<Date | null>(timeStrToDate(event.end_time));
   const [venue, setVenue] = useState(event.venue || '');
-  const [capacity, setCapacity] = useState(event.capacity?.toString() || '');
   const [checkinCutoff, setCheckinCutoff] = useState<Date | null>(timeStrToDate(event.checkin_cutoff));
-  const [registrationStart, setRegistrationStart] = useState<Date | null>(
-    event.registration_start ? new Date(event.registration_start) : null
-  );
-  const [registrationEnd, setRegistrationEnd] = useState<Date | null>(
-    event.registration_end ? new Date(event.registration_end) : null
-  );
+  const [registrationStart, setRegistrationStart] = useState<Date | null>(safeDate(event.registration_start));
+  const [registrationEnd, setRegistrationEnd] = useState<Date | null>(safeDate(event.registration_end));
   const [showDescription, setShowDescription] = useState(!!event.description);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -490,11 +487,10 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
       await api.put(`/events/${event.event_id}`, {
         title,
         description: description || null,
-        event_date: eventDate ? eventDate.toISOString().split('T')[0] : '',
+        event_date: eventDate ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}` : '',
         start_time: dateToTimeStr(startTime),
         end_time: dateToTimeStr(endTime),
         venue,
-        capacity: capacity ? parseInt(capacity) : null,
         checkin_cutoff: dateToTimeStr(checkinCutoff) || null,
         registration_start: registrationStart.toISOString(),
         registration_end: registrationEnd.toISOString(),
@@ -554,7 +550,7 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Date</label>
                 <DatePicker selected={eventDate} onChange={(date: Date | null) => setEventDate(date)}
@@ -581,19 +577,11 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Capacity (Optional)</label>
-                <input type="number" value={capacity} onChange={e => setCapacity(e.target.value)} min="1"
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Check-in Cutoff (Optional)</label>
-                <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}
-                  showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Cutoff" dateFormat="h:mm aa"
-                  placeholderText="Pick cutoff time" customInput={<TimeInput />} popperPlacement="bottom-start" />
-              </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Check-in Cutoff (Optional)</label>
+              <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}
+                showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Cutoff" dateFormat="h:mm aa"
+                placeholderText="Pick cutoff time" customInput={<TimeInput />} popperPlacement="bottom-start" />
             </div>
 
             {/* ── Registration Window ── */}
@@ -878,10 +866,6 @@ const EventManagement: React.FC = () => {
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
   });
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  };
-
   return (
     <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
       <Sidebar userRole={user.role === 'staff' ? 'staff' : 'admin'} />
@@ -986,78 +970,76 @@ const EventManagement: React.FC = () => {
               <p className="text-gray-500 dark:text-gray-500">No events found</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-5" ref={dropdownRef}>
+            <div className="grid grid-cols-4 gap-4" ref={dropdownRef}>
               {sortedEvents.map((event) => {
                 const config = statusConfig[event.status] || statusConfig.draft;
+                const phDate = new Date(new Date(event.event_date).getTime() + 8 * 60 * 60 * 1000);
                 return (
                   <div key={event.event_id}
                     onClick={() => navigate(`/admin/events/${event.event_id}`)}
-                    className="group bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-sm hover:shadow-lg transition-all duration-200 overflow-visible cursor-pointer border border-gray-100 dark:border-[#2a2a2a] hover:border-gray-200 dark:hover:border-[#333333]"
+                    className="group bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-sm hover:shadow-xl dark:hover:shadow-[0_8px_24px_0px_rgba(255,255,255,0.12)] transition-all duration-200 cursor-pointer border border-gray-100 dark:border-[#2a2a2a] hover:border-gray-200 dark:hover:border-[#2a2a2a] flex flex-col"
                   >
-                    <div className="flex h-[130px]">
-                      <div className={`w-[180px] flex-shrink-0 bg-gradient-to-br ${config.gradient} p-5 flex flex-col justify-between text-white relative overflow-hidden rounded-l-2xl`}>
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-12 -mt-12"></div>
-                        <div className="absolute bottom-0 left-0 w-16 h-16 bg-black/10 rounded-full -ml-8 -mb-8"></div>
-                        <div className="relative z-10">
-                          <div className="text-[10px] font-bold tracking-widest opacity-60 mb-1">
-                            {new Date(event.event_date).getFullYear()}
+                    <div className={`bg-gradient-to-br ${config.gradient} relative h-[140px] flex-shrink-0 rounded-t-2xl overflow-hidden`}>
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10" />
+                      <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full -ml-10 -mb-10" />
+                      <div className="absolute top-3 left-3 z-10">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-white/20 text-white">
+                          {config.label}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col flex-1 p-4">
+                      <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 mb-3 pb-3 border-b border-gray-100 dark:border-[#2a2a2a]">
+                        {event.title}
+                      </h3>
+                      <div className="flex gap-3 mb-4">
+                        <div className="flex-shrink-0 text-center w-10">
+                          <div className="text-2xl font-extrabold text-gray-900 dark:text-white leading-none">{phDate.getUTCDate()}</div>
+                          <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mt-0.5">
+                            {phDate.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })}
                           </div>
-                          <div className="text-sm font-bold leading-tight line-clamp-2">{event.title}</div>
+                          <div className="text-[10px] font-semibold text-gray-300 dark:text-gray-600 mt-0.5">{phDate.getUTCFullYear()}</div>
+                        </div>
+                        <div className="w-px bg-gray-100 dark:bg-[#2a2a2a] flex-shrink-0" />
+                        <div className="flex flex-col gap-1.5 min-w-0">
+                          <div className="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+                            <LocationIcon />
+                            <span className="line-clamp-2 leading-tight">{event.venue || 'TBD'}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-500">
+                            <UsersIcon />
+                            <span>{(event as any).registered_count ?? 0} registered</span>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex-1 px-5 flex items-center justify-between min-w-0">
-                        <div className="flex flex-col gap-1.5 min-w-0">
-                          <div className="flex items-center gap-3">
-                            <h3 className="text-base font-bold text-gray-900 dark:text-white truncate">{event.title}</h3>
-                            <span className={`flex-shrink-0 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide ${config.badge}`}>
-                              {config.label}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-                            <div className="flex items-center gap-1.5">
-                              <LocationIcon />
-                              <span className="truncate max-w-[200px]">{event.venue || 'TBD'}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              <CalendarIcon2 />
-                              <span>{formatDate(event.event_date)}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex-shrink-0 flex flex-col items-end justify-between h-full py-3 pl-4">
-                          {user.role === 'admin' && (
-                            <div className="relative">
-                              <button
-                                onClick={e => { e.stopPropagation(); setOpenDropdown(openDropdown === event.event_id ? null : event.event_id); }}
-                                className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-white transition-colors">
-                                <MoreIcon />
+                      {user.role === 'admin' && (
+                        <div className="mt-auto relative">
+                          <button
+                            onClick={e => { e.stopPropagation(); setOpenDropdown(openDropdown === event.event_id ? null : event.event_id); }}
+                            className="w-full py-2 rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-700 dark:text-gray-300 hover:border-[#DC143C] hover:text-[#DC143C] dark:hover:border-[#DC143C] dark:hover:text-[#DC143C] transition-all"
+                          >
+                            Actions
+                          </button>
+                          {openDropdown === event.event_id && (
+                            <div onClick={e => e.stopPropagation()}
+                              className="absolute bottom-11 left-0 right-0 z-50 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden">
+                              <button onClick={() => { setEditingEvent(event); setOpenDropdown(null); }}
+                                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors">
+                                <EditIcon /> Edit
                               </button>
-                              {openDropdown === event.event_id && (
-                                <div onClick={e => e.stopPropagation()}
-                                  className="absolute right-0 top-8 z-50 w-44 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden">
-                                  <button onClick={() => { setEditingEvent(event); setOpenDropdown(null); }}
-                                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors">
-                                    <EditIcon /> Edit
-                                  </button>
-                                  <button onClick={() => { setRegistrationEvent(event); setOpenDropdown(null); }}
-                                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors">
-                                    <LinkIcon /> Registration
-                                  </button>
-                                  <div className="h-px bg-gray-100 dark:bg-[#2a2a2a]" />
-                                  <button onClick={() => { setDeletingEvent(event); setOpenDropdown(null); }}
-                                    className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                                    <TrashIcon /> Delete
-                                  </button>
-                                </div>
-                              )}
+                              <button onClick={() => { setRegistrationEvent(event); setOpenDropdown(null); }}
+                                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors">
+                                <LinkIcon /> Registration
+                              </button>
+                              <div className="h-px bg-gray-100 dark:bg-[#2a2a2a]" />
+                              <button onClick={() => { setDeletingEvent(event); setOpenDropdown(null); }}
+                                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                <TrashIcon /> Delete
+                              </button>
                             </div>
                           )}
-                          <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            <UsersIcon />
-                            <span>{event.capacity ?? '—'}</span>
-                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 );
