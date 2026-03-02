@@ -12,12 +12,15 @@ import EventManagement from './pages/admin/EventManagement'
 import CreateEvent from './pages/admin/CreateEvent'
 import EventDetail from './pages/admin/EventDetail'
 import ScannerPage from './pages/admin/ScannerPage'
-import Settings from './pages/admin/Settings'
 
 // Forgot Password pages
 import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
 import VerifyOtpPage from './pages/admin/VerifyOtpPage'
 import ResetPasswordPage from './pages/admin/ResetPasswordPage'
+
+// Settings pages
+import ProfileSettingsPage from './pages/admin/Profilesettingspage'
+import AccountSettingsPage from './pages/admin/AccountSettingsPage'
 
 // Protected route wrapper
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -29,35 +32,41 @@ function App() {
   return (
     <DarkModeProvider>
       <SidebarProvider>
-      <div className="min-h-screen bg-gray-50">
-        <Routes>
-          {/* Public Client Routes */}
-          <Route path="/register/:eventId" element={<RegistrationPage />} />
-          <Route path="/confirmation" element={<ConfirmationPage />} />
+        <div className="min-h-screen bg-gray-50 dark:bg-[#0f0f0f]">
+          <Routes>
+            {/* Public Client Routes */}
+            <Route path="/register/:eventId" element={<RegistrationPage />} />
+            <Route path="/confirmation" element={<ConfirmationPage />} />
 
-          {/* Auth */}
-          <Route path="/admin/login" element={<AdminLogin />} />
+            {/* Auth */}
+            <Route path="/admin/login" element={<AdminLogin />} />
 
-          {/* Forgot Password (public — user is not logged in) */}
-          <Route path="/admin/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/admin/verify-otp" element={<VerifyOtpPage />} />
-          <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
+            {/* Forgot Password (public) */}
+            <Route path="/admin/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/admin/verify-otp" element={<VerifyOtpPage />} />
+            <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
 
-          {/* Protected Admin Routes */}
-          <Route path="/admin/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
-          <Route path="/admin/events/create" element={<PrivateRoute><CreateEvent /></PrivateRoute>} />
-          <Route path="/admin/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
-          <Route path="/admin/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
-          <Route path="/admin/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
+            {/* Protected Admin Routes */}
+            <Route path="/admin/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
+            <Route path="/admin/events/create" element={<PrivateRoute><CreateEvent /></PrivateRoute>} />
+            <Route path="/admin/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
+            <Route path="/admin/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
 
-          {/* Staff Routes */}
-          <Route path="/staff/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
+            {/* Settings */}
+            <Route path="/admin/settings/profile" element={<PrivateRoute><ProfileSettingsPage /></PrivateRoute>} />
+            <Route path="/admin/settings/accounts" element={<PrivateRoute><AccountSettingsPage /></PrivateRoute>} />
 
-          {/* Default */}
-          <Route path="/" element={<Navigate to="/admin/login" />} />
-          <Route path="*" element={<Navigate to="/admin/login" />} />
-        </Routes>
-      </div>
+            {/* Redirect /admin/settings → profile */}
+            <Route path="/admin/settings" element={<Navigate to="/admin/settings/profile" />} />
+
+            {/* Staff Routes */}
+            <Route path="/staff/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
+
+            {/* Default */}
+            <Route path="/" element={<Navigate to="/admin/login" />} />
+            <Route path="*" element={<Navigate to="/admin/login" />} />
+          </Routes>
+        </div>
       </SidebarProvider>
     </DarkModeProvider>
   )

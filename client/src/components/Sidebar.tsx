@@ -15,22 +15,21 @@ const CalendarIcon = () => (
   </svg>
 );
 
-const UsersIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-  </svg>
-);
-
 const LogOutIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
   </svg>
 );
 
-const SettingsIcon = () => (
+const UserIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+  </svg>
+);
+
+const UsersIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
   </svg>
 );
 
@@ -62,20 +61,38 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
     navigate('/admin/login');
   };
 
-  const menuItems = [
-    { label: 'Event Management', icon: <CalendarIcon />, path: '/admin/events', show: true },
-    { label: 'Account Management', icon: <UsersIcon />, path: '/admin/accounts', show: userRole === 'admin' },
+  const mainItems = [
+    {
+      label: 'Event Management',
+      icon: <CalendarIcon />,
+      path: '/admin/events',
+      show: true,
+    },
+  ];
+
+  // Settings sub-items — shown below a divider
+  const settingsItems = [
+    {
+      label: 'Profile Settings',
+      icon: <UserIcon />,
+      path: '/admin/settings/profile',
+      show: true,
+    },
+    {
+      label: 'Account Management',
+      icon: <UsersIcon />,
+      path: '/admin/settings/accounts',
+      show: userRole === 'admin',
+    },
   ];
 
   const isActive = (path: string) => {
-    if (path === '/admin/events') {
-      return location.pathname.startsWith('/admin/events');
-    }
+    if (path === '/admin/events') return location.pathname.startsWith('/admin/events');
     return location.pathname === path;
   };
 
   const btnBase = (active: boolean) =>
-    `w-full flex items-center rounded-lg transition-all ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-3'} ${
+    `w-full flex items-center rounded-xl transition-all ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'} ${
       active
         ? 'bg-[#DC143C] text-white shadow-lg'
         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333]'
@@ -92,46 +109,53 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
         {!isCollapsed && (
           <div className="text-xl font-bold text-gray-900 dark:text-white">PrimeLog</div>
         )}
-        <button
-          onClick={toggleCollapsed}
-          className="p-2 hover:bg-gray-100 dark:hover:bg-[#333333] rounded-lg transition-colors text-gray-900 dark:text-white"
-        >
+        <button onClick={toggleCollapsed}
+          className="p-2 hover:bg-gray-100 dark:hover:bg-[#333333] rounded-lg transition-colors text-gray-900 dark:text-white">
           <MenuIcon />
         </button>
       </div>
 
       {/* Main Menu */}
       <div className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {menuItems.map((item) =>
-          item.show ? (
-            <button key={item.path} onClick={() => navigate(item.path)} className={btnBase(isActive(item.path))}>
-              <span className={iconColor(isActive(item.path))}>{item.icon}</span>
-              {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
-            </button>
-          ) : null
-        )}
+        {mainItems.filter(i => i.show).map(item => (
+          <button key={item.path} onClick={() => navigate(item.path)} className={btnBase(isActive(item.path))}>
+            <span className={iconColor(isActive(item.path))}>{item.icon}</span>
+            {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+          </button>
+        ))}
+
+        {/* Settings Section */}
+        <div className={`${isCollapsed ? 'my-2' : 'mt-6 mb-2'}`}>
+          {!isCollapsed && (
+            <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-[1.5px] text-gray-400 dark:text-gray-600">
+              Settings
+            </div>
+          )}
+          {isCollapsed && <div className="h-px bg-gray-100 dark:bg-[#2a2a2a] mx-2 my-2" />}
+        </div>
+
+        {settingsItems.filter(i => i.show).map(item => (
+          <button key={item.path} onClick={() => navigate(item.path)} className={btnBase(isActive(item.path))}>
+            <span className={iconColor(isActive(item.path))}>{item.icon}</span>
+            {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+          </button>
+        ))}
       </div>
 
-      {/* Bottom Menu */}
+      {/* Bottom */}
       <div className="p-3 border-t border-gray-200 dark:border-[#2a2a2a] space-y-1">
         {/* Dark Mode */}
         <button onClick={toggleDarkMode}
-          className={`w-full flex items-center rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333] transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-3'}`}>
+          className={`w-full flex items-center rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333] transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'}`}>
           <span className="text-gray-400 dark:text-gray-500">{isDarkMode ? <SunIcon /> : <MoonIcon />}</span>
           {!isCollapsed && <span className="text-sm font-medium">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>}
         </button>
 
         {/* Logout */}
         <button onClick={handleLogout}
-          className={`w-full flex items-center rounded-xl text-gray-600 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-[#DC143C] dark:hover:text-[#DC143C] transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-3'}`}>
-          <span className="text-gray-400 dark:text-gray-500 group-hover:text-[#DC143C]"><LogOutIcon /></span>
+          className={`w-full flex items-center rounded-xl text-gray-600 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-[#DC143C] dark:hover:text-[#DC143C] transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'}`}>
+          <span className="text-gray-400 dark:text-gray-500"><LogOutIcon /></span>
           {!isCollapsed && <span className="text-sm font-medium">Logout</span>}
-        </button>
-
-        {/* Settings */}
-        <button onClick={() => navigate('/admin/settings')} className={btnBase(isActive('/admin/settings'))}>
-          <span className={iconColor(isActive('/admin/settings'))}><SettingsIcon /></span>
-          {!isCollapsed && <span className="text-sm font-medium">Settings</span>}
         </button>
       </div>
     </div>
