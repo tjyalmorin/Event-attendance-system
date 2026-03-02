@@ -55,12 +55,12 @@ function App() {
             {/* Settings */}
             <Route path="/admin/settings/profile" element={<PrivateRoute><ProfileSettingsPage /></PrivateRoute>} />
             <Route path="/admin/settings/accounts" element={<PrivateRoute><AccountSettingsPage /></PrivateRoute>} />
-
-            {/* Redirect /admin/settings → profile */}
             <Route path="/admin/settings" element={<Navigate to="/admin/settings/profile" />} />
 
-            {/* Staff Routes */}
+            {/* ✅ Staff Routes — FIXED: added missing EventDetail and ScannerPage routes */}
             <Route path="/staff/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
+            <Route path="/staff/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
+            <Route path="/staff/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
 
             {/* Default */}
             <Route path="/" element={<Navigate to="/admin/login" />} />
