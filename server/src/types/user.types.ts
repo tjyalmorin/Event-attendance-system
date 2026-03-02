@@ -15,6 +15,7 @@ export interface User {
 export interface JwtPayload {
   user_id: string
   role: string
+  branch_name: string
 }
 
 export interface CreateUserPayload {

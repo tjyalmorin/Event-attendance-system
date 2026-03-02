@@ -2,6 +2,13 @@ import pool from '../../config/database.js'
 import { v4 as uuidv4 } from 'uuid'
 import { CreateEventPayload, UpdateEventPayload } from '../../types/event.types'
 
+// Helper: wrap SELECT * to cast event_date as plain string
+const EVENT_SELECT = `
+  SELECT *,
+    TO_CHAR(event_date, 'YYYY-MM-DD') as event_date
+  FROM events
+`
+
 export const createEventService = async (created_by: string, payload: CreateEventPayload) => {
   const registration_link = `${uuidv4().split('-')[0]}-${Date.now()}`
 
@@ -11,7 +18,7 @@ export const createEventService = async (created_by: string, payload: CreateEven
        registration_start, registration_end, venue, capacity, checkin_cutoff,
        registration_link, status)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft')
-     RETURNING *`,
+     RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date`,
     [
       created_by, payload.title, payload.description, payload.event_date,
       payload.start_time, payload.end_time, payload.registration_start,
@@ -26,7 +33,8 @@ export const getAllEventsService = async (userId?: string, userRole?: string, us
   // SuperAdmin (admin) sees all events
   if (userRole === 'admin') {
     const result = await pool.query(
-      'SELECT * FROM events WHERE deleted_at IS NULL ORDER BY event_date DESC'
+      `SELECT *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date
+       FROM events WHERE deleted_at IS NULL ORDER BY event_date DESC`
     )
     return result.rows
   }
@@ -36,7 +44,8 @@ export const getAllEventsService = async (userId?: string, userRole?: string, us
   // 2. Events they have temporary admin grant for
   if (userRole === 'staff' && userId && userBranch) {
     const result = await pool.query(
-      `SELECT DISTINCT e.* FROM events e
+      `SELECT DISTINCT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date
+       FROM events e
        LEFT JOIN users u ON e.created_by = u.user_id
        LEFT JOIN admin_grants ag ON e.event_id = ag.event_id AND ag.granted_to_user_id = $1
        WHERE e.deleted_at IS NULL 
@@ -49,14 +58,16 @@ export const getAllEventsService = async (userId?: string, userRole?: string, us
 
   // Default: return all events
   const result = await pool.query(
-    'SELECT * FROM events WHERE deleted_at IS NULL ORDER BY event_date DESC'
+    `SELECT *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date
+     FROM events WHERE deleted_at IS NULL ORDER BY event_date DESC`
   )
   return result.rows
 }
 
 export const getEventByIdService = async (event_id: number) => {
   const result = await pool.query(
-    'SELECT * FROM events WHERE event_id = $1 AND deleted_at IS NULL',
+    `SELECT *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date
+     FROM events WHERE event_id = $1 AND deleted_at IS NULL`,
     [event_id]
   )
   if (!result.rows[0]) throw new Error('Event not found')
@@ -74,7 +85,7 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
          registration_start=$10, registration_end=$11,
          version=version+1, updated_at=NOW()
      WHERE event_id=$12 AND deleted_at IS NULL
-     RETURNING *`,
+     RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date`,
     [
       merged.title, merged.description, merged.event_date, merged.start_time,
       merged.end_time, merged.venue, merged.capacity, merged.status,
