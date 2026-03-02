@@ -249,15 +249,23 @@ const TimeInput = React.forwardRef<HTMLButtonElement, { value?: string; onClick?
   )
 );
 
-// ── Status Config ──
-const statusConfig: Record<string, { gradient: string; badge: string; label: string }> = {
-  upcoming:  { gradient: 'from-blue-600 to-blue-400',   badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',     label: 'UPCOMING'  },
-  ongoing:   { gradient: 'from-green-600 to-green-400', badge: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',  label: 'ONGOING'   },
-  draft:     { gradient: 'from-gray-600 to-gray-400',   badge: 'bg-gray-100 text-gray-700 dark:bg-[#1c1c1c] dark:text-gray-400',       label: 'DRAFT'     },
-  completed: { gradient: 'from-purple-600 to-purple-400', badge: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', label: 'COMPLETED' },
-  cancelled: { gradient: 'from-red-600 to-red-400',     badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',          label: 'CANCELLED' },
-  open:      { gradient: 'from-green-600 to-green-400', badge: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',  label: 'OPEN'      },
-  closed:    { gradient: 'from-gray-600 to-gray-400',   badge: 'bg-gray-100 text-gray-700 dark:bg-[#1c1c1c] dark:text-gray-400',       label: 'CLOSED'    },
+// ── Computed display status from DB status + event_date ──
+const getDisplayStatus = (event: Event): string => {
+  if (event.status === 'draft') return 'draft';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const phDate = new Date(new Date(event.event_date).getTime() + 8 * 60 * 60 * 1000);
+  const eventDay = new Date(phDate.getUTCFullYear(), phDate.getUTCMonth(), phDate.getUTCDate());
+  if (eventDay.getTime() === today.getTime()) return 'ongoing';
+  if (eventDay > today) return 'upcoming';
+  return 'completed';
+};
+
+// ── Status Config (label + badge based on DB status) ──
+const statusConfig: Record<string, { badge: string; label: string }> = {
+  open:   { badge: 'bg-green-500 text-white',  label: 'OPEN'   },
+  closed: { badge: 'bg-red-500 text-white',    label: 'CLOSED' },
+  draft:  { badge: 'bg-gray-500 text-white',   label: 'DRAFT'  },
 };
 
 const timeStrToDate = (timeStr: string | null | undefined): Date | null => {
@@ -703,6 +711,47 @@ const DeleteModal: React.FC<DeleteModalProps> = ({ event, onClose, onConfirm, lo
   </div>
 );
 
+
+// ── Publish Modal ──
+interface PublishModalProps {
+  event: Event;
+  onClose: () => void;
+  onConfirm: () => void;
+  loading: boolean;
+}
+
+const PublishModal: React.FC<PublishModalProps> = ({ event, onClose, onConfirm, loading }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-8">
+      <div className="flex flex-col items-center text-center gap-4">
+        <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-500">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+            <path d="M12 19V5M5 12l7-7 7 7"/>
+          </svg>
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">Publish Event</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Are you sure you want to publish <span className="font-semibold text-gray-700 dark:text-gray-200">"{event.title}"</span>? It will be visible and open for registration.
+          </p>
+        </div>
+        <div className="flex gap-3 w-full mt-2">
+          <button onClick={onClose}
+            className="flex-1 px-6 py-3 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#333333] transition-all">
+            Cancel
+          </button>
+          <button onClick={onConfirm} disabled={loading}
+            className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            {loading ? (
+              <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Publishing...</>
+            ) : 'Publish Event'}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 // ── Success Toast ──
 const SuccessToast: React.FC<{ message: string; onUndo?: () => void }> = ({ message, onUndo }) => (
   <div className="fixed bottom-6 right-6 z-50 flex items-stretch bg-white dark:bg-[#1c1c1c] rounded-xl shadow-2xl border border-gray-100 dark:border-[#2a2a2a] overflow-hidden min-w-[280px]">
@@ -740,6 +789,8 @@ const EventManagement: React.FC = () => {
   const [deletingEvent, setDeletingEvent] = useState<Event | null>(null);
   const [registrationEvent, setRegistrationEvent] = useState<Event | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [publishingEvent, setPublishingEvent] = useState<Event | null>(null);
+  const [publishLoading, setPublishLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; onUndo?: () => void } | null>(null);
   const [, setUndoSnapshot] = useState<Event | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -825,6 +876,33 @@ const EventManagement: React.FC = () => {
     }
   };
 
+
+  const handlePublish = async () => {
+    if (!publishingEvent) return;
+    setPublishLoading(true);
+    try {
+      await api.put(`/events/${publishingEvent.event_id}`, {
+        title: publishingEvent.title,
+        description: publishingEvent.description,
+        event_date: publishingEvent.event_date,
+        start_time: publishingEvent.start_time,
+        end_time: publishingEvent.end_time,
+        venue: publishingEvent.venue,
+        checkin_cutoff: publishingEvent.checkin_cutoff,
+        registration_start: publishingEvent.registration_start,
+        registration_end: publishingEvent.registration_end,
+        status: 'open',
+      });
+      setPublishingEvent(null);
+      setToast({ message: 'Event published successfully' });
+      fetchEvents();
+    } catch (err) {
+      console.error('Failed to publish event:', err);
+    } finally {
+      setPublishLoading(false);
+    }
+  };
+
   const handleEditSuccess = () => {
     setEditingEvent(null);
     setToast({ message: 'Event updated successfully' });
@@ -857,7 +935,7 @@ const EventManagement: React.FC = () => {
   };
 
   const filteredEvents = events.filter(event =>
-    filter === 'all' ? true : event.status === filter
+    filter === 'all' ? true : getDisplayStatus(event) === filter
   );
 
   const sortedEvents = [...filteredEvents].sort((a, b) => {
@@ -895,8 +973,8 @@ const EventManagement: React.FC = () => {
                 { key: 'all', label: 'All Events' },
                 { key: 'upcoming', label: 'Upcoming' },
                 { key: 'ongoing', label: 'Ongoing' },
-                { key: 'draft', label: 'Draft' },
                 { key: 'completed', label: 'Completed' },
+                { key: 'draft', label: 'Draft' },
               ].map(({ key, label }) => (
                 <button key={key} onClick={() => setFilter(key)}
                   className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all ${
@@ -907,7 +985,11 @@ const EventManagement: React.FC = () => {
                 >
                   {label}
                   {key !== 'all' && (
-                    <span className="ml-1.5 text-xs opacity-70">{events.filter(e => e.status === key).length}</span>
+                    <span className="ml-1.5 text-xs opacity-70">
+                      {key === 'draft'
+                        ? events.filter(e => e.status === 'draft').length
+                        : events.filter(e => getDisplayStatus(e) === key).length}
+                    </span>
                   )}
                 </button>
               ))}
@@ -972,26 +1054,31 @@ const EventManagement: React.FC = () => {
           ) : (
             <div className="grid grid-cols-4 gap-4" ref={dropdownRef}>
               {sortedEvents.map((event) => {
-                const config = statusConfig[event.status] || statusConfig.draft;
                 const phDate = new Date(new Date(event.event_date).getTime() + 8 * 60 * 60 * 1000);
+                const displayStatus = getDisplayStatus(event);
                 return (
                   <div key={event.event_id}
                     onClick={() => navigate(`/admin/events/${event.event_id}`)}
                     className="group bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-sm hover:shadow-xl dark:hover:shadow-[0_8px_24px_0px_rgba(255,255,255,0.12)] transition-all duration-200 cursor-pointer border border-gray-100 dark:border-[#2a2a2a] hover:border-gray-200 dark:hover:border-[#2a2a2a] flex flex-col"
                   >
-                    <div className={`bg-gradient-to-br ${config.gradient} relative h-[140px] flex-shrink-0 rounded-t-2xl overflow-hidden`}>
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-10 -mt-10" />
-                      <div className="absolute bottom-0 left-0 w-24 h-24 bg-black/10 rounded-full -ml-10 -mb-10" />
-                      <div className="absolute top-3 left-3 z-10">
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-white/20 text-white">
-                          {config.label}
-                        </span>
+                    <div className="relative h-[140px] flex-shrink-0 rounded-t-2xl overflow-hidden bg-gray-100 dark:bg-[#2a2a2a]">
+                      <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="w-24 h-24 text-gray-400">
+                          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
                       </div>
+
                     </div>
                     <div className="flex flex-col flex-1 p-4">
-                      <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 mb-3 pb-3 border-b border-gray-100 dark:border-[#2a2a2a]">
-                        {event.title}
-                      </h3>
+                      {/* Title + status badge */}
+                      <div className="flex items-start justify-between gap-2 mb-3 pb-3 border-b border-gray-100 dark:border-[#2a2a2a]">
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 flex-1">
+                          {event.title}
+                        </h3>
+                        <span className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide ${(statusConfig[event.status] || statusConfig.draft).badge}`}>
+                          {(statusConfig[event.status] || statusConfig.draft).label}
+                        </span>
+                      </div>
                       <div className="flex gap-3 mb-4">
                         <div className="flex-shrink-0 text-center w-10">
                           <div className="text-2xl font-extrabold text-gray-900 dark:text-white leading-none">{phDate.getUTCDate()}</div>
@@ -1002,9 +1089,9 @@ const EventManagement: React.FC = () => {
                         </div>
                         <div className="w-px bg-gray-100 dark:bg-[#2a2a2a] flex-shrink-0" />
                         <div className="flex flex-col gap-1.5 min-w-0">
-                          <div className="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+                          <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
                             <LocationIcon />
-                            <span className="line-clamp-2 leading-tight">{event.venue || 'TBD'}</span>
+                            <span className="truncate">{event.venue || 'TBD'}</span>
                           </div>
                           <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-500">
                             <UsersIcon />
@@ -1027,10 +1114,17 @@ const EventManagement: React.FC = () => {
                                 className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors">
                                 <EditIcon /> Edit
                               </button>
-                              <button onClick={() => { setRegistrationEvent(event); setOpenDropdown(null); }}
-                                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors">
-                                <LinkIcon /> Registration
-                              </button>
+                              {event.status === 'draft' ? (
+                                <button onClick={() => { setPublishingEvent(event); setOpenDropdown(null); }}
+                                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M12 19V5M5 12l7-7 7 7"/></svg> Publish
+                                </button>
+                              ) : (
+                                <button onClick={() => { setRegistrationEvent(event); setOpenDropdown(null); }}
+                                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors">
+                                  <LinkIcon /> Registration
+                                </button>
+                              )}
                               <div className="h-px bg-gray-100 dark:bg-[#2a2a2a]" />
                               <button onClick={() => { setDeletingEvent(event); setOpenDropdown(null); }}
                                 className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
@@ -1051,6 +1145,7 @@ const EventManagement: React.FC = () => {
 
       {editingEvent && <EditModal event={editingEvent} onClose={() => setEditingEvent(null)} onSuccess={handleEditSuccess} />}
       {deletingEvent && <DeleteModal event={deletingEvent} onClose={() => setDeletingEvent(null)} onConfirm={handleDelete} loading={deleteLoading} />}
+      {publishingEvent && <PublishModal event={publishingEvent} onClose={() => setPublishingEvent(null)} onConfirm={handlePublish} loading={publishLoading} />}
       {registrationEvent && (
         <RegistrationModal
           event={registrationEvent}
