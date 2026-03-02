@@ -126,7 +126,7 @@ const CreateEvent: React.FC = () => {
       await api.post('/events', {
         title: formData.title,
         description: formData.description || null,
-        event_date: eventDate.toISOString().split('T')[0],
+        event_date: eventDate ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}` : '',
         start_time: formatTime(startTime),
         end_time: formatTime(endTime),
         venue: formData.venue,

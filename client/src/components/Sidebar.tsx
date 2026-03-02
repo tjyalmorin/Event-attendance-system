@@ -21,12 +21,6 @@ const LogOutIcon = () => (
   </svg>
 );
 
-const UserIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-  </svg>
-);
-
 const UsersIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
@@ -42,6 +36,13 @@ const MoonIcon = () => (
 const SunIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
     <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+  </svg>
+);
+
+const GearIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
   </svg>
 );
 
@@ -68,16 +69,6 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
       path: '/admin/events',
       show: true,
     },
-  ];
-
-  // Settings sub-items — shown below a divider
-  const settingsItems = [
-    {
-      label: 'Profile Settings',
-      icon: <UserIcon />,
-      path: '/admin/settings/profile',
-      show: true,
-    },
     {
       label: 'Account Management',
       icon: <UsersIcon />,
@@ -92,7 +83,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   };
 
   const btnBase = (active: boolean) =>
-    `w-full flex items-center rounded-xl transition-all ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'} ${
+    `w-full flex items-center rounded-lg transition-all ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'} ${
       active
         ? 'bg-[#DC143C] text-white shadow-lg'
         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333]'
@@ -123,38 +114,28 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
             {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
           </button>
         ))}
-
-        {/* Settings Section */}
-        <div className={`${isCollapsed ? 'my-2' : 'mt-6 mb-2'}`}>
-          {!isCollapsed && (
-            <div className="px-3 mb-2 text-[10px] font-bold uppercase tracking-[1.5px] text-gray-400 dark:text-gray-600">
-              Settings
-            </div>
-          )}
-          {isCollapsed && <div className="h-px bg-gray-100 dark:bg-[#2a2a2a] mx-2 my-2" />}
-        </div>
-
-        {settingsItems.filter(i => i.show).map(item => (
-          <button key={item.path} onClick={() => navigate(item.path)} className={btnBase(isActive(item.path))}>
-            <span className={iconColor(isActive(item.path))}>{item.icon}</span>
-            {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
-          </button>
-        ))}
       </div>
 
       {/* Bottom */}
       <div className="p-3 border-t border-gray-200 dark:border-[#2a2a2a] space-y-1">
         {/* Dark Mode */}
         <button onClick={toggleDarkMode}
-          className={`w-full flex items-center rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333] transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'}`}>
+          className={`w-full flex items-center rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333] transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'}`}>
           <span className="text-gray-400 dark:text-gray-500">{isDarkMode ? <SunIcon /> : <MoonIcon />}</span>
           {!isCollapsed && <span className="text-sm font-medium">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>}
         </button>
 
+        {/* Profile Settings */}
+        <button onClick={() => navigate('/admin/settings/profile')}
+          className={btnBase(isActive('/admin/settings/profile'))}>
+          <span className={iconColor(isActive('/admin/settings/profile'))}><GearIcon /></span>
+          {!isCollapsed && <span className="text-sm font-medium">Profile Settings</span>}
+        </button>
+
         {/* Logout */}
         <button onClick={handleLogout}
-          className={`w-full flex items-center rounded-xl text-gray-600 dark:text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-[#DC143C] dark:hover:text-[#DC143C] transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'}`}>
-          <span className="text-gray-400 dark:text-gray-500"><LogOutIcon /></span>
+          className={`group w-full flex items-center rounded-lg text-gray-600 dark:text-gray-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-[#DC143C] dark:hover:text-[#DC143C] transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'}`}>
+          <span className="text-gray-400 dark:text-gray-500 group-hover:text-[#DC143C] dark:group-hover:text-[#DC143C] transition-colors"><LogOutIcon /></span>
           {!isCollapsed && <span className="text-sm font-medium">Logout</span>}
         </button>
       </div>
