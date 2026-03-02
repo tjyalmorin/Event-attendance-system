@@ -113,7 +113,7 @@ export default function LoginPage() {
   ]
 
   return (
-    <div className="flex h-screen w-full overflow-hidden font-sans bg-white dark:bg-gray-900">
+    <div className="flex h-screen w-full overflow-hidden font-sans bg-white dark:bg-[#0f0f0f]">
 
       {/* ── LEFT PANEL ── */}
       <div className="relative flex w-1/2 flex-shrink-0 flex-col justify-between overflow-hidden bg-[#DC143C] px-16 py-14">
@@ -168,7 +168,7 @@ export default function LoginPage() {
       </div>
 
       {/* ── RIGHT PANEL ── */}
-      <div className="relative flex w-1/2 flex-col items-stretch justify-center bg-white dark:bg-gray-900 px-16 py-14">
+      <div className="relative flex w-1/2 flex-col items-stretch justify-center bg-white dark:bg-[#0f0f0f] px-16 py-14">
         <div className="flex flex-col gap-8 w-full max-w-[420px] mx-auto">
 
           {/* Heading */}
@@ -201,7 +201,7 @@ export default function LoginPage() {
                   placeholder="you@pluk.com"
                   required
                   autoFocus
-                  className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-11 pr-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-gray-800 focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)] [&:-webkit-autofill]:bg-gray-50 dark:[&:-webkit-autofill]:[box-shadow:0_0_0_1000px_#1f2937_inset] dark:[&:-webkit-autofill]:[-webkit-text-fill-color:white]"
+                  className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#1c1c1c] pl-11 pr-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-[#1c1c1c] focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
                 />
               </div>
             </div>
@@ -222,7 +222,7 @@ export default function LoginPage() {
                   onChange={e => { setPassword(e.target.value); setError('') }}
                   placeholder="••••••••"
                   required
-                  className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-11 pr-11 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-gray-800 focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
+                  className="h-[50px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#1c1c1c] pl-11 pr-11 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-[#1c1c1c] focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
                 />
                 <button
                   type="button"
@@ -232,7 +232,6 @@ export default function LoginPage() {
                   {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
               </div>
-              {/* ── Forgot Password — wired to actual route ── */}
               <div className="flex justify-end mt-0.5">
                 <Link
                   to="/admin/forgot-password"
@@ -278,21 +277,21 @@ export default function LoginPage() {
 
           {/* Divider + note */}
           <div className="flex flex-col gap-4">
-            <div className="h-px w-full bg-gray-100 dark:bg-gray-800" />
-            <p className="text-center text-xs leading-relaxed text-gray-400 dark:text-gray-500">
+            <div className="h-px w-full bg-gray-100 dark:bg-[#2a2a2a]" />
+            <p className="text-center text-xs leading-relaxed text-gray-400 dark:text-gray-600">
               Access is restricted to{' '}
-              <span className="font-semibold text-gray-600 dark:text-gray-300">authorized personnel only</span>.<br />
+              <span className="font-semibold text-gray-600 dark:text-gray-400">authorized personnel only</span>.<br />
               Contact your system administrator if you need access.
             </p>
           </div>
 
         </div>
 
-        {/* ── Dark Mode Toggle (bottom right) — icon only ── */}
+        {/* ── Dark Mode Toggle ── */}
         <button
           onClick={toggleDarkMode}
           title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          className="absolute bottom-6 right-6 flex items-center justify-center w-[52px] h-[52px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-all shadow-sm"
+          className="absolute bottom-6 right-6 flex items-center justify-center w-[52px] h-[52px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333] hover:text-gray-700 dark:hover:text-gray-200 transition-all shadow-sm"
         >
           {isDarkMode ? <SunIcon /> : <MoonIcon />}
         </button>

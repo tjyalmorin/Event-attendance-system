@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { DarkModeProvider } from './contexts/DarkModeContext'
+import { SidebarProvider } from './contexts/SidebarContext'
 
 // Client pages
 import RegistrationPage from './pages/client/RegistrationPage'
@@ -11,6 +12,7 @@ import EventManagement from './pages/admin/EventManagement'
 import CreateEvent from './pages/admin/CreateEvent'
 import EventDetail from './pages/admin/EventDetail'
 import ScannerPage from './pages/admin/ScannerPage'
+import Settings from './pages/admin/Settings'
 
 // Forgot Password pages
 import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
@@ -26,6 +28,7 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <DarkModeProvider>
+      <SidebarProvider>
       <div className="min-h-screen bg-gray-50">
         <Routes>
           {/* Public Client Routes */}
@@ -45,6 +48,7 @@ function App() {
           <Route path="/admin/events/create" element={<PrivateRoute><CreateEvent /></PrivateRoute>} />
           <Route path="/admin/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
           <Route path="/admin/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
+          <Route path="/admin/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
 
           {/* Staff Routes */}
           <Route path="/staff/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
@@ -54,6 +58,7 @@ function App() {
           <Route path="*" element={<Navigate to="/admin/login" />} />
         </Routes>
       </div>
+      </SidebarProvider>
     </DarkModeProvider>
   )
 }

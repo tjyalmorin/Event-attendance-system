@@ -22,10 +22,10 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (!event) throw new Error('Event not found')
   if (event.status !== 'open') throw new Error('Event registration is not open')
 
-  // 2. Check registration window
+  // 2. Check registration window (only if dates are set)
   const now = new Date()
-  if (now < new Date(event.registration_start)) throw new Error('Registration has not started yet')
-  if (now > new Date(event.registration_end)) throw new Error('Registration has already closed')
+  if (event.registration_start && now < new Date(event.registration_start)) throw new Error('Registration has not started yet')
+  if (event.registration_end && now > new Date(event.registration_end)) throw new Error('Registration has already closed')
 
   // 3. Check capacity
   const countResult = await pool.query(
