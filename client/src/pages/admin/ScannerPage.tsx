@@ -1,9 +1,12 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getEventByIdApi } from '../../api/events.api'
-import { lookupParticipantApi, scanAgentCodeApi, logDenialApi } from '../../api/scan.api'
+import { lookupParticipantApi, scanAgentCodeApi, logDenialApi, getSessionsByEventApi } from '../../api/scan.api'
 import { Event, ScanResponse } from '../../types'
+import Sidebar from '../../components/Sidebar'
+import { useDarkMode } from '../../contexts/DarkModeContext'
 
+// ── Types ────────────────────────────────────────────────
 type PageState = 'input' | 'verify' | 'result' | 'error'
 
 interface LookupResult {
@@ -18,30 +21,137 @@ interface LookupResult {
   next_action: 'check_in' | 'check_out' | 'blocked'
 }
 
+// ── Audio Helpers ────────────────────────────────────────
+const playTone = (type: 'success' | 'checkout' | 'denied') => {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const gainNode = ctx.createGain()
+    gainNode.connect(ctx.destination)
+
+    const notes: number[][] =
+      type === 'success'  ? [[880, 0, 0.12], [1100, 0.13, 0.12], [1320, 0.26, 0.18]] :
+      type === 'checkout' ? [[660, 0, 0.12], [880, 0.13, 0.18]] :
+                            [[300, 0, 0.10], [220, 0.12, 0.18]]
+
+    notes.forEach(([freq, start, dur]) => {
+      const osc = ctx.createOscillator()
+      const g   = ctx.createGain()
+      osc.connect(g)
+      g.connect(ctx.destination)
+      osc.frequency.value = freq
+      osc.type = type === 'denied' ? 'sawtooth' : 'sine'
+      g.gain.setValueAtTime(0, ctx.currentTime + start)
+      g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + start + 0.01)
+      g.gain.linearRampToValueAtTime(0, ctx.currentTime + start + dur)
+      osc.start(ctx.currentTime + start)
+      osc.stop(ctx.currentTime + start + dur + 0.05)
+    })
+  } catch (_) {}
+}
+
+// ── Icons ────────────────────────────────────────────────
+const ArrowLeftIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+  </svg>
+)
+const CalendarIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+  </svg>
+)
+const ClockIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+  </svg>
+)
+const LocationIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+  </svg>
+)
+const UsersIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  </svg>
+)
+const ScanIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+    <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/>
+    <rect x="7" y="7" width="10" height="10" rx="1"/>
+  </svg>
+)
+const CheckIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>
+)
+const XIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
+    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+)
+const LogOutIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+  </svg>
+)
+const ShieldIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+  </svg>
+)
+
+// ── Component ────────────────────────────────────────────
 export default function ScannerPage() {
   const { eventId } = useParams()
   const navigate = useNavigate()
-  const [event, setEvent] = useState<Event | null>(null)
+  const { isDarkMode } = useDarkMode()
+
+  const [event, setEvent]         = useState<Event | null>(null)
   const [agentCode, setAgentCode] = useState('')
   const [pageState, setPageState] = useState<PageState>('input')
-  const [lookup, setLookup] = useState<LookupResult | null>(null)
-  const [result, setResult] = useState<ScanResponse | null>(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [lookup, setLookup]       = useState<LookupResult | null>(null)
+  const [result, setResult]       = useState<ScanResponse | null>(null)
+  const [error, setError]         = useState('')
+  const [loading, setLoading]     = useState(false)
   const [photoError, setPhotoError] = useState(false)
   const [countdown, setCountdown] = useState(3)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [checkedInCount, setCheckedInCount] = useState(0)
+  const [flashColor, setFlashColor] = useState<'green' | 'blue' | 'red' | null>(null)
 
+  const inputRef      = useRef<HTMLInputElement>(null)
+  const countdownRef  = useRef<ReturnType<typeof setInterval> | null>(null)
+  const flashRef      = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
+  const userRole   = storedUser?.role || 'staff'
+
+  // Load event & initial count
   useEffect(() => {
+    if (!eventId) return
     getEventByIdApi(Number(eventId)).then(setEvent).catch(console.error)
+    refreshCount()
   }, [eventId])
 
+  const refreshCount = useCallback(async () => {
+    if (!eventId) return
+    try {
+      const sessions = await getSessionsByEventApi(Number(eventId))
+      const checkedIn = sessions.filter((s: any) => s.check_in_time && !s.check_out_time).length
+      setCheckedInCount(checkedIn)
+    } catch (_) {}
+  }, [eventId])
+
+  // Focus input when on input state
   useEffect(() => {
-    if (pageState === 'input') inputRef.current?.focus()
+    if (pageState === 'input') {
+      setTimeout(() => inputRef.current?.focus(), 80)
+    }
   }, [pageState])
 
-  // Auto-dismiss result/error after 3 seconds with countdown
+  // Auto-dismiss result/error with countdown
   useEffect(() => {
     if (pageState === 'result' || pageState === 'error') {
       setCountdown(3)
@@ -59,6 +169,11 @@ export default function ScannerPage() {
     return () => { if (countdownRef.current) clearInterval(countdownRef.current) }
   }, [pageState])
 
+  const triggerFlash = (color: 'green' | 'blue' | 'red') => {
+    setFlashColor(color)
+    flashRef.current = setTimeout(() => setFlashColor(null), 700)
+  }
+
   const resetToInput = () => {
     setPageState('input')
     setLookup(null)
@@ -66,28 +181,29 @@ export default function ScannerPage() {
     setError('')
     setAgentCode('')
     setPhotoError(false)
-    setTimeout(() => inputRef.current?.focus(), 100)
   }
 
-  // Step 1 — Lookup participant, show verification card
+  // ── Step 1: Lookup ────────────────────────────────────
   const handleLookup = async (code: string) => {
     if (!code.trim()) return
     setLoading(true)
     try {
       const data = await lookupParticipantApi({ agent_code: code.trim(), event_id: Number(eventId) })
-
       if (data.next_action === 'blocked') {
-        setError('This participant has already checked in and checked out. No further entries allowed.')
+        playTone('denied')
+        triggerFlash('red')
+        setError('Participant has already completed attendance. No further entries allowed.')
         setPageState('error')
         setAgentCode('')
         return
       }
-
       setLookup(data)
       setPhotoError(false)
       setPageState('verify')
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Lookup failed')
+      playTone('denied')
+      triggerFlash('red')
+      setError(err.response?.data?.error || 'Lookup failed. Please try again.')
       setAgentCode('')
       setPageState('error')
     } finally {
@@ -95,33 +211,37 @@ export default function ScannerPage() {
     }
   }
 
-  // Step 2a — Admin confirms identity, proceed with scan
+  // ── Step 2a: Confirm ──────────────────────────────────
   const handleConfirm = async () => {
     if (!lookup) return
     setLoading(true)
     try {
       const data = await scanAgentCodeApi({ agent_code: lookup.participant.agent_code, event_id: Number(eventId) })
       setResult(data)
+      const isIn = data.action === 'check_in'
+      playTone(isIn ? 'success' : 'checkout')
+      triggerFlash(isIn ? 'green' : 'blue')
       setPageState('result')
+      refreshCount()
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Scan failed')
+      playTone('denied')
+      triggerFlash('red')
+      setError(err.response?.data?.error || 'Scan failed. Please try again.')
       setPageState('error')
     } finally {
       setLoading(false)
     }
   }
 
-  // Step 2b — Admin denies, log it and show denied card
+  // ── Step 2b: Deny ─────────────────────────────────────
   const handleDeny = async () => {
     if (!lookup) return
     setLoading(true)
     try {
-      await logDenialApi({
-        agent_code: lookup.participant.agent_code,
-        event_id: Number(eventId),
-        reason: 'Staff denied — identity mismatch'
-      })
+      await logDenialApi({ agent_code: lookup.participant.agent_code, event_id: Number(eventId), reason: 'Staff denied — identity mismatch' })
     } catch (_) {}
+    playTone('denied')
+    triggerFlash('red')
     setError('Access denied. Identity could not be verified.')
     setPageState('error')
     setLoading(false)
@@ -131,391 +251,431 @@ export default function ScannerPage() {
     if (e.key === 'Enter') handleLookup(agentCode)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    handleLookup(agentCode)
-  }
-
-  const getPhotoUrl = (photo_url: string | null | undefined) => {
+  const getPhotoUrl = (photo_url: string | null | undefined): string | null => {
     if (!photo_url) return null
     if (photo_url.startsWith('http')) return photo_url
     return `http://localhost:5000${photo_url}`
   }
 
-  const isCheckIn = result?.action === 'check_in'
-  const verifyPhotoUrl = getPhotoUrl(lookup?.participant.photo_url)
-  const resultPhotoUrl = getPhotoUrl(result?.participant.photo_url)
+  const formatTime = (t: string) => {
+    const [h, m] = t.split(':')
+    const hr = parseInt(h)
+    return `${hr % 12 || 12}:${m} ${hr < 12 ? 'AM' : 'PM'}`
+  }
+
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+
+  const isCheckIn       = result?.action === 'check_in'
+  const verifyPhotoUrl  = getPhotoUrl(lookup?.participant.photo_url)
+  const resultPhotoUrl  = getPhotoUrl(result?.participant.photo_url)
+
+  // ── Color tokens tied to dark mode ───────────────────
+  const bg      = isDarkMode ? '#0f0f0f' : '#f0f1f3'
+  const card    = isDarkMode ? '#1c1c1c' : '#ffffff'
+  const border  = isDarkMode ? '#2a2a2a' : '#e5e7eb'
+  const textPrimary   = isDarkMode ? '#ffffff' : '#111827'
+  const textSecondary = isDarkMode ? '#9ca3af' : '#6b7280'
+  const inputBg = isDarkMode ? '#141414' : '#f9fafb'
+  const subCard = isDarkMode ? '#141414' : '#f9fafb'
+
+  // ── Flash overlay colors ──────────────────────────────
+  const flashBg =
+    flashColor === 'green' ? 'rgba(22,163,74,0.06)' :
+    flashColor === 'blue'  ? 'rgba(37,99,235,0.06)' :
+    flashColor === 'red'   ? 'rgba(220,20,60,0.06)'  : 'transparent'
 
   return (
-    <div style={styles.page}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@300;400;500;600&display=swap');
-        * { box-sizing: border-box; }
+    <div style={{ display: 'flex', minHeight: '100vh', background: bg, transition: 'background 0.2s' }}>
+      <Sidebar userRole={userRole === 'admin' ? 'admin' : 'staff'} />
 
-        .scan-input {
-          width: 100%;
-          background: #1e2433;
-          border: 2px solid #2d3548;
-          border-radius: 12px;
-          padding: 16px;
-          font-size: 20px;
-          font-family: monospace;
-          color: #fff;
-          text-align: center;
-          letter-spacing: 4px;
-          outline: none;
-          transition: all 0.2s;
-        }
-        .scan-input:focus { border-color: #3b82f6; box-shadow: 0 0 0 4px rgba(59,130,246,0.15); }
-        .scan-input::placeholder { color: #4b5563; letter-spacing: 2px; font-size: 14px; }
-        .scan-input:disabled { opacity: 0.5; }
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, transition: 'background 0.2s', background: flashBg }}>
 
-        .scan-btn {
-          width: 100%;
-          background: linear-gradient(135deg, #2563eb, #1d4ed8);
-          color: white;
-          font-family: 'DM Sans', sans-serif;
-          font-weight: 600;
-          font-size: 15px;
-          padding: 14px;
-          border: none;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .scan-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 25px rgba(37,99,235,0.4); }
-        .scan-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        {/* ── HEADER ──────────────────────────────────── */}
+        <header style={{ background: card, borderBottom: `1px solid ${border}`, flexShrink: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+          <div style={{ height: 76, paddingLeft: 48, paddingRight: 48, display: 'flex', alignItems: 'center', gap: 16 }}>
 
-        .confirm-btn {
-          flex: 1;
-          background: linear-gradient(135deg, #16a34a, #15803d);
-          color: white;
-          font-family: 'DM Sans', sans-serif;
-          font-weight: 700;
-          font-size: 15px;
-          padding: 16px;
-          border: none;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.2s;
-          letter-spacing: 0.5px;
-        }
-        .confirm-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 25px rgba(22,163,74,0.4); }
-        .confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+            <button
+              onClick={() => navigate(-1)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: textSecondary, fontSize: 13, fontWeight: 500, padding: '6px 10px', borderRadius: 8, transition: 'color 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.color = textPrimary)}
+              onMouseLeave={e => (e.currentTarget.style.color = textSecondary)}
+            >
+              <ArrowLeftIcon />
+              <span>Back</span>
+            </button>
 
-        .deny-btn {
-          flex: 1;
-          background: linear-gradient(135deg, #dc2626, #b91c1c);
-          color: white;
-          font-family: 'DM Sans', sans-serif;
-          font-weight: 700;
-          font-size: 15px;
-          padding: 16px;
-          border: none;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.2s;
-          letter-spacing: 0.5px;
-        }
-        .deny-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 25px rgba(220,38,38,0.4); }
-        .deny-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+            <div style={{ width: 1, height: 24, background: border }} />
 
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(24px) scale(0.97); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .slide-up { animation: slideUp 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-
-        @keyframes popIn {
-          0% { transform: scale(0.5); opacity: 0; }
-          70% { transform: scale(1.15); }
-          100% { transform: scale(1); opacity: 1; }
-        }
-        .pop-in { animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.2s forwards; opacity: 0; }
-
-        @keyframes pulse-ring {
-          0% { transform: scale(1); opacity: 0.6; }
-          100% { transform: scale(1.5); opacity: 0; }
-        }
-        .pulse-ring {
-          position: absolute; inset: -6px; border-radius: 50%;
-          animation: pulse-ring 1.5s ease-out 0.7s infinite;
-        }
-        .pulse-green { border: 2px solid rgba(34,197,94,0.5); }
-        .pulse-blue { border: 2px solid rgba(59,130,246,0.5); }
-
-        @keyframes countdown {
-          from { width: 100%; }
-          to { width: 0%; }
-        }
-      `}</style>
-
-      {/* Navbar */}
-      <nav style={styles.nav}>
-        <div style={styles.navLeft}>
-          <button onClick={() => navigate(`/admin/events/${eventId}`)} style={styles.backBtn}>← Back</button>
-          <div>
-            <div style={styles.navTitle}>Check-in Scanner</div>
-            {event && <div style={styles.navSub}>{event.title}</div>}
-          </div>
-        </div>
-        <div style={{ ...styles.statusBadge, background: event?.status === 'open' ? '#16a34a' : '#dc2626' }}>
-          {event?.status?.toUpperCase() || 'LOADING...'}
-        </div>
-      </nav>
-
-      <div style={styles.container}>
-
-        {/* ── STATE 1: INPUT ── */}
-        {pageState === 'input' && (
-          <>
-            <div style={styles.inputCard}>
-              <div style={styles.scanIcon}>🪪</div>
-              <h2 style={styles.inputTitle}>Enter Agent Code</h2>
-              <p style={styles.inputSub}>Type the agent code and press Enter to begin verification.</p>
-              <form onSubmit={handleSubmit} style={styles.form}>
-                <input
-                  ref={inputRef}
-                  className="scan-input"
-                  type="text"
-                  value={agentCode}
-                  onChange={e => setAgentCode(e.target.value.toUpperCase())}
-                  onKeyDown={handleKeyDown}
-                  placeholder="AGENT CODE"
-                  disabled={loading}
-                />
-                <button type="submit" disabled={loading || !agentCode.trim()} className="scan-btn">
-                  {loading ? 'Looking up...' : 'Verify Agent →'}
-                </button>
-              </form>
-            </div>
-
-            <div style={styles.instructions}>
-              <div style={styles.instructionTitle}>💡 How it works</div>
-              <div style={styles.instructionList}>
-                <div style={styles.instructionItem}>
-                  <span style={{ ...styles.dot, background: '#a78bfa' }} />
-                  <span>Enter code → <strong style={{ color: '#a78bfa' }}>Verification card appears</strong></span>
-                </div>
-                <div style={styles.instructionItem}>
-                  <span style={{ ...styles.dot, background: '#22c55e' }} />
-                  <span>Confirm identity → <strong style={{ color: '#4ade80' }}>Check In / Out</strong></span>
-                </div>
-                <div style={styles.instructionItem}>
-                  <span style={{ ...styles.dot, background: '#f87171' }} />
-                  <span>Mismatch → <strong style={{ color: '#f87171' }}>Deny access</strong></span>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* ── STATE 2: VERIFY ── */}
-        {pageState === 'verify' && lookup && (
-          <div className="slide-up" style={styles.verifyCard}>
-            {/* Header */}
-            <div style={styles.verifyHeader}>
-              <div style={styles.verifyBadge}>🔍 IDENTITY VERIFICATION</div>
-              <div style={styles.verifySubtitle}>
-                Compare the photo below with the person in front of you
-              </div>
-            </div>
-
-            {/* Large Photo */}
-            <div style={styles.largePhotoWrapper}>
-              {verifyPhotoUrl && !photoError ? (
-                <img
-                  src={verifyPhotoUrl}
-                  alt={lookup.participant.full_name}
-                  style={styles.largePhoto}
-                  onError={() => setPhotoError(true)}
-                />
-              ) : (
-                <div style={styles.largePhotoPlaceholder}>
-                  <span style={styles.largeInitials}>
-                    {lookup.participant.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </span>
-                  <span style={styles.noPhotoText}>No photo on file</span>
-                </div>
-              )}
-            </div>
-
-            {/* Agent Info */}
-            <div style={styles.verifyInfo}>
-              <div style={styles.verifyName}>{lookup.participant.full_name}</div>
-              <div style={styles.verifyCode}>{lookup.participant.agent_code}</div>
-              <div style={styles.verifyTags}>
-                <span style={styles.tag}>{lookup.participant.branch_name}</span>
-                <span style={styles.tag}>{lookup.participant.team_name}</span>
-                <span style={{
-                  ...styles.actionTag,
-                  background: lookup.next_action === 'check_in' ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)',
-                  border: lookup.next_action === 'check_in' ? '1px solid rgba(34,197,94,0.3)' : '1px solid rgba(59,130,246,0.3)',
-                  color: lookup.next_action === 'check_in' ? '#4ade80' : '#60a5fa',
-                }}>
-                  {lookup.next_action === 'check_in' ? '↓ Check In' : '↑ Check Out'}
-                </span>
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div style={styles.divider} />
-
-            {/* Action Buttons */}
-            <div style={styles.verifyQuestion}>Is this the same person?</div>
-            <div style={styles.btnRow}>
-              <button className="deny-btn" onClick={handleDeny} disabled={loading}>
-                ✕ Deny
-              </button>
-              <button className="confirm-btn" onClick={handleConfirm} disabled={loading}>
-                ✓ Confirm
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── STATE 3: RESULT ── */}
-        {pageState === 'result' && result && (
-          <div className="slide-up" style={{
-            ...styles.resultCard,
-            background: isCheckIn ? 'linear-gradient(135deg, #052e16, #14532d)' : 'linear-gradient(135deg, #0c1a3d, #1e3a8a)',
-            border: isCheckIn ? '1px solid #166534' : '1px solid #1e40af',
-          }}>
-            {/* Countdown bar */}
-            <div style={styles.countdownBar}>
-              <div style={{
-                height: '100%',
-                background: isCheckIn ? '#22c55e' : '#3b82f6',
-                borderRadius: 2,
-                animation: 'countdown 3s linear forwards',
-              }} />
-            </div>
-
-            <div style={styles.resultHeader}>
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                <div className={`pulse-ring ${isCheckIn ? 'pulse-green' : 'pulse-blue'}`} />
-                <div className="pop-in" style={{
-                  ...styles.resultIcon,
-                  background: isCheckIn ? 'linear-gradient(135deg, #16a34a, #22c55e)' : 'linear-gradient(135deg, #2563eb, #3b82f6)',
-                }}>
-                  {isCheckIn ? '✓' : '↗'}
-                </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#DC143C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+                <ScanIcon />
               </div>
               <div>
-                <div style={styles.resultAction}>{isCheckIn ? 'CHECKED IN' : 'CHECKED OUT'}</div>
-                <div style={styles.resultTime}>
-                  {new Date(
-                    isCheckIn ? result.session.check_in_time : result.session.check_out_time || result.session.check_in_time
-                  ).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </div>
+                <h1 style={{ fontSize: 26, fontWeight: 800, color: textPrimary, lineHeight: 1, letterSpacing: '-0.5px' }}>
+                  Scanner<span style={{ color: '#DC143C' }}>.</span>
+                  {event && <span style={{ fontSize: 20, fontWeight: 600, color: textSecondary, marginLeft: 6 }}>{event.title}</span>}
+                </h1>
               </div>
             </div>
 
-            <div style={styles.divider} />
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* Live attendance counter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: isDarkMode ? '#141414' : '#f3f4f6', border: `1px solid ${border}`, borderRadius: 10, padding: '8px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC143C' }}>
+                  <UsersIcon />
+                </div>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#DC143C', lineHeight: 1 }}>{checkedInCount}</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: textSecondary, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Inside</div>
+                </div>
+              </div>
 
-            <div style={styles.agentRow}>
-              <div style={styles.photoWrapper}>
-                {resultPhotoUrl && !photoError ? (
-                  <img src={resultPhotoUrl} alt={result.participant.full_name} style={styles.photo} onError={() => setPhotoError(true)} />
-                ) : (
-                  <div style={{
-                    ...styles.photoPlaceholder,
-                    background: isCheckIn ? 'linear-gradient(135deg, #166534, #16a34a)' : 'linear-gradient(135deg, #1e40af, #2563eb)',
-                  }}>
-                    <span style={styles.photoInitials}>
-                      {result.participant.full_name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                    </span>
+              {/* Live dot */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: isDarkMode ? '#141414' : '#f3f4f6', border: `1px solid ${border}`, borderRadius: 10, padding: '8px 14px' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 0 3px rgba(22,163,74,0.2)', display: 'inline-block' }} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#16a34a' }}>LIVE</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* ── EVENT INFO BAR ───────────────────────────── */}
+        {event && (
+          <div style={{ background: isDarkMode ? '#161616' : '#fff', borderBottom: `1px solid ${border}`, padding: '10px 48px', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: textSecondary, fontSize: 12, fontWeight: 500 }}>
+              <CalendarIcon />
+              <span>{formatDate(event.event_date as unknown as string)}</span>
+            </div>
+            <div style={{ width: 4, height: 4, borderRadius: '50%', background: border }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: textSecondary, fontSize: 12, fontWeight: 500 }}>
+              <ClockIcon />
+              <span>{formatTime(event.start_time)} – {formatTime(event.end_time)}</span>
+            </div>
+            {event.venue && (
+              <>
+                <div style={{ width: 4, height: 4, borderRadius: '50%', background: border }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: textSecondary, fontSize: 12, fontWeight: 500 }}>
+                  <LocationIcon />
+                  <span>{event.venue}</span>
+                </div>
+              </>
+            )}
+            <div style={{ marginLeft: 'auto' }}>
+              <span style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase',
+                padding: '4px 10px', borderRadius: 20,
+                background: event.status === 'open' ? 'rgba(22,163,74,0.12)' : 'rgba(107,114,128,0.12)',
+                color: event.status === 'open' ? '#16a34a' : textSecondary,
+                border: `1px solid ${event.status === 'open' ? 'rgba(22,163,74,0.25)' : border}`
+              }}>
+                {event.status}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ── MAIN CONTENT ────────────────────────────── */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px 60px', overflowY: 'auto' }}>
+          <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            {/* ── INPUT STATE ─────────────────────────── */}
+            {pageState === 'input' && (
+              <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
+                {/* Card top accent */}
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)' }} />
+                <div style={{ padding: '32px 32px 36px' }}>
+                  <div style={{ textAlign: 'center', marginBottom: 28 }}>
+                    <div style={{ width: 56, height: 56, borderRadius: 16, background: isDarkMode ? '#2a1518' : '#fff0f2', border: `2px solid ${isDarkMode ? '#4a1520' : '#fecdd3'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#DC143C' }}>
+                      <ScanIcon />
+                    </div>
+                    <h2 style={{ fontSize: 22, fontWeight: 800, color: textPrimary, marginBottom: 6, letterSpacing: '-0.3px' }}>
+                      Scan Agent Code
+                    </h2>
+                    <p style={{ fontSize: 13, color: textSecondary, lineHeight: 1.6 }}>
+                      Type or scan the agent's code to look up their registration
+                    </p>
                   </div>
-                )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={agentCode}
+                        onChange={e => setAgentCode(e.target.value.toUpperCase())}
+                        onKeyDown={handleKeyDown}
+                        disabled={loading}
+                        placeholder="e.g. A1-00001"
+                        autoComplete="off"
+                        spellCheck={false}
+                        style={{
+                          width: '100%', background: inputBg,
+                          border: `2px solid ${border}`,
+                          borderRadius: 12, padding: '15px 16px',
+                          fontSize: 20, fontFamily: 'monospace',
+                          color: textPrimary, textAlign: 'center',
+                          letterSpacing: 4, outline: 'none',
+                          transition: 'border-color 0.2s, box-shadow 0.2s',
+                          boxSizing: 'border-box',
+                          opacity: loading ? 0.5 : 1
+                        }}
+                        onFocus={e => {
+                          e.currentTarget.style.borderColor = '#DC143C'
+                          e.currentTarget.style.boxShadow = '0 0 0 4px rgba(220,20,60,0.1)'
+                        }}
+                        onBlur={e => {
+                          e.currentTarget.style.borderColor = border
+                          e.currentTarget.style.boxShadow = 'none'
+                        }}
+                      />
+                    </div>
+
+                    <button
+                      onClick={() => handleLookup(agentCode)}
+                      disabled={loading || !agentCode.trim()}
+                      style={{
+                        width: '100%', padding: '15px', borderRadius: 12, border: 'none',
+                        background: loading || !agentCode.trim() ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C',
+                        color: loading || !agentCode.trim() ? textSecondary : '#fff',
+                        fontSize: 15, fontWeight: 700, cursor: loading || !agentCode.trim() ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s', letterSpacing: '0.3px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+                      }}
+                    >
+                      {loading ? (
+                        <>
+                          <svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
+                            <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                          </svg>
+                          Looking up...
+                        </>
+                      ) : (
+                        <>
+                          <ScanIcon />
+                          Look Up Participant
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Instructions */}
+                  <div style={{ marginTop: 24, padding: '16px 20px', background: isDarkMode ? '#0f0f0f' : '#f9fafb', borderRadius: 12, border: `1px solid ${border}` }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: textSecondary, letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 10 }}>How it works</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {[
+                        { dot: '#DC143C', text: 'Enter agent code and press Enter or click Look Up' },
+                        { dot: '#f59e0b', text: 'Verify the participant\'s identity against their photo' },
+                        { dot: '#16a34a', text: 'Confirm to record check-in or check-out' },
+                      ].map(({ dot, text }, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, color: textSecondary, lineHeight: 1.5 }}>{text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <style>{`
+                  @keyframes spin    { to { transform: rotate(360deg) } }
+                  @keyframes fillBar { from { width: 0% } to { width: 100% } }
+                `}</style>
               </div>
-              <div style={styles.agentInfo}>
-                <div style={styles.agentName}>{result.participant.full_name}</div>
-                <div style={styles.agentCode}>{result.participant.agent_code}</div>
-                <div style={styles.agentTags}>
-                  <span style={styles.tag}>{result.participant.branch_name}</span>
-                  <span style={styles.tag}>{result.participant.team_name}</span>
+            )}
+
+            {/* ── VERIFY STATE ────────────────────────── */}
+            {pageState === 'verify' && lookup && (
+              <div style={{ background: card, border: `2px solid #f59e0b`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(245,158,11,0.15)' }}>
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />
+                <div style={{ padding: '28px 32px 32px' }}>
+
+                  {/* Header */}
+                  <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 20, padding: '5px 14px', marginBottom: 10 }}>
+                      <ShieldIcon />
+                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '1px', color: '#f59e0b', textTransform: 'uppercase' }}>Identity Verification</span>
+                    </div>
+                    <p style={{ fontSize: 13, color: textSecondary }}>Confirm the person matches the photo before proceeding</p>
+                  </div>
+
+                  {/* Photo — large and prominent */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 }}>
+                    <div style={{
+                      width: 160, height: 160, borderRadius: 20, overflow: 'hidden',
+                      border: `4px solid rgba(245,158,11,0.4)`,
+                      boxShadow: '0 8px 40px rgba(0,0,0,0.2)',
+                      background: isDarkMode ? '#2a2a2a' : '#f3f4f6',
+                      flexShrink: 0
+                    }}>
+                      {verifyPhotoUrl && !photoError ? (
+                        <img
+                          src={verifyPhotoUrl}
+                          alt={lookup.participant.full_name}
+                          onError={() => setPhotoError(true)}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span style={{ fontSize: 52, fontWeight: 800, color: 'rgba(255,255,255,0.9)' }}>
+                            {lookup.participant.full_name.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action badge under photo */}
+                    <div style={{
+                      marginTop: 12,
+                      padding: '5px 14px', borderRadius: 20, fontSize: 11, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase',
+                      background: lookup.next_action === 'check_in' ? 'rgba(22,163,74,0.1)' : 'rgba(37,99,235,0.1)',
+                      color: lookup.next_action === 'check_in' ? '#16a34a' : '#2563eb',
+                      border: `1px solid ${lookup.next_action === 'check_in' ? 'rgba(22,163,74,0.25)' : 'rgba(37,99,235,0.25)'}`
+                    }}>
+                      {lookup.next_action === 'check_in' ? '→ Check In' : '→ Check Out'}
+                    </div>
+                  </div>
+
+                  {/* Participant info */}
+                  <div style={{ background: subCard, border: `1px solid ${border}`, borderRadius: 14, padding: '18px 20px', marginBottom: 20, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: textPrimary, marginBottom: 4, letterSpacing: '-0.2px' }}>{lookup.participant.full_name}</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 14, color: '#DC143C', fontWeight: 700, letterSpacing: '2px', marginBottom: 10 }}>{lookup.participant.agent_code}</div>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                      {[lookup.participant.branch_name, lookup.participant.team_name].filter(Boolean).map((tag, i) => (
+                        <span key={i} style={{ background: isDarkMode ? '#2a2a2a' : '#f3f4f6', color: textSecondary, fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 20, border: `1px solid ${border}` }}>{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Confirm / Deny */}
+                  <p style={{ textAlign: 'center', fontSize: 14, fontWeight: 600, color: textPrimary, marginBottom: 14 }}>
+                    Does this person match the photo above?
+                  </p>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button
+                      onClick={handleDeny}
+                      disabled={loading}
+                      style={{ flex: 1, padding: '14px', borderRadius: 12, border: `2px solid ${isDarkMode ? '#4b1c1c' : '#fecaca'}`, background: isDarkMode ? '#2a1010' : '#fff5f5', color: '#dc2626', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.15s', opacity: loading ? 0.5 : 1 }}
+                    >
+                      ✕ Deny
+                    </button>
+                    <button
+                      onClick={handleConfirm}
+                      disabled={loading}
+                      style={{ flex: 2, padding: '14px', borderRadius: 12, border: 'none', background: loading ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading ? textSecondary : '#fff', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.15s', letterSpacing: '0.3px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                    >
+                      {loading ? (
+                        <>
+                          <svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
+                            <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                          </svg>
+                          Processing...
+                        </>
+                      ) : '✓ Confirm & Record'}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            <div style={styles.dismissNote}>Auto-dismiss in {countdown}s</div>
+            {/* ── RESULT STATE ────────────────────────── */}
+            {pageState === 'result' && result && (() => {
+              const isIn   = result.action === 'check_in'
+              const accent = isIn ? '#16a34a' : '#2563eb'
+              const softBg = isIn ? (isDarkMode ? 'rgba(22,163,74,0.08)' : 'rgba(22,163,74,0.04)') : (isDarkMode ? 'rgba(37,99,235,0.08)' : 'rgba(37,99,235,0.04)')
+              const pUrl   = getPhotoUrl(result.participant.photo_url)
+
+              return (
+                <div style={{ background: card, border: `2px solid ${accent}`, borderRadius: 20, overflow: 'hidden', boxShadow: `0 4px 32px ${isIn ? 'rgba(22,163,74,0.12)' : 'rgba(37,99,235,0.12)'}` }}>
+                  <div style={{ height: 4, background: `linear-gradient(90deg, ${accent}, ${isIn ? '#4ade80' : '#60a5fa'})` }} />
+                  <div style={{ padding: '28px 32px 32px' }}>
+
+                    {/* Result header */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0, boxShadow: `0 4px 16px ${isIn ? 'rgba(22,163,74,0.4)' : 'rgba(37,99,235,0.4)'}` }}>
+                        {isIn ? <CheckIcon /> : <LogOutIcon />}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: accent, letterSpacing: '-0.3px' }}>
+                          {isIn ? 'Checked In' : 'Checked Out'}
+                        </div>
+                        <div style={{ fontSize: 12, color: textSecondary, fontFamily: 'monospace', marginTop: 2 }}>
+                          {new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Countdown bar */}
+                    <div style={{ height: 4, background: isDarkMode ? '#2a2a2a' : '#e5e7eb', borderRadius: 2, marginBottom: 20, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', background: accent, borderRadius: 2, animation: 'fillBar 3s linear forwards' }} />
+                    </div>
+
+                    {/* Participant panel */}
+                    <div style={{ background: softBg, border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`, borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                      <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: `3px solid ${accent}`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
+                        {pUrl ? (
+                          <img src={pUrl} alt={result.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span style={{ fontSize: 26, fontWeight: 800, color: '#fff' }}>
+                              {result.participant.full_name.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 17, fontWeight: 800, color: textPrimary, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{result.participant.full_name}</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#DC143C', fontWeight: 700, letterSpacing: '2px', marginBottom: 8 }}>{result.participant.agent_code}</div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {[result.participant.branch_name, result.participant.team_name].filter(Boolean).map((tag, i) => (
+                            <span key={i} style={{ background: isDarkMode ? '#2a2a2a' : '#f3f4f6', color: textSecondary, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20, border: `1px solid ${border}` }}>{tag}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: 'center', fontSize: 12, color: textSecondary }}>
+                      Returning to scanner in <strong style={{ color: textPrimary }}>{countdown}s</strong> ·{' '}
+                      <button onClick={resetToInput} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC143C', fontWeight: 600, fontSize: 12 }}>
+                        Scan now
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* ── ERROR STATE ──────────────────────────── */}
+            {pageState === 'error' && (
+              <div style={{ background: card, border: `2px solid #dc2626`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(220,38,38,0.12)' }}>
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #dc2626, #ef4444)' }} />
+                <div style={{ padding: '28px 32px 32px', textAlign: 'center' }}>
+                  <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #dc2626, #ef4444)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', margin: '0 auto 16px', boxShadow: '0 4px 16px rgba(220,38,38,0.35)' }}>
+                    <XIcon />
+                  </div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#dc2626', marginBottom: 8 }}>Access Denied</div>
+                  <p style={{ fontSize: 14, color: textSecondary, lineHeight: 1.6, marginBottom: 20, maxWidth: 340, margin: '0 auto 20px' }}>{error}</p>
+
+                  {/* Countdown bar */}
+                  <div style={{ height: 4, background: isDarkMode ? '#2a2a2a' : '#e5e7eb', borderRadius: 2, marginBottom: 16, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', background: '#dc2626', borderRadius: 2, animation: 'fillBar 3s linear forwards' }} />
+                  </div>
+
+                  <div style={{ fontSize: 12, color: textSecondary }}>
+                    Returning in <strong style={{ color: textPrimary }}>{countdown}s</strong> ·{' '}
+                    <button onClick={resetToInput} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC143C', fontWeight: 600, fontSize: 12 }}>
+                      Try again
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
-        )}
-
-        {/* ── STATE 4: ERROR ── */}
-        {pageState === 'error' && (
-          <div className="slide-up" style={styles.errorCard}>
-            {/* Countdown bar */}
-            <div style={styles.countdownBar}>
-              <div style={{ height: '100%', background: '#ef4444', borderRadius: 2, animation: 'countdown 3s linear forwards' }} />
-            </div>
-            <div style={styles.errorIcon}>✕</div>
-            <div style={styles.errorTitle}>DENIED</div>
-            <div style={styles.errorMessage}>{error}</div>
-            <div style={styles.dismissNote}>Auto-dismiss in {countdown}s</div>
-          </div>
-        )}
-
+        </div>
       </div>
     </div>
   )
-}
-
-const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: '#0d1117', color: '#fff', fontFamily: "'DM Sans', sans-serif" },
-  nav: { background: '#161b27', borderBottom: '1px solid #1e2433', padding: '14px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  navLeft: { display: 'flex', alignItems: 'center', gap: 16 },
-  backBtn: { background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, padding: '6px 10px', borderRadius: 8 },
-  navTitle: { fontSize: 16, fontWeight: 600, color: '#fff' },
-  navSub: { fontSize: 12, color: '#6b7280', marginTop: 2 },
-  statusBadge: { fontSize: 11, fontWeight: 700, letterSpacing: '1.5px', padding: '5px 12px', borderRadius: 20, color: '#fff' },
-  container: { maxWidth: 480, margin: '0 auto', padding: '32px 20px 48px', display: 'flex', flexDirection: 'column', gap: 16 },
-  inputCard: { background: '#161b27', border: '1px solid #1e2433', borderRadius: 20, padding: '32px 28px', textAlign: 'center' },
-  scanIcon: { fontSize: 48, marginBottom: 12 },
-  inputTitle: { fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: '#fff', marginBottom: 8 },
-  inputSub: { fontSize: 13, color: '#6b7280', marginBottom: 24, lineHeight: 1.5 },
-  form: { display: 'flex', flexDirection: 'column', gap: 12 },
-  verifyCard: { background: '#161b27', border: '2px solid #7c3aed', borderRadius: 20, padding: '28px', display: 'flex', flexDirection: 'column', alignItems: 'center' },
-  verifyHeader: { textAlign: 'center', marginBottom: 20, width: '100%' },
-  verifyBadge: { display: 'inline-block', background: 'rgba(124,58,237,0.2)', border: '1px solid rgba(124,58,237,0.4)', color: '#a78bfa', fontSize: 11, fontWeight: 700, letterSpacing: '1.5px', padding: '5px 12px', borderRadius: 20, marginBottom: 8 },
-  verifySubtitle: { fontSize: 13, color: '#9ca3af', lineHeight: 1.5 },
-  largePhotoWrapper: { width: 180, height: 180, borderRadius: 20, overflow: 'hidden', border: '4px solid rgba(124,58,237,0.4)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', marginBottom: 20 },
-  largePhoto: { width: '100%', height: '100%', objectFit: 'cover' },
-  largePhotoPlaceholder: { width: '100%', height: '100%', background: 'linear-gradient(135deg, #3b0764, #7c3aed)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  largeInitials: { color: 'white', fontSize: 52, fontWeight: 700, fontFamily: "'Playfair Display', serif" },
-  noPhotoText: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
-  verifyInfo: { textAlign: 'center', width: '100%', marginBottom: 20 },
-  verifyName: { fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: '#fff', marginBottom: 6 },
-  verifyCode: { fontFamily: 'monospace', fontSize: 14, color: '#a78bfa', fontWeight: 600, marginBottom: 10, letterSpacing: '1px' },
-  verifyTags: { display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' },
-  verifyQuestion: { fontSize: 15, fontWeight: 600, color: '#e5e7eb', marginBottom: 14, textAlign: 'center' },
-  btnRow: { display: 'flex', gap: 12, width: '100%' },
-  actionTag: { fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 20 },
-  countdownBar: { height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, marginBottom: 20, overflow: 'hidden' },
-  resultCard: { borderRadius: 20, padding: '24px' },
-  resultHeader: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 },
-  resultIcon: { width: 52, height: 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700, color: '#fff', flexShrink: 0, position: 'relative' },
-  resultAction: { fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: '#fff', letterSpacing: '1px' },
-  resultTime: { fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 4, fontFamily: 'monospace' },
-  divider: { height: 1, background: 'rgba(255,255,255,0.08)', marginBottom: 20, width: '100%' },
-  agentRow: { display: 'flex', alignItems: 'center', gap: 16 },
-  photoWrapper: { flexShrink: 0, width: 90, height: 90, borderRadius: 14, overflow: 'hidden', border: '3px solid rgba(255,255,255,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' },
-  photo: { width: '100%', height: '100%', objectFit: 'cover' },
-  photoPlaceholder: { width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  photoInitials: { color: 'white', fontSize: 28, fontWeight: 700, fontFamily: "'Playfair Display', serif" },
-  agentInfo: { flex: 1, minWidth: 0 },
-  agentName: { fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: '#fff', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  agentCode: { fontFamily: 'monospace', fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 8, letterSpacing: '1px' },
-  agentTags: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  tag: { background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: 500, padding: '3px 8px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.1)' },
-  dismissNote: { fontSize: 12, color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 16 },
-  errorCard: { background: 'linear-gradient(135deg, #450a0a, #7f1d1d)', border: '1px solid #991b1b', borderRadius: 20, padding: '28px', textAlign: 'center' },
-  errorIcon: { width: 52, height: 52, background: 'linear-gradient(135deg, #dc2626, #ef4444)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700, color: '#fff', margin: '0 auto 12px' },
-  errorTitle: { fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: '#fff', letterSpacing: '1px', marginBottom: 8 },
-  errorMessage: { fontSize: 14, color: 'rgba(255,255,255,0.7)', lineHeight: 1.5 },
-  instructions: { background: '#161b27', border: '1px solid #1e2433', borderRadius: 16, padding: '20px 24px' },
-  instructionTitle: { fontSize: 13, fontWeight: 600, color: '#9ca3af', marginBottom: 14 },
-  instructionList: { display: 'flex', flexDirection: 'column', gap: 10 },
-  instructionItem: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#9ca3af' },
-  dot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
 }

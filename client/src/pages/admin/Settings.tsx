@@ -92,44 +92,46 @@ const Settings: React.FC = () => {
   };
 
   const handleSaveAccount = async () => {
-    setAccountError('');
-    setAccountLoading(true);
-    try {
-      await api.put('/auth/profile', { email, name });
-      const updatedUser = { ...user, email, name };
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      setAccountSuccess(true);
-      setIsEditing(false);
-    } catch (err: any) {
-      setAccountError(err.response?.data?.error || 'Failed to update account.');
-    } finally {
-      setAccountLoading(false);
-    }
-  };
+  setAccountError('');
+  setAccountLoading(true);
+  try {
+    // ✅ FIXED: was '/auth/profile' — backend route is PUT /api/users/profile
+    await api.put('/users/profile', { full_name: name, email });
+    const updatedUser = { ...user, email, full_name: name, name };
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+    setAccountSuccess(true);
+    setIsEditing(false);
+  } catch (err: any) {
+    setAccountError(err.response?.data?.error || 'Failed to update account.');
+  } finally {
+    setAccountLoading(false);
+  }
+};
 
-  const handleChangePassword = async () => {
-    setPasswordError('');
-    if (newPassword !== confirmPassword) {
-      setPasswordError('New passwords do not match.');
-      return;
-    }
-    if (newPassword.length < 6) {
-      setPasswordError('Password must be at least 6 characters.');
-      return;
-    }
-    setPasswordLoading(true);
-    try {
-      await api.put('/auth/change-password', { currentPassword, newPassword });
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setPasswordSuccess(true);
-    } catch (err: any) {
-      setPasswordError(err.response?.data?.error || 'Failed to change password.');
-    } finally {
-      setPasswordLoading(false);
-    }
-  };
+const handleChangePassword = async () => {
+  setPasswordError('');
+  if (newPassword !== confirmPassword) {
+    setPasswordError('New passwords do not match.');
+    return;
+  }
+  if (newPassword.length < 6) {
+    setPasswordError('Password must be at least 6 characters.');
+    return;
+  }
+  setPasswordLoading(true);
+  try {
+    // ✅ FIXED: was '/auth/change-password' — backend route is PUT /api/users/change-password
+    await api.put('/users/change-password', { currentPassword, newPassword });
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordSuccess(true);
+  } catch (err: any) {
+    setPasswordError(err.response?.data?.error || 'Failed to change password.');
+  } finally {
+    setPasswordLoading(false);
+  }
+};
 
   return (
     <div className="flex min-h-screen bg-[#f8f9fa] dark:bg-[#0f0f0f]">

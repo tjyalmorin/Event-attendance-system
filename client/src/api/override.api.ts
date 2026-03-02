@@ -1,7 +1,7 @@
 import api from './axios'
 
 export const fixCheckinApi = async (payload: {
-  attendance_session_id: number
+  session_id: number        // ✅ was: attendance_session_id
   participant_id: number
   event_id: number
   adjusted_time: string
@@ -12,7 +12,7 @@ export const fixCheckinApi = async (payload: {
 }
 
 export const forceCheckoutApi = async (payload: {
-  attendance_session_id: number
+  session_id: number        // ✅ was: attendance_session_id
   participant_id: number
   event_id: number
   adjusted_time: string
@@ -23,7 +23,7 @@ export const forceCheckoutApi = async (payload: {
 }
 
 export const earlyOutApi = async (payload: {
-  attendance_session_id: number
+  session_id: number        // ✅ was: attendance_session_id
   participant_id: number
   event_id: number
   early_out_cutoff: string
