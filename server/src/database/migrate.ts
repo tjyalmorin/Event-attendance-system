@@ -1,9 +1,23 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import pool from '../config/database.js';
 
 const migrate = async (): Promise<void> => {
   try {
+    const dbName = process.env.DB_NAME || 'primelog_local';
+    const dbHost = process.env.DB_HOST || 'localhost';
+    const dbPort = process.env.DB_PORT || '5432';
+    console.log('');
+    console.log('╔══════════════════════════════════════════════╗');
+    console.log('║     PrimeLog — Database Migration            ║');
+    console.log('╚══════════════════════════════════════════════╝');
+    console.log('');
+    console.log(`  📦 Database : ${dbName}`);
+    console.log(`  🌐 Host     : ${dbHost}:${dbPort}`);
+    console.log('');
     console.log('🚀 Running database migration...');
-
+    console.log('');
     // Enable UUID support
     await pool.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
 
@@ -141,7 +155,7 @@ const migrate = async (): Promise<void> => {
         created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
       );
     `);
-  // ── Safe column additions for existing tables ──────────
+    // ── Safe column additions for existing tables ──────────
     await pool.query(`
       ALTER TABLE participants
        ADD COLUMN IF NOT EXISTS photo_url           VARCHAR(500);
@@ -231,10 +245,35 @@ const migrate = async (): Promise<void> => {
       console.log('ℹ️  SuperAdmin already exists, skipping.')
     }
 
-    console.log('✅ Migration complete! All tables and indexes created.');
+    console.log('');
+    console.log('✅ Migration complete!');
+    console.log('');
+    console.log('  📋 Tables created/verified:');
+    console.log('     • users');
+    console.log('     • events');
+    console.log('     • event_permissions');
+    console.log('     • admin_grants');
+    console.log('     • participants');
+    console.log('     • attendance_sessions');
+    console.log('     • override_logs');
+    console.log('     • scan_logs');
+    console.log('');
+    console.log('  🔧 Also applied: indexes, triggers, column additions');
+    console.log('');
+    console.log('  💡 Next: npm run db:seed   (optional — creates test accounts)');
+    console.log('          npm run dev         (start the server)');
+    console.log('');
     process.exit(0);
   } catch (error) {
-    console.error('❌ Migration failed:', error);
+    console.error('');
+    console.error('❌ Migration failed!');
+    console.error('');
+    console.error('  Common fixes:');
+    console.error('  1. Make sure PostgreSQL is running');
+    console.error('  2. Check your .env file (copy from .env.example)');
+    console.error('  3. Create the database: CREATE DATABASE primelog_local;');
+    console.error('');
+    console.error('  Error details:', error);
     process.exit(1);
   }
 };
