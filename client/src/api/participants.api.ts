@@ -14,3 +14,13 @@ export const getParticipantsByEventApi = async (event_id: number): Promise<Parti
 export const cancelParticipantApi = async (participant_id: number): Promise<void> => {
   await api.delete(`/participants/${participant_id}`)
 }
+
+export const setAwardeeApi = async (
+  participant_id: number,
+  payload: { is_awardee: boolean; awardee_description?: string | null }
+) => {
+  const res = await api.patch(`/participants/${participant_id}/awardee`, payload)
+  return res.data
+}
+
+

@@ -1,7 +1,8 @@
 import { Request, Response } from 'express'
 import {
   createEventService, getAllEventsService, getEventByIdService,
-  updateEventService, softDeleteEventService, assignPermissionService
+  updateEventService, softDeleteEventService, assignPermissionService,
+  getTrashedEventsService, restoreEventService, permanentDeleteEventService
 } from './events.service.js'
 
 export const createEvent = async (req: Request, res: Response): Promise<void> => {
@@ -63,5 +64,34 @@ export const assignPermission = async (req: Request, res: Response): Promise<voi
   } catch (err: any) {
     console.error('❌ assignPermission error:', err)
     res.status(400).json({ error: err.message })
+  }
+}
+
+// ── Feature 3: Trash Bin ──────────────────────────────────────────────────────
+
+export const getTrashedEvents = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const events = await getTrashedEventsService()
+    res.json(events)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+}
+
+export const restoreEvent = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const restored = await restoreEventService(Number(req.params.event_id))
+    res.json({ message: `Event "${restored.title}" restored successfully`, event: restored })
+  } catch (err: any) {
+    res.status(404).json({ error: err.message })
+  }
+}
+
+export const permanentDeleteEvent = async (req: Request, res: Response): Promise<void> => {
+  try {
+    await permanentDeleteEventService(Number(req.params.event_id))
+    res.json({ message: 'Event permanently deleted' })
+  } catch (err: any) {
+    res.status(404).json({ error: err.message })
   }
 }

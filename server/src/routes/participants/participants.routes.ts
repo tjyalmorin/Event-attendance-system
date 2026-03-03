@@ -5,7 +5,8 @@ import {
   registerParticipant,
   getParticipantsByEvent,
   cancelParticipant,
-  uploadParticipantPhoto
+  uploadParticipantPhoto,
+  setAwardee
 } from './participants.controller.js'
 
 const router = Router()
@@ -19,5 +20,8 @@ router.delete('/:participant_id', authenticate, roleGuard('admin'), cancelPartic
 
 // PHOTO UPLOAD — admin only
 router.post('/:participant_id/photo', authenticate, roleGuard('admin'), uploadParticipantPhoto)
+
+// AWARDEE — admin and staff
+router.patch('/:participant_id/awardee', authenticate, roleGuard('admin', 'staff'), setAwardee)
 
 export default router

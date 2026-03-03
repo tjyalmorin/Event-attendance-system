@@ -3,8 +3,10 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import api from '../../api/axios';
+import { getTrashedEventsApi, restoreEventApi, permanentDeleteEventApi } from '../../api/events.api';
 import { Event } from '../../types';
 import Sidebar from '../../components/Sidebar';
+import TrashBinPanel from './TrashBinPanel';
 
 // ── SVG Icons ──
 const PlusIcon = () => (
@@ -730,6 +732,11 @@ const EventManagement: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [events, setEvents] = useState<Event[]>([]);
+  const [view, setView] = useState<'active' | 'trash'>('active');
+  const [trashedEvents, setTrashedEvents] = useState<Event[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [restoringId, setRestoringId] = useState<number | null>(null);
+  const [permDeletingId, setPermDeletingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('Last Updated');
@@ -745,7 +752,10 @@ const EventManagement: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-  useEffect(() => { fetchEvents(); }, []);
+  useEffect(() => {
+    fetchEvents();
+    fetchTrashedEvents();
+  }, []);
 
   useEffect(() => {
     if (location.state?.created) {
@@ -783,6 +793,46 @@ const EventManagement: React.FC = () => {
       console.error('Failed to fetch events:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchTrashedEvents = async () => {
+    setTrashLoading(true);
+    try {
+      const data = await getTrashedEventsApi();
+      setTrashedEvents(data || []);
+    } catch (error) {
+      console.error('Failed to fetch trash:', error);
+    } finally {
+      setTrashLoading(false);
+    }
+  };
+
+  const handleRestore = async (event_id: number) => {
+    setRestoringId(event_id);
+    try {
+      await restoreEventApi(event_id);
+      setToast({ message: 'Event restored successfully' });
+      fetchTrashedEvents();
+      fetchEvents();
+    } catch (err) {
+      console.error('Failed to restore:', err);
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const handlePermanentDelete = async (event_id: number, title: string) => {
+    if (!confirm(`Permanently delete "${title}"? This cannot be undone.`)) return;
+    setPermDeletingId(event_id);
+    try {
+      await permanentDeleteEventApi(event_id);
+      setTrashedEvents(prev => prev.filter(e => e.event_id !== event_id));
+      setToast({ message: 'Event permanently deleted' });
+    } catch (err) {
+      console.error('Failed to permanently delete:', err);
+    } finally {
+      setPermDeletingId(null);
     }
   };
 
@@ -878,11 +928,25 @@ const EventManagement: React.FC = () => {
                 Event<span className="text-[#DC143C]">.</span>Management
               </h1>
               {user.role === 'admin' && (
-                <button onClick={() => navigate('/admin/events/create')}
-                  className="flex items-center gap-2 bg-[#DC143C] text-white px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b01030] transition-all hover:shadow-lg">
-                  <PlusIcon />
-                  Create Event
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setView('trash'); fetchTrashedEvents(); }}
+                    title="Trash"
+                    className="relative w-10 h-10 flex items-center justify-center rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-500 dark:text-gray-400 hover:border-red-300 hover:text-red-500 dark:hover:border-red-800 dark:hover:text-red-400 transition-all"
+                  >
+                    <TrashIcon />
+                    {trashedEvents.length > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 inline-flex items-center justify-center w-4 h-4 text-[9px] font-bold rounded-full bg-red-500 text-white">
+                        {trashedEvents.length}
+                      </span>
+                    )}
+                  </button>
+                  <button onClick={() => navigate('/admin/events/create')}
+                    className="flex items-center gap-2 bg-[#DC143C] text-white px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b01030] transition-all hover:shadow-lg">
+                    <PlusIcon />
+                    Create Event
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -1048,6 +1112,19 @@ const EventManagement: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* ── Trash Bin Panel ── */}
+      {view === 'trash' && (
+        <TrashBinPanel
+          trashedEvents={trashedEvents}
+          trashLoading={trashLoading}
+          restoringId={restoringId}
+          permDeletingId={permDeletingId}
+          onClose={() => setView('active')}
+          onRestore={handleRestore}
+          onPermanentDelete={handlePermanentDelete}
+        />
+      )}
 
       {editingEvent && <EditModal event={editingEvent} onClose={() => setEditingEvent(null)} onSuccess={handleEditSuccess} />}
       {deletingEvent && <DeleteModal event={deletingEvent} onClose={() => setDeletingEvent(null)} onConfirm={handleDelete} loading={deleteLoading} />}

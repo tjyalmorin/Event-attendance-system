@@ -28,3 +28,19 @@ export const deleteEventApi = async (event_id: number): Promise<void> => {
 export const assignPermissionApi = async (event_id: number, user_id: string): Promise<void> => {
   await api.post(`/events/${event_id}/permissions`, { user_id })
 }
+
+export const getTrashedEventsApi = async () => {
+  const res = await api.get('/events/trash')
+  return res.data
+}
+
+export const restoreEventApi = async (event_id: number) => {
+  const res = await api.post(`/events/${event_id}/restore`)
+  return res.data
+}
+
+export const permanentDeleteEventApi = async (event_id: number): Promise<void> => {
+  await api.delete(`/events/${event_id}/permanent`)
+}
+
+
