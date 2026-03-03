@@ -27,23 +27,14 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (event.registration_start && now < new Date(event.registration_start)) throw new Error('Registration has not started yet')
   if (event.registration_end && now > new Date(event.registration_end)) throw new Error('Registration has already closed')
 
-  // 3. Check capacity
-  const countResult = await pool.query(
-    `SELECT COUNT(*) FROM participants
-     WHERE event_id = $1 AND deleted_at IS NULL AND registration_status != 'cancelled'`,
-    [event_id]
-  )
-  const currentCount = parseInt(countResult.rows[0].count)
-  if (currentCount >= event.capacity) throw new Error('Event is already full')
-
-  // 4. Check duplicate
+  // 3. Check duplicate
   const duplicate = await pool.query(
     'SELECT participant_id FROM participants WHERE event_id = $1 AND agent_code = $2 AND deleted_at IS NULL',
     [event_id, agent_code.trim()]
   )
   if (duplicate.rows.length > 0) throw new Error('This agent is already registered for this event')
 
-  // 5. Check if this agent already has a photo from a previous event
+  // 4. Check if this agent already has a photo from a previous event
   const existingPhoto = await pool.query(
     `SELECT photo_url FROM participants
      WHERE agent_code = $1 AND photo_url IS NOT NULL
@@ -52,7 +43,7 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   )
   const photo_url = existingPhoto.rows[0]?.photo_url || null
 
-  // 6. Insert participant — include photo_url if one already exists
+  // 5. Insert participant — include photo_url if one already exists
   const result = await pool.query(
     `INSERT INTO participants
       (event_id, agent_code, full_name, branch_name, team_name,
