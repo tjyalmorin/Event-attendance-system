@@ -112,3 +112,46 @@ export const assignPermissionService = async (event_id: number, user_id: string)
   )
   return result.rows[0]
 }
+
+// ── Feature 3: Trash Bin ──────────────────────────────────────────────────────
+
+export const getTrashedEventsService = async () => {
+  const result = await pool.query(
+    `SELECT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date,
+      (SELECT COUNT(*) FROM participants p
+       WHERE p.event_id = e.event_id AND p.deleted_at IS NULL
+       AND p.registration_status != 'cancelled')::int AS registered_count
+     FROM events e
+     WHERE e.deleted_at IS NOT NULL
+     ORDER BY e.deleted_at DESC`
+  )
+  return result.rows
+}
+
+export const restoreEventService = async (event_id: number) => {
+  const result = await pool.query(
+    `UPDATE events SET deleted_at = NULL, updated_at = NOW()
+     WHERE event_id = $1 AND deleted_at IS NOT NULL
+     RETURNING event_id, title`,
+    [event_id]
+  )
+  if (!result.rows[0]) throw new Error('Event not found in trash')
+  return result.rows[0]
+}
+
+export const permanentDeleteEventService = async (event_id: number) => {
+  // Only allow permanent delete of already-soft-deleted events
+  const check = await pool.query(
+    `SELECT event_id FROM events WHERE event_id = $1 AND deleted_at IS NOT NULL`,
+    [event_id]
+  )
+  if (!check.rows[0]) throw new Error('Event not found in trash')
+
+  // Cascade delete in order (respect foreign key constraints)
+  await pool.query('DELETE FROM scan_logs WHERE event_id = $1', [event_id])
+  await pool.query('DELETE FROM attendance_sessions WHERE event_id = $1', [event_id])
+  await pool.query('DELETE FROM participants WHERE event_id = $1', [event_id])
+  await pool.query('DELETE FROM event_permissions WHERE event_id = $1', [event_id])
+  await pool.query('DELETE FROM admin_grants WHERE event_id = $1', [event_id])
+  await pool.query('DELETE FROM events WHERE event_id = $1', [event_id])
+}

@@ -4,7 +4,6 @@ import { RegisterPayload } from '../../types/participant.types.js'
 export const registerParticipantService = async (event_id: number, payload: RegisterPayload) => {
   const { agent_code, full_name, branch_name, team_name } = payload
 
-  // Validate inputs
   if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
   if (!agent_code?.trim()) throw new Error('Agent code is required')
   if (!full_name?.trim()) throw new Error('Full name is required')
@@ -13,7 +12,6 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (agent_code.length > 50) throw new Error('Agent code too long')
   if (full_name.length > 100) throw new Error('Full name too long')
 
-  // 1. Check event exists and is open
   const eventResult = await pool.query(
     'SELECT * FROM events WHERE event_id = $1 AND deleted_at IS NULL',
     [event_id]
@@ -22,28 +20,22 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (!event) throw new Error('Event not found')
   if (event.status !== 'open') throw new Error('Event registration is not open')
 
-  // 2. Check registration window (only if dates are set)
   const now = new Date()
   if (event.registration_start && now < new Date(event.registration_start)) throw new Error('Registration has not started yet')
   if (event.registration_end && now > new Date(event.registration_end)) throw new Error('Registration has already closed')
 
-  // 3. Check duplicate
   const duplicate = await pool.query(
     'SELECT participant_id FROM participants WHERE event_id = $1 AND agent_code = $2 AND deleted_at IS NULL',
     [event_id, agent_code.trim()]
   )
   if (duplicate.rows.length > 0) throw new Error('This agent is already registered for this event')
 
-  // 4. Check if this agent already has a photo from a previous event
   const existingPhoto = await pool.query(
-    `SELECT photo_url FROM participants
-     WHERE agent_code = $1 AND photo_url IS NOT NULL
-     LIMIT 1`,
+    `SELECT photo_url FROM participants WHERE agent_code = $1 AND photo_url IS NOT NULL LIMIT 1`,
     [agent_code.trim()]
   )
   const photo_url = existingPhoto.rows[0]?.photo_url || null
 
-  // 5. Insert participant — include photo_url if one already exists
   const result = await pool.query(
     `INSERT INTO participants
       (event_id, agent_code, full_name, branch_name, team_name,
@@ -64,7 +56,8 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
         `SELECT
            participant_id, event_id, agent_code, full_name,
            branch_name, team_name, registration_status,
-           registered_at, updated_at, photo_url
+           registered_at, updated_at, photo_url,
+           is_awardee, awardee_description
          FROM participants
          WHERE event_id = $1 AND deleted_at IS NULL AND branch_name = $2
          ORDER BY registered_at DESC`,
@@ -74,7 +67,8 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
         `SELECT
            participant_id, event_id, agent_code, full_name,
            branch_name, team_name, registration_status,
-           registered_at, updated_at, photo_url
+           registered_at, updated_at, photo_url,
+           is_awardee, awardee_description
          FROM participants
          WHERE event_id = $1 AND deleted_at IS NULL
          ORDER BY registered_at DESC`,
@@ -95,4 +89,25 @@ export const cancelParticipantService = async (participant_id: number) => {
     [participant_id]
   )
   if (!result.rows[0]) throw new Error('Participant not found')
+}
+
+// ── Feature 2: Awardee ────────────────────────────────────────────────────────
+export const setAwardeeService = async (
+  participant_id: number,
+  is_awardee: boolean,
+  awardee_description: string | null
+) => {
+  if (!participant_id || isNaN(participant_id)) throw new Error('Valid participant ID is required')
+
+  const result = await pool.query(
+    `UPDATE participants
+     SET is_awardee = $1,
+         awardee_description = $2,
+         updated_at = NOW()
+     WHERE participant_id = $3 AND deleted_at IS NULL
+     RETURNING participant_id, full_name, is_awardee, awardee_description`,
+    [is_awardee, is_awardee ? (awardee_description || null) : null, participant_id]
+  )
+  if (!result.rows[0]) throw new Error('Participant not found')
+  return result.rows[0]
 }

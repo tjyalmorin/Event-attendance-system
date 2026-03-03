@@ -1,67 +1,54 @@
 import { Request, Response } from 'express'
+import asyncHandler from '../../middlewares/asyncHandler.js'
 import {
   createEventService, getAllEventsService, getEventByIdService,
-  updateEventService, softDeleteEventService, assignPermissionService
+  updateEventService, softDeleteEventService, assignPermissionService,
+  getTrashedEventsService, restoreEventService, permanentDeleteEventService
 } from './events.service.js'
 
-export const createEvent = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const event = await createEventService(req.user!.user_id, req.body)
-    res.status(201).json(event)
-  } catch (err: any) {
-    console.error('❌ createEvent error:', err)
-    res.status(400).json({ error: err.message })
-  }
-}
+export const createEvent = asyncHandler(async (req: Request, res: Response) => {
+  const event = await createEventService(req.user!.user_id, req.body)
+  res.status(201).json(event)
+})
 
-export const getAllEvents = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = req.user
-    const events = await getAllEventsService(user?.user_id, user?.role, user?.branch_name)
-    res.json(events)
-  } catch (err: any) {
-    console.error('❌ getAllEvents error:', err)
-    res.status(500).json({ error: err.message })
-  }
-}
+export const getAllEvents = asyncHandler(async (req: Request, res: Response) => {
+  const user = req.user
+  const events = await getAllEventsService(user?.user_id, user?.role, user?.branch_name)
+  res.json(events)
+})
 
-export const getEventById = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const event = await getEventByIdService(Number(req.params.event_id))
-    res.json(event)
-  } catch (err: any) {
-    console.error('❌ getEventById error:', err)
-    res.status(404).json({ error: err.message })
-  }
-}
+export const getEventById = asyncHandler(async (req: Request, res: Response) => {
+  const event = await getEventByIdService(Number(req.params.event_id))
+  res.json(event)
+})
 
-export const updateEvent = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const event = await updateEventService(Number(req.params.event_id), req.body)
-    res.json(event)
-  } catch (err: any) {
-    console.error('❌ updateEvent error:', err)
-    res.status(400).json({ error: err.message })
-  }
-}
+export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
+  const event = await updateEventService(Number(req.params.event_id), req.body)
+  res.json(event)
+})
 
-export const deleteEvent = async (req: Request, res: Response): Promise<void> => {
-  try {
-    await softDeleteEventService(Number(req.params.event_id))
-    res.json({ message: 'Event deleted successfully' })
-  } catch (err: any) {
-    console.error('❌ deleteEvent error:', err)
-    res.status(404).json({ error: err.message })
-  }
-}
+export const deleteEvent = asyncHandler(async (req: Request, res: Response) => {
+  await softDeleteEventService(Number(req.params.event_id))
+  res.json({ message: 'Event deleted successfully' })
+})
 
-export const assignPermission = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { user_id } = req.body
-    const permission = await assignPermissionService(Number(req.params.event_id), user_id)
-    res.status(201).json(permission)
-  } catch (err: any) {
-    console.error('❌ assignPermission error:', err)
-    res.status(400).json({ error: err.message })
-  }
-}
+export const assignPermission = asyncHandler(async (req: Request, res: Response) => {
+  const { user_id } = req.body
+  const permission = await assignPermissionService(Number(req.params.event_id), user_id)
+  res.status(201).json(permission)
+})
+
+export const getTrashedEvents = asyncHandler(async (req: Request, res: Response) => {
+  const events = await getTrashedEventsService()
+  res.json(events)
+})
+
+export const restoreEvent = asyncHandler(async (req: Request, res: Response) => {
+  const restored = await restoreEventService(Number(req.params.event_id))
+  res.json({ message: `Event "${restored.title}" restored successfully`, event: restored })
+})
+
+export const permanentDeleteEvent = asyncHandler(async (req: Request, res: Response) => {
+  await permanentDeleteEventService(Number(req.params.event_id))
+  res.json({ message: 'Event permanently deleted' })
+})

@@ -1,93 +1,68 @@
 import { Request, Response } from 'express'
 import path from 'path'
+import asyncHandler from '../../middlewares/asyncHandler.js'
+import { AppError } from '../../errors/AppError.js'
 import pool from '../../config/database.js'
 import cloudinary from '../../config/cloudinary.js'
 import {
   registerParticipantService,
   getParticipantsByEventService,
-  cancelParticipantService
+  cancelParticipantService,
+  setAwardeeService
 } from './participants.service.js'
 
-export const registerParticipant = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const data = await registerParticipantService(Number(req.params.event_id), req.body)
-    res.status(201).json(data)
-  } catch (err: any) {
-    res.status(400).json({ error: err.message })
-  }
-}
+export const registerParticipant = asyncHandler(async (req: Request, res: Response) => {
+  const data = await registerParticipantService(Number(req.params.event_id), req.body)
+  res.status(201).json(data)
+})
 
-export const getParticipantsByEvent = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = req.user
-    const userBranch = user?.role === 'staff' ? user.branch_name : undefined
-    const participants = await getParticipantsByEventService(Number(req.params.event_id), userBranch)
-    res.json(participants)
-  } catch (err: any) {
-    res.status(500).json({ error: err.message })
-  }
-}
+export const getParticipantsByEvent = asyncHandler(async (req: Request, res: Response) => {
+  const user = req.user
+  const userBranch = user?.role === 'staff' ? user.branch_name : undefined
+  const participants = await getParticipantsByEventService(Number(req.params.event_id), userBranch)
+  res.json(participants)
+})
 
-export const cancelParticipant = async (req: Request, res: Response): Promise<void> => {
-  try {
-    await cancelParticipantService(Number(req.params.participant_id))
-    res.json({ message: 'Participant cancelled successfully' })
-  } catch (err: any) {
-    res.status(404).json({ error: err.message })
-  }
-}
+export const cancelParticipant = asyncHandler(async (req: Request, res: Response) => {
+  await cancelParticipantService(Number(req.params.participant_id))
+  res.json({ message: 'Participant cancelled successfully' })
+})
 
-export const uploadParticipantPhoto = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { participant_id } = req.params
+export const uploadParticipantPhoto = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.file) throw new AppError('No file uploaded', 400)
 
-    if (!req.file) {
-      res.status(400).json({ error: 'No file uploaded' })
-      return
-    }
+  const { participant_id } = req.params
+  const result = await pool.query(
+    'SELECT agent_code FROM participants WHERE participant_id = $1',
+    [participant_id]
+  )
+  const participant = result.rows[0]
+  if (!participant) throw new AppError('Participant not found', 404)
 
-    // Get participant to know their agent_code
-    const result = await pool.query(
-      'SELECT agent_code FROM participants WHERE participant_id = $1',
-      [participant_id]
+  const ext = path.extname(req.file.originalname).toLowerCase().replace('.', '')
+  const publicId = `agents/${participant.agent_code}`
+
+  const uploadResult = await new Promise<any>((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { public_id: publicId, overwrite: true, resource_type: 'image', format: ext === 'jpg' ? 'jpg' : ext },
+      (error, result) => { if (error) reject(error); else resolve(result) }
     )
-    const participant = result.rows[0]
-    if (!participant) {
-      res.status(404).json({ error: 'Participant not found' })
-      return
-    }
+    stream.end(req.file!.buffer)
+  })
 
-    const ext = path.extname(req.file.originalname).toLowerCase().replace('.', '')
-    const publicId = `agents/${participant.agent_code}`
+  const photo_url = uploadResult.secure_url
+  await pool.query(
+    `UPDATE participants SET photo_url = $1, updated_at = NOW() WHERE agent_code = $2`,
+    [photo_url, participant.agent_code]
+  )
 
-    // Upload buffer to Cloudinary
-    const uploadResult = await new Promise<any>((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        {
-          public_id: publicId,
-          overwrite: true,
-          resource_type: 'image',
-          format: ext === 'jpg' ? 'jpg' : ext,
-        },
-        (error, result) => {
-          if (error) reject(error)
-          else resolve(result)
-        }
-      )
-      stream.end(req.file!.buffer)
-    })
+  res.json({ message: 'Photo uploaded successfully', photo_url })
+})
 
-    const photo_url = uploadResult.secure_url
-
-    // Update ALL participants with this agent_code across all events
-    await pool.query(
-      `UPDATE participants SET photo_url = $1, updated_at = NOW()
-       WHERE agent_code = $2`,
-      [photo_url, participant.agent_code]
-    )
-
-    res.json({ message: 'Photo uploaded successfully', photo_url })
-  } catch (err: any) {
-    res.status(500).json({ error: err.message })
-  }
-}
+export const setAwardee = asyncHandler(async (req: Request, res: Response) => {
+  const { participant_id } = req.params
+  const { is_awardee, awardee_description } = req.body
+  if (typeof is_awardee !== 'boolean') throw new AppError('is_awardee (boolean) is required', 400)
+  const updated = await setAwardeeService(Number(participant_id), is_awardee, awardee_description ?? null)
+  res.json(updated)
+})

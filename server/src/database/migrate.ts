@@ -141,12 +141,21 @@ const migrate = async (): Promise<void> => {
         created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
       );
     `);
-
-    // ── Safe column additions for existing tables ──────────
+  // ── Safe column additions for existing tables ──────────
     await pool.query(`
       ALTER TABLE participants
-        ADD COLUMN IF NOT EXISTS photo_url VARCHAR(500);
+       ADD COLUMN IF NOT EXISTS photo_url           VARCHAR(500);
     `);
+
+    await pool.query(`
+      ALTER TABLE participants
+       ADD COLUMN IF NOT EXISTS is_awardee          BOOLEAN DEFAULT FALSE;
+`    );
+
+    await pool.query(`
+      ALTER TABLE participants
+       ADD COLUMN IF NOT EXISTS awardee_description TEXT;
+`    );
 
     // ── OTP columns for forgot password (admin only) ───────
     await pool.query(`
