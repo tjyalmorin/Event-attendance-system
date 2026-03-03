@@ -6,7 +6,7 @@ import api from '../../api/axios';
 import { getTrashedEventsApi, restoreEventApi, permanentDeleteEventApi } from '../../api/events.api';
 import { Event } from '../../types';
 import Sidebar from '../../components/Sidebar';
-import TrashBinPanel from './TrashBinPanel';
+import TrashBinPanel from './Trashbinpanel';
 
 // ── SVG Icons ──
 const PlusIcon = () => (
