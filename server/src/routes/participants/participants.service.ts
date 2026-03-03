@@ -1,8 +1,3 @@
-// STEP 06 — server/src/routes/participants/participants.service.ts
-// TYPE: Full replacement
-// WHY: getParticipantsByEventService now returns is_awardee + awardee_description.
-//      New setAwardeeService function added.
-
 import pool from '../../config/database.js'
 import { RegisterPayload } from '../../types/participant.types.js'
 
@@ -28,14 +23,6 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   const now = new Date()
   if (event.registration_start && now < new Date(event.registration_start)) throw new Error('Registration has not started yet')
   if (event.registration_end && now > new Date(event.registration_end)) throw new Error('Registration has already closed')
-
-  const countResult = await pool.query(
-    `SELECT COUNT(*) FROM participants
-     WHERE event_id = $1 AND deleted_at IS NULL AND registration_status != 'cancelled'`,
-    [event_id]
-  )
-  const currentCount = parseInt(countResult.rows[0].count)
-  if (currentCount >= event.capacity) throw new Error('Event is already full')
 
   const duplicate = await pool.query(
     'SELECT participant_id FROM participants WHERE event_id = $1 AND agent_code = $2 AND deleted_at IS NULL',
