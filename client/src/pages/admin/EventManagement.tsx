@@ -96,6 +96,12 @@ const LockIcon = () => (
   </svg>
 );
 
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+);
+
 // ── Shared DatePicker styles ──
 const PICKER_STYLES = `
   .react-datepicker {
@@ -282,6 +288,24 @@ const dateToTimeStr = (date: Date | null): string => {
   return date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
+// ── Registration Toast ──
+const RegistrationToast: React.FC<{ type: 'opened' | 'closed' }> = ({ type }) => {
+  const isOpened = type === 'opened';
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex items-stretch rounded-xl shadow-2xl border border-gray-100 dark:border-[#2a2a2a] overflow-hidden min-w-[280px]">
+      <div className={`w-3 flex-shrink-0 ${isOpened ? 'bg-green-500' : 'bg-gray-400'}`} />
+      <div className="flex items-center gap-3 px-4 py-4 flex-1 bg-white dark:bg-[#1c1c1c]">
+        <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${isOpened ? 'border-green-500 text-green-500' : 'border-gray-400 text-gray-400'}`}>
+          {isOpened ? <GlobeIcon /> : <LockIcon />}
+        </div>
+        <p className="text-sm font-bold text-gray-900 dark:text-white">
+          {isOpened ? 'Registration Opened' : 'Registration Closed'}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 // ── Registration Modal ──
 interface RegistrationModalProps {
   event: Event;
@@ -316,23 +340,18 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ event, onClose, o
 
         <div className="p-7">
           {/* Header */}
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Registration Link</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[280px]">{event.title}</p>
-            </div>
-            <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#2a2a2a] rounded-xl transition-colors">
-              <XIcon />
-            </button>
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Registration Link</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[360px]">{event.title}</p>
           </div>
 
-          {/* Link box — Google Docs-style */}
-          <div className="bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-2xl p-4 mb-5">
+          {/* Link box */}
+          <div className="bg-gray-50 dark:bg-[#2a2a2a] border border-gray-200 dark:border-[#3a3a3a] rounded-2xl p-4 mb-5">
             <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-7 h-7 rounded-lg bg-[#DC143C]/10 flex items-center justify-center flex-shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-[#DC143C]/10 flex items-center justify-center flex-shrink-0 text-[#DC143C]">
                 <LinkIcon />
               </div>
-              <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Registration URL</p>
+              <p className="text-[11px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Registration URL</p>
             </div>
             <div className="flex items-center gap-2">
               <p className="flex-1 text-sm text-[#DC143C] font-mono truncate">{registrationUrl}</p>
@@ -341,28 +360,22 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ event, onClose, o
                 className={`flex items-center gap-1.5 flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                   copied
                     ? 'bg-green-50 border-green-200 text-green-600 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400'
-                    : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+                    : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#3a3a3a] text-gray-600 dark:text-gray-300 hover:border-[#DC143C] hover:text-[#DC143C]'
                 }`}
               >
-                {copied ? (
-                  <><CheckIcon />Copied!</>
-                ) : (
-                  <><CopyIcon />Copy</>
-                )}
+                {copied ? <><CheckIcon />Copied!</> : <><CopyIcon />Copy</>}
               </button>
             </div>
           </div>
 
-          {/* Access toggle — Google Docs-style */}
+          {/* Access toggle */}
           <div className="border border-gray-200 dark:border-[#2a2a2a] rounded-2xl overflow-hidden">
             {/* Open option */}
             <button
               onClick={() => !isOpen && !toggling && handleToggle()}
               disabled={toggling}
               className={`w-full flex items-center gap-4 px-5 py-4 transition-all text-left ${
-                isOpen
-                  ? 'bg-green-50 dark:bg-green-900/10'
-                  : 'hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+                isOpen ? 'bg-green-50 dark:bg-green-900/10' : 'hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
               }`}
             >
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
@@ -385,7 +398,6 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ event, onClose, o
               )}
             </button>
 
-            {/* Divider */}
             <div className="h-px bg-gray-100 dark:bg-[#2a2a2a]" />
 
             {/* Closed option */}
@@ -393,9 +405,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ event, onClose, o
               onClick={() => isOpen && !toggling && handleToggle()}
               disabled={toggling}
               className={`w-full flex items-center gap-4 px-5 py-4 transition-all text-left ${
-                !isOpen
-                  ? 'bg-gray-50 dark:bg-[#2a2a2a]/50'
-                  : 'hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+                !isOpen ? 'bg-gray-50 dark:bg-[#2a2a2a]/50' : 'hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
               }`}
             >
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
@@ -419,23 +429,28 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ event, onClose, o
             </button>
           </div>
 
-          {/* Status indicator */}
+          {/* Status + loading + Done button */}
           <div className="flex items-center justify-between mt-4">
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              Current status:&nbsp;
-              <span className={`font-bold ${isOpen ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                {isOpen ? 'Registration Open' : 'Registration Closed'}
-              </span>
-            </p>
-            {toggling && (
-              <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Status:&nbsp;
+                <span className={`font-bold ${isOpen ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {isOpen ? 'Registration Open' : 'Registration Closed'}
+                </span>
+              </p>
+              {toggling && (
+                <svg className="animate-spin h-3.5 w-3.5 text-gray-400" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
                 </svg>
-                Updating...
-              </div>
-            )}
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-100 dark:bg-[#2a2a2a] hover:bg-gray-200 dark:hover:bg-[#333] text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-xl transition-colors"
+            >
+              Done
+            </button>
           </div>
         </div>
       </div>
@@ -463,9 +478,6 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
     if (!event.event_date) return null;
     const d = new Date(event.event_date);
     if (isNaN(d.getTime())) return null;
-    // event_date from DB is stored as midnight PH time but comes as UTC
-    // e.g. "2026-03-28T16:00:00.000Z" = March 29 00:00 PHT
-    // So we use UTC date parts and add the PH offset (UTC+8)
     const phDate = new Date(d.getTime() + 8 * 60 * 60 * 1000);
     return new Date(phDate.getUTCFullYear(), phDate.getUTCMonth(), phDate.getUTCDate());
   });
@@ -478,30 +490,84 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
   const [showDescription, setShowDescription] = useState(!!event.description);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ title?: string; eventDate?: string; venue?: string }>({});
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  const originalValues = useRef({
+    title: event.title || '',
+    description: event.description || '',
+    eventDate: (() => {
+      if (!event.event_date) return '';
+      const d = new Date(event.event_date);
+      if (isNaN(d.getTime())) return '';
+      const phDate = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+      return `${phDate.getUTCFullYear()}-${String(phDate.getUTCMonth()+1).padStart(2,'0')}-${String(phDate.getUTCDate()).padStart(2,'0')}`;
+    })(),
+    startTime: event.start_time || '',
+    endTime: event.end_time || '',
+    venue: event.venue || '',
+    checkinCutoff: event.checkin_cutoff || '',
+    registrationStart: event.registration_start ? new Date(event.registration_start).toISOString() : '',
+    registrationEnd: event.registration_end ? new Date(event.registration_end).toISOString() : '',
+  });
+
+  const isDirty = () => {
+    const orig = originalValues.current;
+    const currentEventDate = eventDate
+      ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}`
+      : '';
+    // Compare times at HH:MM precision only (DB may store HH:MM:SS)
+    const toHHMM = (t: string) => t ? t.slice(0, 5) : '';
+    // Compare registration datetimes rounded to the minute to avoid ms drift
+    const toMinute = (d: Date | null) => d ? Math.floor(d.getTime() / 60000).toString() : '';
+    const origRegStart = orig.registrationStart ? Math.floor(new Date(orig.registrationStart).getTime() / 60000).toString() : '';
+    const origRegEnd = orig.registrationEnd ? Math.floor(new Date(orig.registrationEnd).getTime() / 60000).toString() : '';
+    return (
+      title !== orig.title ||
+      description !== orig.description ||
+      currentEventDate !== orig.eventDate ||
+      toHHMM(dateToTimeStr(startTime)) !== toHHMM(orig.startTime) ||
+      toHHMM(dateToTimeStr(endTime)) !== toHHMM(orig.endTime) ||
+      venue !== orig.venue ||
+      toHHMM(dateToTimeStr(checkinCutoff)) !== toHHMM(orig.checkinCutoff) ||
+      toMinute(registrationStart) !== origRegStart ||
+      toMinute(registrationEnd) !== origRegEnd
+    );
+  };
+
+  const handleClose = () => {
+    if (isDirty()) {
+      setShowDiscardConfirm(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const validate = () => {
+    const errors: { title?: string; eventDate?: string; venue?: string } = {};
+    if (!title.trim()) errors.title = 'Event name is required.';
+    if (!eventDate) errors.eventDate = 'Event date is required.';
+    if (!venue.trim()) errors.venue = 'Venue is required.';
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!registrationStart || !registrationEnd) {
-      setError('Please set the registration window.');
-      return;
-    }
-    if (registrationEnd <= registrationStart) {
-      setError('Registration end must be after registration start.');
-      return;
-    }
+    if (!validate()) return;
     setLoading(true);
     try {
       await api.put(`/events/${event.event_id}`, {
         title,
         description: description || null,
         event_date: eventDate ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}` : '',
-        start_time: dateToTimeStr(startTime),
-        end_time: dateToTimeStr(endTime),
+        start_time: dateToTimeStr(startTime) || null,
+        end_time: dateToTimeStr(endTime) || null,
         venue,
         checkin_cutoff: dateToTimeStr(checkinCutoff) || null,
-        registration_start: registrationStart.toISOString(),
-        registration_end: registrationEnd.toISOString(),
+        registration_start: registrationStart ? registrationStart.toISOString() : null,
+        registration_end: registrationEnd ? registrationEnd.toISOString() : null,
       });
       onSuccess();
     } catch (err: any) {
@@ -514,23 +580,74 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
   return (
     <>
     <style>{PICKER_STYLES}</style>
+
+    {/* Discard Confirmation */}
+    {showDiscardConfirm && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-sm mx-4 p-6">
+          <div className="flex flex-col items-center text-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center text-yellow-500">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Discard changes?</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Your edits will be lost if you leave now.</p>
+            </div>
+            <div className="flex gap-3 w-full mt-1">
+              <button
+                onClick={() => setShowDiscardConfirm(false)}
+                className="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl text-sm font-semibold hover:bg-gray-50 dark:hover:bg-[#333] transition-all"
+              >
+                Keep Editing
+              </button>
+              <button
+                onClick={onClose}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 transition-all"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-2xl mx-4 flex flex-col max-h-[90vh]">
         <div className="h-1.5 w-full bg-gradient-to-r from-[#DC143C] to-[#ff4d6d] rounded-t-3xl flex-shrink-0" />
         <div className="overflow-y-auto flex-1">
           <div className="flex items-center justify-between px-8 pt-8 pb-4">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Event</h2>
-            <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#333333] rounded-xl transition-colors">
+            <button onClick={handleClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#333333] rounded-xl transition-colors">
               <XIcon />
             </button>
           </div>
 
           <form onSubmit={handleSubmit} className="px-8 pb-8 space-y-5">
+            {/* Event Name */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Event Name</label>
-              <input type="text" value={title} onChange={e => { if (e.target.value.length <= 100) setTitle(e.target.value); }} required
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all"
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Event Name <span className="text-[#DC143C]">*</span>
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={e => { if (e.target.value.length <= 100) setTitle(e.target.value); if (fieldErrors.title) setFieldErrors(p => ({ ...p, title: undefined })); }}
+                className={`w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-all ${
+                  fieldErrors.title
+                    ? 'border-red-400 focus:border-red-400 focus:ring-red-400/20'
+                    : 'border-gray-200 dark:border-[#2a2a2a] focus:border-[#DC143C] focus:ring-[#DC143C]/20'
+                }`}
               />
+              {fieldErrors.title && (
+                <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  {fieldErrors.title}
+                </p>
+              )}
               <div className="flex items-center justify-between mt-2">
                 <p className="text-xs text-gray-500 dark:text-gray-500">{title.length}/100 characters</p>
                 {!showDescription && (
@@ -542,6 +659,7 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
               </div>
             </div>
 
+            {/* Description */}
             {showDescription && (
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -558,11 +676,26 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
               </div>
             )}
 
+            {/* Date + Times */}
             <div className="grid grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Date</label>
-                <DatePicker selected={eventDate} onChange={(date: Date | null) => setEventDate(date)}
-                  dateFormat="MM/dd/yyyy" placeholderText="Pick a date" customInput={<DateInput />} popperPlacement="bottom-start" />
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Date <span className="text-[#DC143C]">*</span>
+                </label>
+                <DatePicker
+                  selected={eventDate}
+                  onChange={(date: Date | null) => { setEventDate(date); if (fieldErrors.eventDate) setFieldErrors(p => ({ ...p, eventDate: undefined })); }}
+                  dateFormat="MM/dd/yyyy"
+                  placeholderText="Pick a date"
+                  customInput={<DateInput />}
+                  popperPlacement="bottom-start"
+                />
+                {fieldErrors.eventDate && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    {fieldErrors.eventDate}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Time (Start)</label>
@@ -578,13 +711,30 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
               </div>
             </div>
 
+            {/* Venue */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Venue</label>
-              <input type="text" value={venue} onChange={e => { if (e.target.value.length <= 200) setVenue(e.target.value); }} required
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all"
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Venue <span className="text-[#DC143C]">*</span>
+              </label>
+              <input
+                type="text"
+                value={venue}
+                onChange={e => { if (e.target.value.length <= 200) setVenue(e.target.value); if (fieldErrors.venue) setFieldErrors(p => ({ ...p, venue: undefined })); }}
+                className={`w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-all ${
+                  fieldErrors.venue
+                    ? 'border-red-400 focus:border-red-400 focus:ring-red-400/20'
+                    : 'border-gray-200 dark:border-[#2a2a2a] focus:border-[#DC143C] focus:ring-[#DC143C]/20'
+                }`}
               />
+              {fieldErrors.venue && (
+                <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  {fieldErrors.venue}
+                </p>
+              )}
             </div>
 
+            {/* Check-in Cutoff */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Check-in Cutoff (Optional)</label>
               <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}
@@ -592,19 +742,17 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
                 placeholderText="Pick cutoff time" customInput={<TimeInput />} popperPlacement="bottom-start" />
             </div>
 
-            {/* ── Registration Window ── */}
+            {/* Registration Window */}
             <div>
               <div className="flex items-center gap-3 mb-4">
                 <div className="h-px flex-1 bg-gray-200 dark:bg-[#2a2a2a]" />
                 <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex-shrink-0">Registration Window</span>
                 <div className="h-px flex-1 bg-gray-200 dark:bg-[#2a2a2a]" />
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Set when participants can register for this event.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Set when participants can register for this event. (Optional)</p>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Registration Opens <span className="text-[#DC143C]">*</span>
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Registration Opens</label>
                   <DatePicker
                     selected={registrationStart}
                     onChange={(date: Date | null) => setRegistrationStart(date)}
@@ -616,9 +764,7 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Registration Closes <span className="text-[#DC143C]">*</span>
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Registration Closes</label>
                   <DatePicker
                     selected={registrationEnd}
                     onChange={(date: Date | null) => setRegistrationEnd(date)}
@@ -647,6 +793,13 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
                   </p>
                 </div>
               )}
+
+              {registrationStart && registrationEnd && registrationEnd <= registrationStart && (
+                <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  Registration end must be after registration start.
+                </p>
+              )}
             </div>
 
             {error && (
@@ -654,7 +807,7 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
             )}
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button type="button" onClick={onClose}
+              <button type="button" onClick={handleClose}
                 className="px-6 py-3 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#333333] transition-all">
                 Cancel
               </button>
@@ -710,7 +863,6 @@ const DeleteModal: React.FC<DeleteModalProps> = ({ event, onClose, onConfirm, lo
     </div>
   </div>
 );
-
 
 // ── Publish Modal ──
 interface PublishModalProps {
@@ -781,6 +933,7 @@ const EventManagement: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<string>('Last Updated');
   const [openDropdown, setOpenDropdown] = useState<number | null>(null);
   const [openSortDropdown, setOpenSortDropdown] = useState(false);
@@ -792,6 +945,7 @@ const EventManagement: React.FC = () => {
   const [publishingEvent, setPublishingEvent] = useState<Event | null>(null);
   const [publishLoading, setPublishLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; onUndo?: () => void } | null>(null);
+  const [registrationToast, setRegistrationToast] = useState<'opened' | 'closed' | null>(null);
   const [, setUndoSnapshot] = useState<Event | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const user = JSON.parse(localStorage.getItem('user') || '{}');
@@ -825,6 +979,13 @@ const EventManagement: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+
+  useEffect(() => {
+    if (registrationToast) {
+      const timer = setTimeout(() => setRegistrationToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [registrationToast]);
 
   const fetchEvents = async () => {
     try {
@@ -876,7 +1037,6 @@ const EventManagement: React.FC = () => {
     }
   };
 
-
   const handlePublish = async () => {
     if (!publishingEvent) return;
     setPublishLoading(true);
@@ -920,23 +1080,28 @@ const EventManagement: React.FC = () => {
         venue: event.venue,
         capacity: event.capacity,
         checkin_cutoff: event.checkin_cutoff,
-        status
+        status,
       });
-      // Update local state so modal reflects immediately
       setEvents(prev => prev.map(e => e.event_id === event_id ? { ...e, status: status as Event['status'] } : e));
-      // Also update the registrationEvent so the modal updates
       if (registrationEvent?.event_id === event_id) {
         setRegistrationEvent(prev => prev ? { ...prev, status: status as Event['status'] } : prev);
       }
-      setToast({ message: `Registration ${status === 'open' ? 'opened' : 'closed'} successfully` });
+      setRegistrationToast(status === 'open' ? 'opened' : 'closed');
     } catch (err: any) {
       console.error('Failed to update status:', err);
     }
   };
 
-  const filteredEvents = events.filter(event =>
-    filter === 'all' ? true : getDisplayStatus(event) === filter
-  );
+  const filteredEvents = events
+    .filter(event => filter === 'all' ? true : getDisplayStatus(event) === filter)
+    .filter(event => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        event.title.toLowerCase().includes(q) ||
+        (event.venue || '').toLowerCase().includes(q)
+      );
+    });
 
   const sortedEvents = [...filteredEvents].sort((a, b) => {
     if (sortBy === 'Event Date') return new Date(a.event_date).getTime() - new Date(b.event_date).getTime();
@@ -949,6 +1114,7 @@ const EventManagement: React.FC = () => {
       <Sidebar userRole={user.role === 'staff' ? 'staff' : 'admin'} />
 
       <div className="flex-1 overflow-auto">
+        {/* Header */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
           <div className="px-12 h-[76px] flex items-center">
             <div className="flex items-center justify-between w-full">
@@ -966,7 +1132,9 @@ const EventManagement: React.FC = () => {
           </div>
         </div>
 
-        <div className="max-w-[1400px] mx-auto px-8 py-6">
+        {/* Filters + Search + Sort */}
+        <div className="max-w-[1400px] mx-auto px-8 py-6 space-y-4">
+          {/* Row 1: Filters + Sort */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {[
@@ -1039,8 +1207,31 @@ const EventManagement: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Row 2: Search bar */}
+          <div className="relative">
+            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400">
+              <SearchIcon />
+            </div>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search events by name or venue..."
+              className="w-full pl-11 pr-4 py-2.5 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-700 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-4 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
+              >
+                <XIcon />
+              </button>
+            )}
+          </div>
         </div>
 
+        {/* Event Cards */}
         <div className="max-w-[1400px] mx-auto px-8 pb-12">
           {loading ? (
             <div className="flex items-center justify-center py-20">
@@ -1049,13 +1240,19 @@ const EventManagement: React.FC = () => {
           ) : sortedEvents.length === 0 ? (
             <div className="text-center py-20">
               <div className="flex justify-center mb-3 text-gray-300 dark:text-gray-600"><GridIcon /></div>
-              <p className="text-gray-500 dark:text-gray-500">No events found</p>
+              <p className="text-gray-500 dark:text-gray-500">
+                {searchQuery ? `No events found for "${searchQuery}"` : 'No events found'}
+              </p>
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="mt-2 text-sm text-[#DC143C] hover:underline">
+                  Clear search
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-4 gap-4" ref={dropdownRef}>
               {sortedEvents.map((event) => {
                 const phDate = new Date(new Date(event.event_date).getTime() + 8 * 60 * 60 * 1000);
-                const displayStatus = getDisplayStatus(event);
                 return (
                   <div key={event.event_id}
                     onClick={() => navigate(`/admin/events/${event.event_id}`)}
@@ -1067,19 +1264,18 @@ const EventManagement: React.FC = () => {
                           <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                         </svg>
                       </div>
-
                     </div>
                     <div className="flex flex-col flex-1 p-4">
                       {/* Title + status badge */}
                       <div className="flex items-start justify-between gap-2 mb-3 pb-3 border-b border-gray-100 dark:border-[#2a2a2a]">
-                        <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 flex-1">
+                        <h3 className="text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 flex-1">
                           {event.title}
                         </h3>
-                        <span className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide ${(statusConfig[event.status] || statusConfig.draft).badge}`}>
+                        <span className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${(statusConfig[event.status] || statusConfig.draft).badge}`}>
                           {(statusConfig[event.status] || statusConfig.draft).label}
                         </span>
                       </div>
-                      <div className="flex gap-3 mb-4">
+                      <div className="flex gap-3 mb-4 min-h-[52px] items-center">
                         <div className="flex-shrink-0 text-center w-10">
                           <div className="text-2xl font-extrabold text-gray-900 dark:text-white leading-none">{phDate.getUTCDate()}</div>
                           <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mt-0.5">
@@ -1088,13 +1284,13 @@ const EventManagement: React.FC = () => {
                           <div className="text-[10px] font-semibold text-gray-300 dark:text-gray-600 mt-0.5">{phDate.getUTCFullYear()}</div>
                         </div>
                         <div className="w-px bg-gray-100 dark:bg-[#2a2a2a] flex-shrink-0" />
-                        <div className="flex flex-col gap-1.5 min-w-0">
-                          <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
-                            <LocationIcon />
+                        <div className="flex flex-col gap-1.5 min-w-0 justify-center">
+                          <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                            <span className="flex-shrink-0"><LocationIcon /></span>
                             <span className="truncate">{event.venue || 'TBD'}</span>
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-500">
-                            <UsersIcon />
+                          <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-500">
+                            <span className="flex-shrink-0"><UsersIcon /></span>
                             <span>{(event as any).registered_count ?? 0} registered</span>
                           </div>
                         </div>
@@ -1154,6 +1350,7 @@ const EventManagement: React.FC = () => {
         />
       )}
       {toast && <SuccessToast message={toast.message} onUndo={toast.onUndo} />}
+      {registrationToast && <RegistrationToast type={registrationToast} />}
     </div>
   );
 };
