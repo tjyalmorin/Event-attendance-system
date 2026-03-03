@@ -1,12 +1,17 @@
 import api from './axios'
-import { ScanPayload, ScanResponse } from '../types'
+import { ScanResponse } from '../types'
 
-export const lookupParticipantApi = async (payload: ScanPayload) => {
+export const lookupParticipantApi = async (payload: { query: string; event_id: number }) => {
   const res = await api.post('/attendance/lookup', payload)
   return res.data
 }
 
-export const scanAgentCodeApi = async (payload: ScanPayload): Promise<ScanResponse> => {
+export const resolveParticipantApi = async (payload: { participant_id: number; event_id: number }) => {
+  const res = await api.post('/attendance/resolve', payload)
+  return res.data
+}
+
+export const scanAgentCodeApi = async (payload: { agent_code: string; event_id: number }): Promise<ScanResponse> => {
   const res = await api.post('/attendance/scan', payload)
   return res.data
 }

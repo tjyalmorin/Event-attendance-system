@@ -1,13 +1,22 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getEventByIdApi } from '../../api/events.api'
-import { lookupParticipantApi, scanAgentCodeApi, logDenialApi, getSessionsByEventApi } from '../../api/scan.api'
+import { lookupParticipantApi, resolveParticipantApi, scanAgentCodeApi, logDenialApi, getSessionsByEventApi } from '../../api/scan.api'
 import { Event, ScanResponse } from '../../types'
 import Sidebar from '../../components/Sidebar'
 import { useDarkMode } from '../../contexts/DarkModeContext'
 
 // ── Types ────────────────────────────────────────────────
-type PageState = 'input' | 'verify' | 'result' | 'error'
+type PageState = 'input' | 'pick' | 'verify' | 'result' | 'error'
+
+interface PickItem {
+  participant_id: number
+  full_name: string
+  agent_code: string
+  branch_name: string
+  team_name: string
+  photo_url?: string | null
+}
 
 interface LookupResult {
   participant: {
@@ -25,9 +34,6 @@ interface LookupResult {
 const playTone = (type: 'success' | 'checkout' | 'denied') => {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-    const gainNode = ctx.createGain()
-    gainNode.connect(ctx.destination)
-
     const notes: number[][] =
       type === 'success'  ? [[880, 0, 0.12], [1100, 0.13, 0.12], [1320, 0.26, 0.18]] :
       type === 'checkout' ? [[660, 0, 0.12], [880, 0.13, 0.18]] :
@@ -40,9 +46,8 @@ const playTone = (type: 'success' | 'checkout' | 'denied') => {
       g.connect(ctx.destination)
       osc.frequency.value = freq
       osc.type = type === 'denied' ? 'sawtooth' : 'sine'
-      g.gain.setValueAtTime(0, ctx.currentTime + start)
-      g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + start + 0.01)
-      g.gain.linearRampToValueAtTime(0, ctx.currentTime + start + dur)
+      g.gain.setValueAtTime(0.4, ctx.currentTime + start)
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur)
       osc.start(ctx.currentTime + start)
       osc.stop(ctx.currentTime + start + dur + 0.05)
     })
@@ -50,30 +55,12 @@ const playTone = (type: 'success' | 'checkout' | 'denied') => {
 }
 
 // ── Icons ────────────────────────────────────────────────
-const ArrowLeftIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
-  </svg>
-)
-const CalendarIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-  </svg>
-)
-const ClockIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-  </svg>
-)
-const LocationIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-  </svg>
-)
 const UsersIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+    <circle cx="9" cy="7" r="4"/>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
   </svg>
 )
 const ScanIcon = () => (
@@ -109,21 +96,22 @@ export default function ScannerPage() {
   const navigate = useNavigate()
   const { isDarkMode } = useDarkMode()
 
-  const [event, setEvent]         = useState<Event | null>(null)
-  const [agentCode, setAgentCode] = useState('')
-  const [pageState, setPageState] = useState<PageState>('input')
-  const [lookup, setLookup]       = useState<LookupResult | null>(null)
-  const [result, setResult]       = useState<ScanResponse | null>(null)
-  const [error, setError]         = useState('')
-  const [loading, setLoading]     = useState(false)
+  const [event, setEvent]           = useState<Event | null>(null)
+  const [query, setQuery]           = useState('')
+  const [pageState, setPageState]   = useState<PageState>('input')
+  const [pickList, setPickList]     = useState<PickItem[]>([])
+  const [lookup, setLookup]         = useState<LookupResult | null>(null)
+  const [result, setResult]         = useState<ScanResponse | null>(null)
+  const [error, setError]           = useState('')
+  const [loading, setLoading]       = useState(false)
   const [photoError, setPhotoError] = useState(false)
-  const [countdown, setCountdown] = useState(3)
+  const [countdown, setCountdown]   = useState(3)
   const [checkedInCount, setCheckedInCount] = useState(0)
   const [flashColor, setFlashColor] = useState<'green' | 'blue' | 'red' | null>(null)
 
-  const inputRef      = useRef<HTMLInputElement>(null)
-  const countdownRef  = useRef<ReturnType<typeof setInterval> | null>(null)
-  const flashRef      = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inputRef     = useRef<HTMLInputElement>(null)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const flashRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
   const userRole   = storedUser?.role || 'staff'
@@ -146,22 +134,15 @@ export default function ScannerPage() {
 
   // Focus input when on input state
   useEffect(() => {
-    if (pageState === 'input') {
-      setTimeout(() => inputRef.current?.focus(), 80)
-    }
+    if (pageState === 'input') setTimeout(() => inputRef.current?.focus(), 80)
   }, [pageState])
 
-  // Auto-dismiss result/error with countdown
   useEffect(() => {
     if (pageState === 'result' || pageState === 'error') {
       setCountdown(3)
       countdownRef.current = setInterval(() => {
         setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownRef.current!)
-            resetToInput()
-            return 0
-          }
+          if (prev <= 1) { clearInterval(countdownRef.current!); resetToInput(); return 0 }
           return prev - 1
         })
       }, 1000)
@@ -176,27 +157,39 @@ export default function ScannerPage() {
 
   const resetToInput = () => {
     setPageState('input')
+    setPickList([])
     setLookup(null)
     setResult(null)
     setError('')
-    setAgentCode('')
+    setQuery('')
     setPhotoError(false)
   }
 
-  // ── Step 1: Lookup ────────────────────────────────────
-  const handleLookup = async (code: string) => {
-    if (!code.trim()) return
+  // ── Step 1: Lookup ─────────────────────────────────────
+  const handleLookup = async (q: string) => {
+    if (!q.trim()) return
     setLoading(true)
     try {
-      const data = await lookupParticipantApi({ agent_code: code.trim(), event_id: Number(eventId) })
+      const data = await lookupParticipantApi({ query: q.trim(), event_id: Number(eventId) })
+
+      // Multiple matches → show pick screen
+      if (data.multiple) {
+        setPickList(data.participants)
+        setPageState('pick')
+        setLoading(false)
+        return
+      }
+
       if (data.next_action === 'blocked') {
         playTone('denied')
         triggerFlash('red')
         setError('Participant has already completed attendance. No further entries allowed.')
         setPageState('error')
-        setAgentCode('')
+        setQuery('')
+        setLoading(false)
         return
       }
+
       setLookup(data)
       setPhotoError(false)
       setPageState('verify')
@@ -204,14 +197,42 @@ export default function ScannerPage() {
       playTone('denied')
       triggerFlash('red')
       setError(err.response?.data?.error || 'Lookup failed. Please try again.')
-      setAgentCode('')
+      setQuery('')
       setPageState('error')
     } finally {
       setLoading(false)
     }
   }
 
-  // ── Step 2a: Confirm ──────────────────────────────────
+  // ── Step 1b: Pick from list ────────────────────────────
+  const handlePickParticipant = async (item: PickItem) => {
+    setLoading(true)
+    try {
+      const data = await resolveParticipantApi({ participant_id: item.participant_id, event_id: Number(eventId) })
+
+      if (data.next_action === 'blocked') {
+        playTone('denied')
+        triggerFlash('red')
+        setError('Participant has already completed attendance. No further entries allowed.')
+        setPageState('error')
+        setLoading(false)
+        return
+      }
+
+      setLookup(data)
+      setPhotoError(false)
+      setPageState('verify')
+    } catch (err: any) {
+      playTone('denied')
+      triggerFlash('red')
+      setError(err.response?.data?.error || 'Resolve failed. Please try again.')
+      setPageState('error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Step 2a: Confirm ───────────────────────────────────
   const handleConfirm = async () => {
     if (!lookup) return
     setLoading(true)
@@ -233,7 +254,7 @@ export default function ScannerPage() {
     }
   }
 
-  // ── Step 2b: Deny ─────────────────────────────────────
+  // ── Step 2b: Deny ──────────────────────────────────────
   const handleDeny = async () => {
     if (!lookup) return
     setLoading(true)
@@ -248,7 +269,7 @@ export default function ScannerPage() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') handleLookup(agentCode)
+    if (e.key === 'Enter') handleLookup(query)
   }
 
   const getPhotoUrl = (photo_url: string | null | undefined): string | null => {
@@ -266,112 +287,66 @@ export default function ScannerPage() {
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
-  const isCheckIn       = result?.action === 'check_in'
-  const verifyPhotoUrl  = getPhotoUrl(lookup?.participant.photo_url)
-  const resultPhotoUrl  = getPhotoUrl(result?.participant.photo_url)
+  const verifyPhotoUrl = getPhotoUrl(lookup?.participant.photo_url)
+  const resultPhotoUrl = getPhotoUrl(result?.participant.photo_url)
 
-  // ── Color tokens tied to dark mode ───────────────────
-  const bg      = isDarkMode ? '#0f0f0f' : '#f0f1f3'
-  const card    = isDarkMode ? '#1c1c1c' : '#ffffff'
-  const border  = isDarkMode ? '#2a2a2a' : '#e5e7eb'
+  // ── Color tokens ───────────────────────────────────────
+  const bg            = isDarkMode ? '#0f0f0f' : '#f0f1f3'
+  const card          = isDarkMode ? '#1c1c1c' : '#ffffff'
+  const border        = isDarkMode ? '#2a2a2a' : '#e5e7eb'
   const textPrimary   = isDarkMode ? '#ffffff' : '#111827'
   const textSecondary = isDarkMode ? '#9ca3af' : '#6b7280'
-  const inputBg = isDarkMode ? '#141414' : '#f9fafb'
-  const subCard = isDarkMode ? '#141414' : '#f9fafb'
-
-  // ── Flash overlay colors ──────────────────────────────
-  const flashBg =
-    flashColor === 'green' ? 'rgba(22,163,74,0.06)' :
-    flashColor === 'blue'  ? 'rgba(37,99,235,0.06)' :
-    flashColor === 'red'   ? 'rgba(220,20,60,0.06)'  : 'transparent'
+  const inputBg       = isDarkMode ? '#141414' : '#f9fafb'
+  const subCard       = isDarkMode ? '#141414' : '#f9fafb'
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: bg, transition: 'background 0.2s' }}>
-      <Sidebar userRole={userRole === 'admin' ? 'admin' : 'staff'} />
+    <div style={{ display: 'flex', minHeight: '100vh', background: bg, position: 'relative' }}>
+      {/* Flash overlay */}
+      {flashColor && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none',
+          background: flashColor === 'green' ? 'rgba(22,163,74,0.15)' : flashColor === 'blue' ? 'rgba(37,99,235,0.15)' : 'rgba(220,20,60,0.18)',
+          transition: 'opacity 0.3s'
+        }} />
+      )}
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, transition: 'background 0.2s', background: flashBg }}>
+      <Sidebar userRole={userRole} />
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
         {/* ── HEADER ──────────────────────────────────── */}
-        <header style={{ background: card, borderBottom: `1px solid ${border}`, flexShrink: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ height: 76, paddingLeft: 48, paddingRight: 48, display: 'flex', alignItems: 'center', gap: 16 }}>
-
-            <button
-              onClick={() => navigate(-1)}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: textSecondary, fontSize: 13, fontWeight: 500, padding: '6px 10px', borderRadius: 8, transition: 'color 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.color = textPrimary)}
-              onMouseLeave={e => (e.currentTarget.style.color = textSecondary)}
-            >
-              <ArrowLeftIcon />
-              <span>Back</span>
-            </button>
-
-            <div style={{ width: 1, height: 24, background: border }} />
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: '#DC143C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
-                <ScanIcon />
-              </div>
+        <header style={{ background: card, borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
+          <div style={{ padding: '0 48px', height: 76, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: textSecondary, padding: '6px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+                ← Back
+              </button>
+              <div style={{ color: textSecondary }}>|</div>
+              <div style={{ color: '#DC143C' }}><ScanIcon /></div>
               <div>
-                <h1 style={{ fontSize: 26, fontWeight: 800, color: textPrimary, lineHeight: 1, letterSpacing: '-0.5px' }}>
-                  Scanner<span style={{ color: '#DC143C' }}>.</span>
-                  {event && <span style={{ fontSize: 20, fontWeight: 600, color: textSecondary, marginLeft: 6 }}>{event.title}</span>}
-                </h1>
+                <div style={{ fontWeight: 800, fontSize: 18, color: textPrimary, letterSpacing: '-0.3px' }}>Scanner</div>
+                {event && <div style={{ fontSize: 12, color: textSecondary }}>{event.title}</div>}
               </div>
             </div>
-
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-              {/* Live attendance counter */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: isDarkMode ? '#141414' : '#f3f4f6', border: `1px solid ${border}`, borderRadius: 10, padding: '8px 14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#DC143C' }}>
-                  <UsersIcon />
-                </div>
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#DC143C', lineHeight: 1 }}>{checkedInCount}</div>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: textSecondary, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Inside</div>
-                </div>
-              </div>
-
-              {/* Live dot */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: isDarkMode ? '#141414' : '#f3f4f6', border: `1px solid ${border}`, borderRadius: 10, padding: '8px 14px' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 0 3px rgba(22,163,74,0.2)', display: 'inline-block' }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#16a34a' }}>LIVE</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#DC143C' }}>{checkedInCount}</div>
+                <div style={{ fontSize: 11, color: textSecondary, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inside</div>
               </div>
             </div>
           </div>
         </header>
 
-        {/* ── EVENT INFO BAR ───────────────────────────── */}
+        {/* Event info bar */}
         {event && (
-          <div style={{ background: isDarkMode ? '#161616' : '#fff', borderBottom: `1px solid ${border}`, padding: '10px 48px', display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: textSecondary, fontSize: 12, fontWeight: 500 }}>
-              <CalendarIcon />
-              <span>{formatDate(event.event_date as unknown as string)}</span>
-            </div>
-            <div style={{ width: 4, height: 4, borderRadius: '50%', background: border }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: textSecondary, fontSize: 12, fontWeight: 500 }}>
-              <ClockIcon />
-              <span>{formatTime(event.start_time)} – {formatTime(event.end_time)}</span>
-            </div>
-            {event.venue && (
-              <>
-                <div style={{ width: 4, height: 4, borderRadius: '50%', background: border }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: textSecondary, fontSize: 12, fontWeight: 500 }}>
-                  <LocationIcon />
-                  <span>{event.venue}</span>
-                </div>
-              </>
-            )}
-            <div style={{ marginLeft: 'auto' }}>
-              <span style={{
-                fontSize: 11, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase',
-                padding: '4px 10px', borderRadius: 20,
-                background: event.status === 'open' ? 'rgba(22,163,74,0.12)' : 'rgba(107,114,128,0.12)',
-                color: event.status === 'open' ? '#16a34a' : textSecondary,
-                border: `1px solid ${event.status === 'open' ? 'rgba(22,163,74,0.25)' : border}`
-              }}>
-                {event.status}
-              </span>
-            </div>
+          <div style={{ background: isDarkMode ? '#161616' : '#fafafa', borderBottom: `1px solid ${border}`, padding: '10px 48px', display: 'flex', alignItems: 'center', gap: 20 }}>
+            <span style={{ fontSize: 13, color: textSecondary }}>{formatDate(event.event_date)}</span>
+            <span style={{ color: border }}>·</span>
+            <span style={{ fontSize: 13, color: textSecondary }}>{formatTime(event.start_time)} – {formatTime(event.end_time)}</span>
+            {event.venue && <><span style={{ color: border }}>·</span><span style={{ fontSize: 13, color: textSecondary }}>{event.venue}</span></>}
+            <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: event.status === 'open' ? 'rgba(22,163,74,0.12)' : 'rgba(107,114,128,0.12)', color: event.status === 'open' ? '#16a34a' : textSecondary, border: `1px solid ${event.status === 'open' ? 'rgba(22,163,74,0.25)' : border}` }}>
+              {event.status}
+            </span>
           </div>
         )}
 
@@ -390,84 +365,43 @@ export default function ScannerPage() {
                       <ScanIcon />
                     </div>
                     <h2 style={{ fontSize: 22, fontWeight: 800, color: textPrimary, marginBottom: 6, letterSpacing: '-0.3px' }}>
-                      Scan Agent Code
+                      Scan Agent
                     </h2>
                     <p style={{ fontSize: 13, color: textSecondary, lineHeight: 1.6 }}>
-                      Type or scan the agent's code to look up their registration
+                      Enter agent code (e.g. 10001) or surname (e.g. Santos)
                     </p>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div style={{ position: 'relative' }}>
-                      <input
-                        ref={inputRef}
-                        type="text"
-                        value={agentCode}
-                        onChange={e => setAgentCode(e.target.value.toUpperCase())}
-                        onKeyDown={handleKeyDown}
-                        disabled={loading}
-                        placeholder="e.g. A1-00001"
-                        autoComplete="off"
-                        spellCheck={false}
-                        style={{
-                          width: '100%', background: inputBg,
-                          border: `2px solid ${border}`,
-                          borderRadius: 12, padding: '15px 16px',
-                          fontSize: 20, fontFamily: 'monospace',
-                          color: textPrimary, textAlign: 'center',
-                          letterSpacing: 4, outline: 'none',
-                          transition: 'border-color 0.2s, box-shadow 0.2s',
-                          boxSizing: 'border-box',
-                          opacity: loading ? 0.5 : 1
-                        }}
-                        onFocus={e => {
-                          e.currentTarget.style.borderColor = '#DC143C'
-                          e.currentTarget.style.boxShadow = '0 0 0 4px rgba(220,20,60,0.1)'
-                        }}
-                        onBlur={e => {
-                          e.currentTarget.style.borderColor = border
-                          e.currentTarget.style.boxShadow = 'none'
-                        }}
-                      />
-                    </div>
-
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={query}
+                      onChange={e => setQuery(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      disabled={loading}
+                      placeholder="Agent code or surname..."
+                      style={{ width: '100%', padding: '14px 18px', fontSize: 16, fontWeight: 600, background: inputBg, border: `2px solid ${border}`, borderRadius: 12, color: textPrimary, outline: 'none', boxSizing: 'border-box', letterSpacing: '0.5px' }}
+                      autoComplete="off"
+                    />
                     <button
-                      onClick={() => handleLookup(agentCode)}
-                      disabled={loading || !agentCode.trim()}
-                      style={{
-                        width: '100%', padding: '15px', borderRadius: 12, border: 'none',
-                        background: loading || !agentCode.trim() ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C',
-                        color: loading || !agentCode.trim() ? textSecondary : '#fff',
-                        fontSize: 15, fontWeight: 700, cursor: loading || !agentCode.trim() ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.2s', letterSpacing: '0.3px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
-                      }}
+                      onClick={() => handleLookup(query)}
+                      disabled={loading || !query.trim()}
+                      style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: loading || !query.trim() ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || !query.trim() ? textSecondary : '#fff', fontSize: 14, fontWeight: 700, cursor: loading || !query.trim() ? 'not-allowed' : 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                     >
                       {loading ? (
-                        <>
-                          <svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
-                            <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                            <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                          </svg>
-                          Looking up...
-                        </>
-                      ) : (
-                        <>
-                          <ScanIcon />
-                          Look Up Participant
-                        </>
-                      )}
+                        <><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Searching...</>
+                      ) : '🔍 Look Up'}
                     </button>
                   </div>
 
-                  {/* Instructions */}
-                  <div style={{ marginTop: 24, padding: '16px 20px', background: isDarkMode ? '#0f0f0f' : '#f9fafb', borderRadius: 12, border: `1px solid ${border}` }}>
+                  <div style={{ marginTop: 20, padding: '14px 16px', background: isDarkMode ? '#0f0f0f' : '#f9fafb', borderRadius: 12, border: `1px solid ${border}` }}>
                     <p style={{ fontSize: 11, fontWeight: 700, color: textSecondary, letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 10 }}>How it works</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {[
-                        { dot: '#DC143C', text: 'Enter agent code and press Enter or click Look Up' },
-                        { dot: '#f59e0b', text: 'Verify the participant\'s identity against their photo' },
-                        { dot: '#16a34a', text: 'Confirm to record check-in or check-out' },
+                        { dot: '#DC143C', text: 'Enter agent code or surname, press Enter or click Look Up' },
+                        { dot: '#f59e0b', text: 'If multiple matches, pick the correct person from the list' },
+                        { dot: '#16a34a', text: 'Verify identity, then Confirm to record check-in or check-out' },
                       ].map(({ dot, text }, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />
@@ -478,10 +412,61 @@ export default function ScannerPage() {
                   </div>
                 </div>
 
-                <style>{`
-                  @keyframes spin    { to { transform: rotate(360deg) } }
-                  @keyframes fillBar { from { width: 0% } to { width: 100% } }
-                `}</style>
+                <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes fillBar { from { width: 0% } to { width: 100% } }`}</style>
+              </div>
+            )}
+
+            {/* ── PICK STATE ──────────────────────────── */}
+            {pageState === 'pick' && (
+              <div style={{ background: card, border: `2px solid #f59e0b`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(245,158,11,0.15)' }}>
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />
+                <div style={{ padding: '28px 32px 32px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: isDarkMode ? '#2a2005' : '#fffbeb', border: `2px solid #f59e0b`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b', flexShrink: 0 }}>
+                      <UsersIcon />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: textPrimary }}>Multiple Matches Found</div>
+                      <div style={{ fontSize: 13, color: textSecondary }}>{pickList.length} participants matched — select the correct person</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {pickList.map(item => {
+                      const pUrl = getPhotoUrl(item.photo_url)
+                      return (
+                        <button
+                          key={item.participant_id}
+                          onClick={() => handlePickParticipant(item)}
+                          disabled={loading}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: isDarkMode ? '#141414' : '#f9fafb', border: `1px solid ${border}`, borderRadius: 14, cursor: loading ? 'not-allowed' : 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#DC143C'; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1a1010' : '#fff5f5' }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = border; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#141414' : '#f9fafb' }}
+                        >
+                          <div style={{ width: 48, height: 48, borderRadius: 12, overflow: 'hidden', border: `2px solid ${border}`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#e5e7eb' }}>
+                            {pUrl ? (
+                              <img src={pUrl} alt={item.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <span style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>{item.full_name.charAt(0).toUpperCase()}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 15, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.full_name}</div>
+                            <div style={{ fontSize: 12, color: '#DC143C', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px', marginTop: 2 }}>{item.agent_code}</div>
+                            <div style={{ fontSize: 11, color: textSecondary, marginTop: 2 }}>{item.branch_name} · {item.team_name}</div>
+                          </div>
+                          <div style={{ color: textSecondary, fontSize: 18 }}>›</div>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <button onClick={resetToInput} style={{ width: '100%', marginTop: 16, padding: '12px', background: 'none', border: `1px solid ${border}`, borderRadius: 12, color: textSecondary, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    ← Search Again
+                  </button>
+                </div>
               </div>
             )}
 
@@ -491,89 +476,48 @@ export default function ScannerPage() {
                 <div style={{ height: 4, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />
                 <div style={{ padding: '28px 32px 32px' }}>
 
-                  {/* Header */}
                   <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 20, padding: '5px 14px', marginBottom: 10 }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: isDarkMode ? '#2a2005' : '#fffbeb', border: '1px solid #f59e0b', borderRadius: 20, padding: '6px 16px', marginBottom: 12 }}>
                       <ShieldIcon />
-                      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '1px', color: '#f59e0b', textTransform: 'uppercase' }}>Identity Verification</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#d97706' }}>Verify Identity</span>
                     </div>
-                    <p style={{ fontSize: 13, color: textSecondary }}>Confirm the person matches the photo before proceeding</p>
+                    <div style={{ fontSize: 14, color: textSecondary }}>
+                      Does the photo match the person in front of you?
+                    </div>
                   </div>
 
-                  {/* Photo — large and prominent */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 24 }}>
-                    <div style={{
-                      width: 160, height: 160, borderRadius: 20, overflow: 'hidden',
-                      border: `4px solid rgba(245,158,11,0.4)`,
-                      boxShadow: '0 8px 40px rgba(0,0,0,0.2)',
-                      background: isDarkMode ? '#2a2a2a' : '#f3f4f6',
-                      flexShrink: 0
-                    }}>
+                  {/* Photo + Info */}
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 24, padding: '16px 20px', background: isDarkMode ? '#141414' : '#f9fafb', borderRadius: 16, border: `1px solid ${border}` }}>
+                    <div style={{ width: 88, height: 88, borderRadius: 16, overflow: 'hidden', border: `3px solid #f59e0b`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#f3f4f6' }}>
                       {verifyPhotoUrl && !photoError ? (
-                        <img
-                          src={verifyPhotoUrl}
-                          alt={lookup.participant.full_name}
-                          onError={() => setPhotoError(true)}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
+                        <img src={verifyPhotoUrl} alt={lookup.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setPhotoError(true)} />
                       ) : (
                         <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span style={{ fontSize: 52, fontWeight: 800, color: 'rgba(255,255,255,0.9)' }}>
-                            {lookup.participant.full_name.charAt(0).toUpperCase()}
-                          </span>
+                          <span style={{ fontSize: 32, fontWeight: 800, color: '#fff' }}>{lookup.participant.full_name.charAt(0).toUpperCase()}</span>
                         </div>
                       )}
                     </div>
-
-                    {/* Action badge under photo */}
-                    <div style={{
-                      marginTop: 12,
-                      padding: '5px 14px', borderRadius: 20, fontSize: 11, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase',
-                      background: lookup.next_action === 'check_in' ? 'rgba(22,163,74,0.1)' : 'rgba(37,99,235,0.1)',
-                      color: lookup.next_action === 'check_in' ? '#16a34a' : '#2563eb',
-                      border: `1px solid ${lookup.next_action === 'check_in' ? 'rgba(22,163,74,0.25)' : 'rgba(37,99,235,0.25)'}`
-                    }}>
-                      {lookup.next_action === 'check_in' ? '→ Check In' : '→ Check Out'}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 19, fontWeight: 800, color: textPrimary, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lookup.participant.full_name}</div>
+                      <div style={{ fontFamily: 'monospace', fontSize: 13, color: '#DC143C', fontWeight: 700, letterSpacing: '2px', marginBottom: 8 }}>{lookup.participant.agent_code}</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {[lookup.participant.branch_name, lookup.participant.team_name].filter(Boolean).map((tag, i) => (
+                          <span key={i} style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 8, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', color: textSecondary }}>{tag}</span>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: lookup.next_action === 'check_in' ? '#16a34a' : '#2563eb', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                        → {lookup.next_action === 'check_in' ? 'Check In' : lookup.next_action === 'check_out' ? 'Check Out' : 'Blocked'}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Participant info */}
-                  <div style={{ background: subCard, border: `1px solid ${border}`, borderRadius: 14, padding: '18px 20px', marginBottom: 20, textAlign: 'center' }}>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: textPrimary, marginBottom: 4, letterSpacing: '-0.2px' }}>{lookup.participant.full_name}</div>
-                    <div style={{ fontFamily: 'monospace', fontSize: 14, color: '#DC143C', fontWeight: 700, letterSpacing: '2px', marginBottom: 10 }}>{lookup.participant.agent_code}</div>
-                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-                      {[lookup.participant.branch_name, lookup.participant.team_name].filter(Boolean).map((tag, i) => (
-                        <span key={i} style={{ background: isDarkMode ? '#2a2a2a' : '#f3f4f6', color: textSecondary, fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 20, border: `1px solid ${border}` }}>{tag}</span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Confirm / Deny */}
-                  <p style={{ textAlign: 'center', fontSize: 14, fontWeight: 600, color: textPrimary, marginBottom: 14 }}>
-                    Does this person match the photo above?
-                  </p>
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    <button
-                      onClick={handleDeny}
-                      disabled={loading}
-                      style={{ flex: 1, padding: '14px', borderRadius: 12, border: `2px solid ${isDarkMode ? '#4b1c1c' : '#fecaca'}`, background: isDarkMode ? '#2a1010' : '#fff5f5', color: '#dc2626', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.15s', opacity: loading ? 0.5 : 1 }}
-                    >
-                      ✕ Deny
+                  {/* Action buttons */}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button onClick={handleDeny} disabled={loading} style={{ flex: 1, padding: '14px', borderRadius: 12, border: `2px solid ${isDarkMode ? '#3a1520' : '#fecdd3'}`, background: isDarkMode ? '#1a0a0e' : '#fff5f5', color: '#DC143C', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      <XIcon /> Deny
                     </button>
-                    <button
-                      onClick={handleConfirm}
-                      disabled={loading}
-                      style={{ flex: 2, padding: '14px', borderRadius: 12, border: 'none', background: loading ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading ? textSecondary : '#fff', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', transition: 'all 0.15s', letterSpacing: '0.3px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                    >
-                      {loading ? (
-                        <>
-                          <svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
-                            <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                            <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                          </svg>
-                          Processing...
-                        </>
-                      ) : '✓ Confirm & Record'}
+                    <button onClick={handleConfirm} disabled={loading || lookup.next_action === 'blocked'} style={{ flex: 2, padding: '14px', borderRadius: 12, border: 'none', background: loading || lookup.next_action === 'blocked' ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || lookup.next_action === 'blocked' ? textSecondary : '#fff', fontSize: 14, fontWeight: 700, cursor: loading || lookup.next_action === 'blocked' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      {loading ? (<><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Processing...</>) : '✓ Confirm & Record'}
                     </button>
                   </div>
                 </div>
@@ -584,44 +528,27 @@ export default function ScannerPage() {
             {pageState === 'result' && result && (() => {
               const isIn   = result.action === 'check_in'
               const accent = isIn ? '#16a34a' : '#2563eb'
-              const softBg = isIn ? (isDarkMode ? 'rgba(22,163,74,0.08)' : 'rgba(22,163,74,0.04)') : (isDarkMode ? 'rgba(37,99,235,0.08)' : 'rgba(37,99,235,0.04)')
               const pUrl   = getPhotoUrl(result.participant.photo_url)
-
               return (
                 <div style={{ background: card, border: `2px solid ${accent}`, borderRadius: 20, overflow: 'hidden', boxShadow: `0 4px 32px ${isIn ? 'rgba(22,163,74,0.12)' : 'rgba(37,99,235,0.12)'}` }}>
                   <div style={{ height: 4, background: `linear-gradient(90deg, ${accent}, ${isIn ? '#4ade80' : '#60a5fa'})` }} />
                   <div style={{ padding: '28px 32px 32px' }}>
-
-                    {/* Result header */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
-                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0, boxShadow: `0 4px 16px ${isIn ? 'rgba(22,163,74,0.4)' : 'rgba(37,99,235,0.4)'}` }}>
+                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
                         {isIn ? <CheckIcon /> : <LogOutIcon />}
                       </div>
                       <div>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: accent, letterSpacing: '-0.3px' }}>
-                          {isIn ? 'Checked In' : 'Checked Out'}
-                        </div>
-                        <div style={{ fontSize: 12, color: textSecondary, fontFamily: 'monospace', marginTop: 2 }}>
-                          {new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        </div>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: accent }}>{isIn ? 'Checked In ✓' : 'Checked Out ✓'}</div>
+                        <div style={{ fontSize: 13, color: textSecondary }}>{result.message}</div>
                       </div>
                     </div>
-
-                    {/* Countdown bar */}
-                    <div style={{ height: 4, background: isDarkMode ? '#2a2a2a' : '#e5e7eb', borderRadius: 2, marginBottom: 20, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', background: accent, borderRadius: 2, animation: 'fillBar 3s linear forwards' }} />
-                    </div>
-
-                    {/* Participant panel */}
-                    <div style={{ background: softBg, border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`, borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-                      <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: `3px solid ${accent}`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', boxShadow: '0 2px 12px rgba(0,0,0,0.15)' }}>
+                    <div style={{ background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                      <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: `3px solid ${accent}`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#f3f4f6' }}>
                         {pUrl ? (
                           <img src={pUrl} alt={result.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
                           <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <span style={{ fontSize: 26, fontWeight: 800, color: '#fff' }}>
-                              {result.participant.full_name.charAt(0).toUpperCase()}
-                            </span>
+                            <span style={{ fontSize: 26, fontWeight: 800, color: '#fff' }}>{result.participant.full_name.charAt(0).toUpperCase()}</span>
                           </div>
                         )}
                       </div>
@@ -630,44 +557,41 @@ export default function ScannerPage() {
                         <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#DC143C', fontWeight: 700, letterSpacing: '2px', marginBottom: 8 }}>{result.participant.agent_code}</div>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {[result.participant.branch_name, result.participant.team_name].filter(Boolean).map((tag, i) => (
-                            <span key={i} style={{ background: isDarkMode ? '#2a2a2a' : '#f3f4f6', color: textSecondary, fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 20, border: `1px solid ${border}` }}>{tag}</span>
+                            <span key={i} style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 8, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', color: textSecondary }}>{tag}</span>
                           ))}
                         </div>
                       </div>
                     </div>
-
-                    <div style={{ textAlign: 'center', fontSize: 12, color: textSecondary }}>
-                      Returning to scanner in <strong style={{ color: textPrimary }}>{countdown}s</strong> ·{' '}
-                      <button onClick={resetToInput} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC143C', fontWeight: 600, fontSize: 12 }}>
-                        Scan now
-                      </button>
+                    <div style={{ width: '100%', height: 6, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', background: accent, borderRadius: 3, animation: 'fillBar 3s linear forwards' }} />
+                    </div>
+                    <div style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: textSecondary }}>
+                      Next scan in {countdown}s
                     </div>
                   </div>
                 </div>
               )
             })()}
 
-            {/* ── ERROR STATE ──────────────────────────── */}
+            {/* ── ERROR STATE ─────────────────────────── */}
             {pageState === 'error' && (
-              <div style={{ background: card, border: `2px solid #dc2626`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(220,38,38,0.12)' }}>
-                <div style={{ height: 4, background: 'linear-gradient(90deg, #dc2626, #ef4444)' }} />
-                <div style={{ padding: '28px 32px 32px', textAlign: 'center' }}>
-                  <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #dc2626, #ef4444)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', margin: '0 auto 16px', boxShadow: '0 4px 16px rgba(220,38,38,0.35)' }}>
-                    <XIcon />
+              <div style={{ background: card, border: `2px solid #DC143C`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(220,20,60,0.12)' }}>
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)' }} />
+                <div style={{ padding: '28px 32px 32px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#DC143C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+                      <XIcon />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#DC143C' }}>Access Denied</div>
+                      <div style={{ fontSize: 13, color: textSecondary, marginTop: 4 }}>{error}</div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: '#dc2626', marginBottom: 8 }}>Access Denied</div>
-                  <p style={{ fontSize: 14, color: textSecondary, lineHeight: 1.6, marginBottom: 20, maxWidth: 340, margin: '0 auto 20px' }}>{error}</p>
-
-                  {/* Countdown bar */}
-                  <div style={{ height: 4, background: isDarkMode ? '#2a2a2a' : '#e5e7eb', borderRadius: 2, marginBottom: 16, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: '#dc2626', borderRadius: 2, animation: 'fillBar 3s linear forwards' }} />
+                  <div style={{ width: '100%', height: 6, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', background: '#DC143C', borderRadius: 3, animation: 'fillBar 3s linear forwards' }} />
                   </div>
-
-                  <div style={{ fontSize: 12, color: textSecondary }}>
-                    Returning in <strong style={{ color: textPrimary }}>{countdown}s</strong> ·{' '}
-                    <button onClick={resetToInput} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC143C', fontWeight: 600, fontSize: 12 }}>
-                      Try again
-                    </button>
+                  <div style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: textSecondary }}>
+                    Next scan in {countdown}s
                   </div>
                 </div>
               </div>

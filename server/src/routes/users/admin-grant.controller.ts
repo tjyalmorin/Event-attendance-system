@@ -1,4 +1,6 @@
 import { Request, Response } from 'express'
+import asyncHandler from '../../middlewares/asyncHandler.js'
+import { AppError } from '../../errors/AppError.js'
 import {
   grantAdminAccessService,
   getUserAdminGrantsService,
@@ -6,75 +8,28 @@ import {
   revokeAdminAccessService
 } from './admin-grant.service.js'
 
-/**
- * POST /api/users/admin-grant
- * SuperAdmin grants temporary admin to staff for event
- */
-export const grantAdminAccess = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const grantedByUserId = req.user?.user_id
-    if (!grantedByUserId) {
-      res.status(401).json({ error: 'Unauthorized' })
-      return
-    }
+export const grantAdminAccess = asyncHandler(async (req: Request, res: Response) => {
+  const grantedByUserId = req.user?.user_id
+  if (!grantedByUserId) throw new AppError('Unauthorized', 401)
+  const grant = await grantAdminAccessService(grantedByUserId, req.body)
+  res.status(201).json({ message: 'Admin access granted successfully', grant })
+})
 
-    const grant = await grantAdminAccessService(grantedByUserId, req.body)
-    res.status(201).json({
-      message: 'Admin access granted successfully',
-      grant
-    })
-  } catch (err: any) {
-    res.status(400).json({ error: err.message })
-  }
-}
+export const getMyAdminGrants = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.user_id
+  if (!userId) throw new AppError('Unauthorized', 401)
+  const grants = await getUserAdminGrantsService(userId)
+  res.json(grants)
+})
 
-/**
- * GET /api/users/admin-grants/me
- * Get all active admin grants for current user
- */
-export const getMyAdminGrants = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const userId = req.user?.user_id
-    if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' })
-      return
-    }
+export const getEventAdminGrants = asyncHandler(async (req: Request, res: Response) => {
+  const grants = await getEventAdminGrantsService(Number(req.params.event_id))
+  res.json(grants)
+})
 
-    const grants = await getUserAdminGrantsService(userId)
-    res.json(grants)
-  } catch (err: any) {
-    res.status(500).json({ error: err.message })
-  }
-}
-
-/**
- * GET /api/events/:event_id/admin-grants
- * Get all admin grants for event (SuperAdmin only)
- */
-export const getEventAdminGrants = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const grants = await getEventAdminGrantsService(Number(req.params.event_id))
-    res.json(grants)
-  } catch (err: any) {
-    res.status(500).json({ error: err.message })
-  }
-}
-
-/**
- * DELETE /api/users/admin-grant/:grant_id
- * SuperAdmin revokes admin access
- */
-export const revokeAdminAccess = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const revokedByUserId = req.user?.user_id
-    if (!revokedByUserId) {
-      res.status(401).json({ error: 'Unauthorized' })
-      return
-    }
-
-    await revokeAdminAccessService(Number(req.params.grant_id), revokedByUserId)
-    res.json({ message: 'Admin access revoked successfully' })
-  } catch (err: any) {
-    res.status(400).json({ error: err.message })
-  }
-}
+export const revokeAdminAccess = asyncHandler(async (req: Request, res: Response) => {
+  const revokedByUserId = req.user?.user_id
+  if (!revokedByUserId) throw new AppError('Unauthorized', 401)
+  await revokeAdminAccessService(Number(req.params.grant_id), revokedByUserId)
+  res.json({ message: 'Admin access revoked successfully' })
+})

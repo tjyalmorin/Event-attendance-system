@@ -121,6 +121,7 @@ export interface ScanResponse {
     agent_code: string
     branch_name: string
     team_name: string
+    photo_url?: string   // ← add this
   }
   session: AttendanceSession
 }

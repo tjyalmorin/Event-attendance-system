@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getEventByIdApi } from '../../api/events.api'
-import { getParticipantsByEventApi, cancelParticipantApi } from '../../api/participants.api'
+import { getParticipantsByEventApi, cancelParticipantApi, setAwardeeApi } from '../../api/participants.api'
 import { getSessionsByEventApi, getScanLogsByEventApi } from '../../api/scan.api'
 import { getOverrideLogsByEventApi, fixCheckinApi, forceCheckoutApi, earlyOutApi } from '../../api/override.api'
 import { Event, Participant, AttendanceSession, ScanLog, OverrideLog } from '../../types'
 import Sidebar from '../../components/Sidebar'
 
-type TabType = 'participants' | 'attendance' | 'scanlogs' | 'overrides' | 'reports'
+type TabType = 'participants' | 'attendance' | 'scanlogs' | 'overrides' | 'reports' | 'awardees'
 type ModalType = 'fix_checkin' | 'force_checkout' | 'early_out' | null
 
 interface OverrideModal {
@@ -106,6 +106,10 @@ export default function EventDetail() {
   const [overrideForm, setOverrideForm] = useState({ adjusted_time: '', early_out_cutoff: '', reason: '' })
   const [overrideLoading, setOverrideLoading] = useState(false)
   const [overrideError, setOverrideError] = useState('')
+  // Awardee
+  const [awardeeModal, setAwardeeModal] = useState<{ open: boolean; participant: any | null }>({ open: false, participant: null })
+  const [awardeeDesc, setAwardeeDesc] = useState('')
+  const [awardeeLoading, setAwardeeLoading] = useState(false)
 
   const fetchData = useCallback(async () => {
     const id = Number(eventId)
@@ -130,11 +134,44 @@ export default function EventDetail() {
     }
   }, [eventId])
 
+  // ✅ FIX 1: Initial load
   useEffect(() => { fetchData() }, [fetchData])
+
+  // ✅ FIX 2: Auto-refresh — keeps 30s but pauses when tab is hidden
   useEffect(() => {
-    const interval = setInterval(fetchData, 30000)
-    return () => clearInterval(interval)
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchData()   // skip when tab is not visible
+    }, 30000)
+
+    // Refresh immediately when user switches back to this tab
+    const handleVisibilityChange = () => {
+      if (!document.hidden) fetchData()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [fetchData])
+
+  const handleSetAwardee = async (is_awardee: boolean) => {
+     if (!awardeeModal.participant) return
+     setAwardeeLoading(true)
+     try {
+       await setAwardeeApi(awardeeModal.participant.participant_id, {
+         is_awardee,
+         awardee_description: is_awardee ? awardeeDesc : null
+       })
+       await fetchData()
+       setAwardeeModal({ open: false, participant: null })
+       setAwardeeDesc('')
+     } catch (err: any) {
+       alert(err.response?.data?.error || 'Failed to update awardee status')
+     } finally {
+       setAwardeeLoading(false)
+     }
+   }
 
   const handleCancel = async (participant_id: number) => {
     if (!confirm('Cancel this participant?')) return
@@ -162,8 +199,9 @@ export default function EventDetail() {
     setOverrideLoading(true)
     setOverrideError('')
     try {
+      // ✅ FIX 3: was attendance_session_id — backend expects session_id
       const base = {
-        attendance_session_id: modal.session.session_id,
+        session_id: modal.session.session_id,
         participant_id: modal.session.participant_id,
         event_id: Number(eventId),
         adjusted_time: overrideForm.adjusted_time,
@@ -221,7 +259,7 @@ export default function EventDetail() {
   const checkedInCount = sessions.filter(s => s.check_in_time && !s.check_out_time).length
   const completedCount = sessions.filter(s => s.check_in_time && s.check_out_time).length
   const earlyOutCount = sessions.filter(s => s.check_out_method === 'early_out').length
-  const deniedCount = scanLogs.filter(s => s.scan_type === 'denied').length
+  const _deniedCount = scanLogs.filter(s => s.scan_type === 'denied').length
   const noShowCount = confirmedCount - sessions.length
 
   // Recent check-ins (last 6, sorted by check_in_time desc)
@@ -271,13 +309,16 @@ export default function EventDetail() {
     </div>
   )
 
-  const tabs: { key: TabType; label: string }[] = [
-    { key: 'participants', label: `Participants (${confirmedCount})` },
-    { key: 'attendance', label: `Attendance (${sessions.length})` },
-    { key: 'scanlogs', label: `Scan Logs (${scanLogs.length})` },
-    ...(isAdmin ? [{ key: 'overrides' as TabType, label: `Overrides (${overrideLogs.length})` }] : []),
-    { key: 'reports', label: 'Reports' },
-  ]
+   const awardeeCount = participants.filter(p => p.is_awardee).length
+
+   const tabs: { key: TabType; label: string }[] = [
+     { key: 'participants', label: `Participants (${confirmedCount})` },
+     { key: 'attendance', label: `Attendance (${sessions.length})` },
+     { key: 'scanlogs', label: `Scan Logs (${scanLogs.length})` },
+     ...(isAdmin ? [{ key: 'overrides' as TabType, label: `Overrides (${overrideLogs.length})` }] : []),
+     { key: 'awardees', label: `🏆 Awardees (${awardeeCount})` },
+     { key: 'reports', label: 'Reports' },
+   ]
 
   return (
     <div className="min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f] flex">
@@ -528,9 +569,17 @@ export default function EventDetail() {
                         </span>
                       </td>
                       <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">{new Date(p.registered_at).toLocaleString('en-PH')}</td>
-                      <td className="px-5 py-3.5">
-                        <button onClick={() => handleCancel(p.participant_id)} className="text-xs font-semibold text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50 transition-colors">Cancel</button>
-                      </td>
+                      <td className="px-5 py-3.5 flex gap-2">
+     {(isAdmin || user.role === 'staff') && (
+       <button
+         onClick={() => { setAwardeeModal({ open: true, participant: p }); setAwardeeDesc(p.awardee_description || '') }}
+         className={`text-xs font-semibold px-3 py-1 rounded-lg border transition-colors ${p.is_awardee ? 'bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                         >
+                        {p.is_awardee ? '🏆 Awardee' : '☆ Award'}
+                      </button>
+                       )}
+                      <button onClick={() => handleCancel(p.participant_id)} className="text-xs font-semibold text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50 transition-colors">Cancel</button>
+                     </td>
                     </tr>
                   ))}
                 </tbody>
@@ -662,6 +711,36 @@ export default function EventDetail() {
                 </tbody>
               </table>
             )}
+
+            {/* ── AWARDEES ── */}
+               {activeTab === 'awardees' && (
+     <table className="w-full text-sm">
+       <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
+         <tr>
+           {['Agent Code', 'Full Name', 'Branch', 'Team', 'Description', 'Actions'].map(h => (
+             <th key={h} className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+           ))}
+         </tr>
+       </thead>
+       <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
+         {participants.filter(p => p.is_awardee).length === 0 ? (
+           <tr><td colSpan={6} className="text-center py-16 text-gray-400 dark:text-gray-500">No awardees yet. Mark participants from the Participants tab.</td></tr>
+         ) : participants.filter(p => p.is_awardee).map(p => (
+           <tr key={p.participant_id} className="hover:bg-yellow-50/30 dark:hover:bg-yellow-900/10 transition-colors">
+             <td className="px-5 py-3.5"><span className="font-bold text-[#DC143C] text-xs tracking-wide font-mono">{p.agent_code}</span></td>
+             <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{p.full_name} <span className="ml-1">🏆</span></td>
+             <td className="px-5 py-3.5"><span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span></td>
+             <td className="px-5 py-3.5"><span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-yellow-50 text-yellow-700 text-xs font-bold">{p.team_name}</span></td>
+             <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs max-w-[220px] truncate">{p.awardee_description || '—'}</td>
+             <td className="px-5 py-3.5 flex gap-2">
+               <button onClick={() => { setAwardeeModal({ open: true, participant: p }); setAwardeeDesc(p.awardee_description || '') }} className="text-xs font-semibold text-yellow-600 border border-yellow-200 px-3 py-1 rounded-lg hover:bg-yellow-50 transition-colors">Edit</button>
+               <button onClick={() => handleSetAwardee(false)} className="text-xs font-semibold text-gray-400 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50 transition-colors">Remove</button>
+             </td>
+           </tr>
+         ))}
+       </tbody>
+     </table>
+   )}
 
             {/* ── REPORTS ── */}
             {activeTab === 'reports' && (
@@ -813,6 +892,41 @@ export default function EventDetail() {
                   {overrideLoading ? 'Saving…' : 'Confirm Override'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Awardee Modal */}
+      {awardeeModal.open && awardeeModal.participant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-8">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
+              {awardeeModal.participant.is_awardee ? 'Edit Award' : 'Mark as Awardee'}
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              {awardeeModal.participant.full_name} · {awardeeModal.participant.agent_code}
+            </p>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Award Description (optional)</label>
+            <input
+              type="text"
+              value={awardeeDesc}
+              onChange={e => setAwardeeDesc(e.target.value)}
+              placeholder="e.g. Top Producer 2025, Million Dollar Club..."
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C] mb-6"
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setAwardeeModal({ open: false, participant: null }); setAwardeeDesc('') }} className="flex-1 px-4 py-3 border-2 border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#333333] transition-all">
+                Cancel
+              </button>
+              {awardeeModal.participant.is_awardee && (
+                <button onClick={() => { setAwardeeModal(m => ({ ...m, participant: { ...m.participant, is_awardee: false } })); handleSetAwardee(false) }} disabled={awardeeLoading} className="flex-1 px-4 py-3 bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-200 dark:hover:bg-[#333333] transition-all disabled:opacity-50">
+                  Remove Award
+                </button>
+              )}
+              <button onClick={() => handleSetAwardee(true)} disabled={awardeeLoading} className="flex-1 px-4 py-3 bg-[#DC143C] text-white rounded-xl font-semibold hover:bg-[#b01030] transition-all shadow-lg disabled:opacity-50">
+                {awardeeLoading ? 'Saving...' : '🏆 Confirm'}
+              </button>
             </div>
           </div>
         </div>
