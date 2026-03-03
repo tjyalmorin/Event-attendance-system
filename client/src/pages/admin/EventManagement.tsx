@@ -104,6 +104,13 @@ const SearchIcon = () => (
 
 // ── Shared DatePicker styles ──
 const PICKER_STYLES = `
+  .overflow-y-auto::-webkit-scrollbar { width: 6px; }
+  .overflow-y-auto::-webkit-scrollbar-track { background: transparent; }
+  .dark .overflow-y-auto::-webkit-scrollbar-track { background: #1c1c1c; }
+  .overflow-y-auto::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
+  .dark .overflow-y-auto::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 999px; }
+  .overflow-y-auto::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+  .dark .overflow-y-auto::-webkit-scrollbar-thumb:hover { background: #DC143C; }
   .react-datepicker {
     font-family: inherit;
     border: 1px solid #e5e7eb;
@@ -466,6 +473,11 @@ interface EditModalProps {
 }
 
 const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   const safeDate = (val: string | null | undefined): Date | null => {
     if (!val) return null;
     const d = new Date(val);
@@ -616,17 +628,16 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
     )}
 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-2xl mx-4 flex flex-col max-h-[90vh]">
-        <div className="h-1.5 w-full bg-gradient-to-r from-[#DC143C] to-[#ff4d6d] rounded-t-3xl flex-shrink-0" />
+      <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-2xl mx-4 flex flex-col max-h-[90vh] overflow-hidden">
+        <div className="h-1.5 w-full bg-gradient-to-r from-[#DC143C] to-[#ff4d6d] flex-shrink-0" />
+        <div className="flex items-center justify-between px-8 pt-6 pb-4 flex-shrink-0">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Event</h2>
+          <button onClick={handleClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#333333] rounded-xl transition-colors">
+            <XIcon />
+          </button>
+        </div>
         <div className="overflow-y-auto flex-1">
-          <div className="flex items-center justify-between px-8 pt-8 pb-4">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Event</h2>
-            <button onClick={handleClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#333333] rounded-xl transition-colors">
-              <XIcon />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="px-8 pb-8 space-y-5">
+          <form id="edit-event-form" onSubmit={handleSubmit} className="px-8 pb-8 space-y-5">
             {/* Event Name */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -711,6 +722,16 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
               </div>
             </div>
 
+            {/* Date + Time summary */}
+            {eventDate && startTime && endTime && (
+              <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#262626] border border-gray-200 dark:border-[#333333] px-4 py-3 rounded-xl">
+                <div className="w-0.5 h-4 bg-[#DC143C] rounded-full flex-shrink-0" />
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  {`This event will take place on ${eventDate.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })} from ${startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} to ${endTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}
+                </p>
+              </div>
+            )}
+
             {/* Venue */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -779,17 +800,10 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
               </div>
 
               {registrationStart && registrationEnd && (
-                <div className="flex items-center gap-3 bg-red-50 dark:bg-[#DC143C]/5 border border-red-100 dark:border-[#DC143C]/20 px-4 py-3 rounded-xl mt-3">
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#262626] border border-gray-200 dark:border-[#333333] px-4 py-3 rounded-xl mt-3">
                   <div className="w-0.5 h-4 bg-[#DC143C] rounded-full flex-shrink-0" />
                   <p className="text-sm text-gray-600 dark:text-gray-300">
-                    Registration open from{' '}
-                    <span className="font-semibold text-[#DC143C]">
-                      {registrationStart.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at {registrationStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                    </span>
-                    {' '}until{' '}
-                    <span className="font-semibold text-[#DC143C]">
-                      {registrationEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at {registrationEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                    </span>
+                    {`Registration open from ${registrationStart.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at ${registrationStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} until ${registrationEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at ${registrationEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}
                   </p>
                 </div>
               )}
@@ -806,19 +820,21 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl text-sm">{error}</div>
             )}
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button type="button" onClick={handleClose}
-                className="px-6 py-3 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#333333] transition-all">
-                Cancel
-              </button>
-              <button type="submit" disabled={loading}
-                className="px-6 py-3 bg-[#DC143C] text-white rounded-xl font-semibold hover:bg-[#b01030] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                {loading ? (
-                  <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Saving...</>
-                ) : 'Save Changes'}
-              </button>
-            </div>
           </form>
+        </div>
+
+        {/* Sticky footer */}
+        <div className="flex items-center justify-end gap-3 px-8 py-5 border-t border-gray-100 dark:border-[#2a2a2a] flex-shrink-0">
+          <button type="button" onClick={handleClose}
+            className="px-6 py-3 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#333333] transition-all">
+            Cancel
+          </button>
+          <button type="submit" form="edit-event-form" disabled={loading}
+            className="px-6 py-3 bg-[#DC143C] text-white rounded-xl font-semibold hover:bg-[#b01030] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+            {loading ? (
+              <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Saving...</>
+            ) : 'Save Changes'}
+          </button>
         </div>
       </div>
     </div>

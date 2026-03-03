@@ -49,18 +49,6 @@ const TimeInput = React.forwardRef<HTMLButtonElement, { value?: string; onClick?
   )
 );
 
-const DateTimeInput = React.forwardRef<HTMLButtonElement, { value?: string; onClick?: () => void; placeholder?: string }>(
-  ({ value, onClick, placeholder }, ref) => (
-    <button type="button" onClick={onClick} ref={ref}
-      className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-left focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all flex items-center justify-between gap-2">
-      <span className={value ? 'text-gray-900 dark:text-white text-sm' : 'text-gray-400 dark:text-gray-600 text-sm'}>
-        {value || placeholder}
-      </span>
-      <CalendarIcon />
-    </button>
-  )
-);
-
 const CreateEvent: React.FC = () => {
   const navigate = useNavigate();
 
@@ -80,6 +68,28 @@ const CreateEvent: React.FC = () => {
   const [showDescription, setShowDescription] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ title?: string; eventDate?: string; venue?: string }>({});
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  // ── Dirty check — any field has content ──
+  const isDirty = () =>
+    formData.title.trim() !== '' ||
+    formData.description.trim() !== '' ||
+    formData.venue.trim() !== '' ||
+    eventDate !== null ||
+    startTime !== null ||
+    endTime !== null ||
+    checkinCutoff !== null ||
+    registrationStart !== null ||
+    registrationEnd !== null;
+
+  const handleBack = () => {
+    if (isDirty()) {
+      setShowDiscardConfirm(true);
+    } else {
+      navigate('/admin/events');
+    }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -87,6 +97,9 @@ const CreateEvent: React.FC = () => {
     if (name === 'description' && value.length > 500) return;
     if (name === 'venue' && value.length > 200) return;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (fieldErrors[name as keyof typeof fieldErrors]) {
+      setFieldErrors(prev => ({ ...prev, [name]: undefined }));
+    }
   };
 
   const formatTime = (date: Date | null): string => {
@@ -99,39 +112,35 @@ const CreateEvent: React.FC = () => {
     return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   };
 
-  const formatDateForDisplay = () => {
-    if (!eventDate || !startTime || !endTime) return '';
-    const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-    return `This event will take place on ${monthNames[eventDate.getMonth()]} ${eventDate.getDate()}, ${eventDate.getFullYear()} from ${formatTimeDisplay(startTime)} to ${formatTimeDisplay(endTime)}`;
+  const validate = () => {
+    const errors: { title?: string; eventDate?: string; venue?: string } = {};
+    if (!formData.title.trim()) errors.title = 'Event name is required.';
+    if (!eventDate) errors.eventDate = 'Event date is required.';
+    if (!formData.venue.trim()) errors.venue = 'Venue is required.';
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!eventDate || !startTime || !endTime) {
-      setError('Please fill in date and time fields.');
-      return;
-    }
-    if (!registrationStart || !registrationEnd) {
-      setError('Please set the registration window.');
-      return;
-    }
-    if (registrationEnd <= registrationStart) {
+    setError('');
+    if (!validate()) return;
+    if (registrationStart && registrationEnd && registrationEnd <= registrationStart) {
       setError('Registration end must be after registration start.');
       return;
     }
-    setError('');
     setLoading(true);
     try {
       await api.post('/events', {
         title: formData.title,
         description: formData.description || null,
         event_date: eventDate ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}` : '',
-        start_time: formatTime(startTime),
-        end_time: formatTime(endTime),
+        start_time: formatTime(startTime) || null,
+        end_time: formatTime(endTime) || null,
         venue: formData.venue,
         checkin_cutoff: checkinCutoff ? formatTime(checkinCutoff) : null,
-        registration_start: registrationStart.toISOString(),
-        registration_end: registrationEnd.toISOString(),
+        registration_start: registrationStart ? registrationStart.toISOString() : null,
+        registration_end: registrationEnd ? registrationEnd.toISOString() : null,
       });
       navigate('/admin/events', { state: { created: true } });
     } catch (err: any) {
@@ -150,6 +159,7 @@ const CreateEvent: React.FC = () => {
     setRegistrationStart(null);
     setRegistrationEnd(null);
     setShowDescription(false);
+    setFieldErrors({});
     setError('');
   };
 
@@ -204,13 +214,48 @@ const CreateEvent: React.FC = () => {
         .dark .react-datepicker__time-container .react-datepicker__time { background: #1c1c1c !important; }
         .dark .react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box { background: #1c1c1c !important; }
       `}</style>
+
+      {/* Discard Confirmation Modal */}
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-sm mx-4 p-6">
+            <div className="flex flex-col items-center text-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center text-yellow-500">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Discard changes?</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Your progress will be lost if you go back now.</p>
+              </div>
+              <div className="flex gap-3 w-full mt-1">
+                <button
+                  onClick={() => setShowDiscardConfirm(false)}
+                  className="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl text-sm font-semibold hover:bg-gray-50 dark:hover:bg-[#333] transition-all"
+                >
+                  Keep Editing
+                </button>
+                <button
+                  onClick={() => navigate('/admin/events')}
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 transition-all"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Sidebar userRole="admin" />
 
       <div className="flex-1 overflow-auto">
         {/* Header */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
           <div className="px-12 h-[76px] flex items-center gap-4">
-            <button onClick={() => navigate('/admin/events')}
+            <button onClick={handleBack}
               className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors mr-2">
               <ArrowLeftIcon />
               <span className="font-medium">Back</span>
@@ -232,11 +277,27 @@ const CreateEvent: React.FC = () => {
 
               {/* Event Name */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Event Name</label>
-                <input type="text" name="title" value={formData.title} onChange={handleChange}
-                  placeholder="e.g., Chasing Dreams - Financial Advisors Summit" required
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all"
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Event Name <span className="text-[#DC143C]">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="title"
+                  value={formData.title}
+                  onChange={handleChange}
+                  placeholder="e.g., Chasing Dreams - Financial Advisors Summit"
+                  className={`w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:ring-2 transition-all ${
+                    fieldErrors.title
+                      ? 'border-red-400 focus:border-red-400 focus:ring-red-400/20'
+                      : 'border-gray-200 dark:border-[#2a2a2a] focus:border-[#DC143C] focus:ring-[#DC143C]/20'
+                  }`}
                 />
+                {fieldErrors.title && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    {fieldErrors.title}
+                  </p>
+                )}
                 <div className="flex items-center justify-between mt-2">
                   <p className="text-xs text-gray-500 dark:text-gray-500">{formData.title.length}/100 characters</p>
                   {!showDescription && (
@@ -269,9 +330,23 @@ const CreateEvent: React.FC = () => {
               {/* Date & Time */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Date</label>
-                  <DatePicker selected={eventDate} onChange={(date: Date | null) => setEventDate(date)}
-                    dateFormat="MM/dd/yyyy" placeholderText="Pick a date" customInput={<DateInput />} popperPlacement="bottom-start" />
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Date <span className="text-[#DC143C]">*</span>
+                  </label>
+                  <DatePicker
+                    selected={eventDate}
+                    onChange={(date: Date | null) => { setEventDate(date); if (fieldErrors.eventDate) setFieldErrors(p => ({ ...p, eventDate: undefined })); }}
+                    dateFormat="MM/dd/yyyy"
+                    placeholderText="Pick a date"
+                    customInput={<DateInput />}
+                    popperPlacement="bottom-start"
+                  />
+                  {fieldErrors.eventDate && (
+                    <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      {fieldErrors.eventDate}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Time (Start)</label>
@@ -287,72 +362,80 @@ const CreateEvent: React.FC = () => {
                 </div>
               </div>
 
-              {/* Date Summary */}
-              {formatDateForDisplay() && (
+              {/* Date + Time summary */}
+              {eventDate && startTime && endTime && (
                 <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#262626] border border-gray-200 dark:border-[#333333] px-4 py-3 rounded-xl">
                   <div className="w-0.5 h-4 bg-[#DC143C] rounded-full flex-shrink-0" />
-                  <p className="text-sm text-gray-600 dark:text-gray-300">{formatDateForDisplay()}</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    {`This event will take place on ${eventDate.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })} from ${formatTimeDisplay(startTime)} to ${formatTimeDisplay(endTime)}`}
+                  </p>
                 </div>
               )}
 
               {/* Venue */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Venue</label>
-                <input type="text" name="venue" value={formData.venue} onChange={handleChange}
-                  placeholder="e.g., Makati City, Ayala North Tower 1" required
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all"
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  Venue <span className="text-[#DC143C]">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="venue"
+                  value={formData.venue}
+                  onChange={handleChange}
+                  placeholder="e.g., Makati City, Ayala North Tower 1"
+                  className={`w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:ring-2 transition-all ${
+                    fieldErrors.venue
+                      ? 'border-red-400 focus:border-red-400 focus:ring-red-400/20'
+                      : 'border-gray-200 dark:border-[#2a2a2a] focus:border-[#DC143C] focus:ring-[#DC143C]/20'
+                  }`}
                 />
+                {fieldErrors.venue && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    {fieldErrors.venue}
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{formData.venue.length}/200 characters</p>
               </div>
 
-              {/* Checkin Cutoff */}
+              {/* Check-in Cutoff */}
               <div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Check-in Cutoff (Optional)</label>
-                  <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}
-                    showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Cutoff" dateFormat="h:mm aa"
-                    placeholderText="Pick cutoff time" customInput={<TimeInput />} popperPlacement="bottom-start" />
-                </div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Check-in Cutoff (Optional)</label>
+                <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}
+                  showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Cutoff" dateFormat="h:mm aa"
+                  placeholderText="Pick cutoff time" customInput={<TimeInput />} popperPlacement="bottom-start" />
               </div>
 
-              {/* ── Registration Window ── */}
+              {/* Registration Window */}
               <div>
                 <div className="flex items-center gap-3 mb-4">
                   <div className="h-px flex-1 bg-gray-200 dark:bg-[#2a2a2a]" />
                   <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex-shrink-0">Registration Window</span>
                   <div className="h-px flex-1 bg-gray-200 dark:bg-[#2a2a2a]" />
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Set when participants can register for this event.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Set when participants can register for this event. (Optional)</p>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      Registration Opens <span className="text-[#DC143C]">*</span>
-                    </label>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Registration Opens</label>
                     <DatePicker
                       selected={registrationStart}
                       onChange={(date: Date | null) => setRegistrationStart(date)}
-                      showTimeSelect
-                      timeIntervals={15}
-                      timeCaption="Time"
+                      showTimeSelect timeIntervals={15} timeCaption="Time"
                       dateFormat="MMM d, yyyy h:mm aa"
                       placeholderText="Pick start date & time"
-                      customInput={<DateTimeInput />}
+                      customInput={<DateInput />}
                       popperPlacement="bottom-start"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      Registration Closes <span className="text-[#DC143C]">*</span>
-                    </label>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Registration Closes</label>
                     <DatePicker
                       selected={registrationEnd}
                       onChange={(date: Date | null) => setRegistrationEnd(date)}
-                      showTimeSelect
-                      timeIntervals={15}
-                      timeCaption="Time"
+                      showTimeSelect timeIntervals={15} timeCaption="Time"
                       dateFormat="MMM d, yyyy h:mm aa"
                       placeholderText="Pick end date & time"
-                      customInput={<DateTimeInput />}
+                      customInput={<DateInput />}
                       popperPlacement="bottom-start"
                       minDate={registrationStart || undefined}
                     />
@@ -361,19 +444,19 @@ const CreateEvent: React.FC = () => {
 
                 {/* Registration window summary */}
                 {registrationStart && registrationEnd && (
-                  <div className="flex items-center gap-3 bg-red-50 dark:bg-[#DC143C]/5 border border-red-100 dark:border-[#DC143C]/20 px-4 py-3 rounded-xl mt-3">
+                  <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#262626] border border-gray-200 dark:border-[#333333] px-4 py-3 rounded-xl mt-3">
                     <div className="w-0.5 h-4 bg-[#DC143C] rounded-full flex-shrink-0" />
                     <p className="text-sm text-gray-600 dark:text-gray-300">
-                      Registration open from{' '}
-                      <span className="font-semibold text-[#DC143C]">
-                        {registrationStart.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at {registrationStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                      </span>
-                      {' '}until{' '}
-                      <span className="font-semibold text-[#DC143C]">
-                        {registrationEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at {registrationEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                      </span>
+                      {`Registration open from ${registrationStart.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at ${registrationStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} until ${registrationEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at ${registrationEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}
                     </p>
                   </div>
+                )}
+
+                {registrationStart && registrationEnd && registrationEnd <= registrationStart && (
+                  <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    Registration end must be after registration start.
+                  </p>
                 )}
               </div>
 
