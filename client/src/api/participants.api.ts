@@ -17,7 +17,7 @@ export const cancelParticipantApi = async (participant_id: number): Promise<void
 
 export const setAwardeeApi = async (
   participant_id: number,
-  payload: { is_awardee: boolean; awardee_description?: string | null }
+  payload: { label: boolean; label_description?: string | null }
 ) => {
   const res = await api.patch(`/participants/${participant_id}/awardee`, payload)
   return res.data

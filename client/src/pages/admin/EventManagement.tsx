@@ -6,7 +6,7 @@ import api from '../../api/axios';
 import { getTrashedEventsApi, restoreEventApi, permanentDeleteEventApi } from '../../api/events.api';
 import { Event } from '../../types';
 import Sidebar from '../../components/Sidebar';
-import TrashBinPanel from './TrashBinPanel';
+import TrashBinPanel from './Trashbinpanel';
 
 // ── SVG Icons ──
 const PlusIcon = () => (
@@ -530,9 +530,7 @@ const EditModal: React.FC<EditModalProps> = ({ event, onClose, onSuccess }) => {
     const currentEventDate = eventDate
       ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}`
       : '';
-    // Compare times at HH:MM precision only (DB may store HH:MM:SS)
     const toHHMM = (t: string) => t ? t.slice(0, 5) : '';
-    // Compare registration datetimes rounded to the minute to avoid ms drift
     const toMinute = (d: Date | null) => d ? Math.floor(d.getTime() / 60000).toString() : '';
     const origRegStart = orig.registrationStart ? Math.floor(new Date(orig.registrationStart).getTime() / 60000).toString() : '';
     const origRegEnd = orig.registrationEnd ? Math.floor(new Date(orig.registrationEnd).getTime() / 60000).toString() : '';
@@ -1050,8 +1048,8 @@ const EventManagement: React.FC = () => {
     }
   };
 
-  const handlePermanentDelete = async (event_id: number, title: string) => {
-    if (!confirm(`Permanently delete "${title}"? This cannot be undone.`)) return;
+  // ── confirm() removed — TrashBinPanel handles its own confirmation modal ──
+  const handlePermanentDelete = async (event_id: number, _title: string) => {
     setPermDeletingId(event_id);
     try {
       await permanentDeleteEventApi(event_id);
@@ -1192,14 +1190,9 @@ const EventManagement: React.FC = () => {
                   <button
                     onClick={() => { setView('trash'); fetchTrashedEvents(); }}
                     title="Trash"
-                    className="relative w-10 h-10 flex items-center justify-center rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-500 dark:text-gray-400 hover:border-red-300 hover:text-red-500 dark:hover:border-red-800 dark:hover:text-red-400 transition-all"
+                    className="w-10 h-10 flex items-center justify-center rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-500 dark:text-gray-400 hover:border-red-300 hover:text-red-500 dark:hover:border-red-800 dark:hover:text-red-400 transition-all"
                   >
                     <TrashIcon />
-                    {trashedEvents.length > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 inline-flex items-center justify-center w-4 h-4 text-[9px] font-bold rounded-full bg-red-500 text-white">
-                        {trashedEvents.length}
-                      </span>
-                    )}
                   </button>
                   <button onClick={() => navigate('/admin/events/create')}
                     className="flex items-center gap-2 bg-[#DC143C] text-white px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b01030] transition-all hover:shadow-lg">
