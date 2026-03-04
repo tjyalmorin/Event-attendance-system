@@ -12,6 +12,7 @@ import EventManagement from './pages/admin/EventManagement'
 import CreateEvent from './pages/admin/CreateEvent'
 import EventDetail from './pages/admin/EventDetail'
 import ScannerPage from './pages/admin/ScannerPage'
+import TrashBin from './pages/admin/TrashBin'
 
 // Forgot Password pages
 import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
@@ -48,6 +49,7 @@ function App() {
 
             {/* Protected Admin Routes */}
             <Route path="/admin/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
+            <Route path="/admin/events/trash" element={<PrivateRoute><TrashBin /></PrivateRoute>} />
             <Route path="/admin/events/create" element={<PrivateRoute><CreateEvent /></PrivateRoute>} />
             <Route path="/admin/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
             <Route path="/admin/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
@@ -57,7 +59,7 @@ function App() {
             <Route path="/admin/settings/accounts" element={<PrivateRoute><AccountSettingsPage /></PrivateRoute>} />
             <Route path="/admin/settings" element={<Navigate to="/admin/settings/profile" />} />
 
-            {/* ✅ Staff Routes — FIXED: added missing EventDetail and ScannerPage routes */}
+            {/* Staff Routes */}
             <Route path="/staff/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
             <Route path="/staff/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
             <Route path="/staff/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
