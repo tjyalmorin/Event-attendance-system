@@ -15,7 +15,9 @@ export const resolveSchema = z.object({
 
 export const scanSchema = z.object({
   agent_code: z.string().min(1, 'Agent code is required').max(50),
-  event_id: z.number({ error: 'event_id is required' }).int().positive()
+  event_id: z.number({ error: 'event_id is required' }).int().positive(),
+  is_early_out: z.boolean().optional().default(false),
+  early_out_reason: z.string().max(500).optional().nullable()
 })
 
 export const logDenialSchema = z.object({

@@ -4,7 +4,6 @@ import usersRoutes from './users/users.routes'
 import eventsRoutes from './events/events.routes'
 import participantsRoutes from './participants/participants.routes'
 import scanRoutes from './scan/scan.routes'
-import overrideRoutes from './override/override.routes'
 
 const router = Router()
 
@@ -13,6 +12,5 @@ router.use('/users', usersRoutes)
 router.use('/events', eventsRoutes)
 router.use('/participants', participantsRoutes)
 router.use('/attendance', scanRoutes)
-router.use('/override', overrideRoutes)
 
 export default router
