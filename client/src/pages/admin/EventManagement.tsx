@@ -6,6 +6,32 @@ import api from '../../api/axios';
 import { Event } from '../../types';
 import Sidebar from '../../components/Sidebar';
 
+// ── Event type image presets ──
+// Import your preset images from assets. Add/rename as needed.
+// e.g. import seminarImg from '../../assets/events/seminar.jpg'
+// For now we use themed gradient backgrounds + emoji as fallback.
+
+const EVENT_TYPE_KEYWORDS: { keywords: string[]; color: string; emoji: string; label: string }[] = [
+  { keywords: ['seminar', 'training', 'workshop', 'webinar', 'session'], color: 'from-blue-500 to-blue-700', emoji: '📚', label: 'Seminar' },
+  { keywords: ['awarding', 'awards', 'recognition', 'ceremony', 'gala'], color: 'from-yellow-400 to-amber-600', emoji: '🏆', label: 'Awarding' },
+  { keywords: ['convention', 'conference', 'summit', 'forum', 'congress'], color: 'from-purple-500 to-purple-800', emoji: '🎤', label: 'Convention' },
+  { keywords: ['outing', 'trip', 'team building', 'teambuilding', 'picnic'], color: 'from-green-500 to-emerald-700', emoji: '🌿', label: 'Outing' },
+  { keywords: ['meeting', 'huddle', 'sync', 'assembly', 'briefing'], color: 'from-gray-500 to-gray-700', emoji: '📋', label: 'Meeting' },
+  { keywords: ['launch', 'kickoff', 'kick-off', 'grand'], color: 'from-[#DC143C] to-red-800', emoji: '🚀', label: 'Launch' },
+  { keywords: ['party', 'celebration', 'anniversary', 'birthday', 'fiesta'], color: 'from-pink-500 to-rose-700', emoji: '🎉', label: 'Celebration' },
+  { keywords: ['incentive', 'trip', 'travel', 'tour'], color: 'from-teal-500 to-cyan-700', emoji: '✈️', label: 'Incentive Trip' },
+];
+
+const DEFAULT_EVENT_CARD = { color: 'from-[#DC143C] to-red-900', emoji: '📅', label: 'Event' };
+
+function getEventCardStyle(title: string): { color: string; emoji: string; label: string } {
+  const lower = title.toLowerCase();
+  for (const type of EVENT_TYPE_KEYWORDS) {
+    if (type.keywords.some(k => lower.includes(k))) return type;
+  }
+  return DEFAULT_EVENT_CARD;
+}
+
 // ── SVG Icons ──
 const PlusIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -1014,13 +1040,22 @@ const EventManagement: React.FC = () => {
                     onClick={() => navigate(`/admin/events/${event.event_id}`)}
                     className="group bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-sm hover:shadow-xl dark:hover:shadow-[0_8px_24px_0px_rgba(255,255,255,0.12)] transition-all duration-200 cursor-pointer border border-gray-100 dark:border-[#2a2a2a] hover:border-gray-200 dark:hover:border-[#2a2a2a] flex flex-col"
                   >
-                    <div className="relative h-[140px] flex-shrink-0 rounded-t-2xl overflow-hidden bg-gray-100 dark:bg-[#2a2a2a]">
-                      <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="w-24 h-24 text-gray-400">
-                          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                      </div>
-                    </div>
+                    {/* ── Event type preset image ── */}
+                    {(() => {
+                      const style = getEventCardStyle(event.title);
+                      return (
+                        <div className={`relative h-[140px] flex-shrink-0 rounded-t-2xl overflow-hidden bg-gradient-to-br ${style.color}`}>
+                          {/* Decorative circles */}
+                          <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full bg-white/10" />
+                          <div className="absolute -bottom-4 -left-4 w-20 h-20 rounded-full bg-black/10" />
+                          {/* Emoji icon */}
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                            <span className="text-4xl drop-shadow-lg">{style.emoji}</span>
+                            <span className="text-white/80 text-[10px] font-bold uppercase tracking-widest">{style.label}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div className="flex flex-col flex-1 p-4">
                       <div className="flex items-start justify-between gap-2 mb-3 pb-3 border-b border-gray-100 dark:border-[#2a2a2a]">
                         <h3 className="text-base font-bold text-gray-900 dark:text-white leading-snug line-clamp-2 flex-1">{event.title}</h3>

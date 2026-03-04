@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const fixCheckinSchema = z.object({
-    session_id: z.number({ error: 'Session ID is required' }),
+    session_id: z.number({ error: 'Session ID is required' }).min(0, 'Session ID must be 0 or positive'),
     participant_id: z.number({ error: 'Participant ID is required' }),
     event_id: z.number({ error: 'Event ID is required' }),
     adjusted_time: z.string({ error: 'Adjusted time is required' }),

@@ -53,7 +53,9 @@ export default function ResetPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (newPassword !== confirm) { setError('Passwords do not match.'); return }
-    if (newPassword.length < 6) { setError('Password must be at least 6 characters.'); return }
+    if (newPassword.length < 8) { setError('Password must be at least 8 characters.'); return }
+    if (!/[A-Z]/.test(newPassword)) { setError('Password must contain at least one uppercase letter.'); return }
+    if (!/[0-9]/.test(newPassword)) { setError('Password must contain at least one number.'); return }
 
     setLoading(true)
     setError('')
@@ -106,9 +108,9 @@ export default function ResetPasswordPage() {
           </div>
           <div className="mt-2 flex flex-col gap-3">
             {[
-              'At least 6 characters long',
-              'Mix letters and numbers for strength',
-              'Avoid using your name or email',
+              'At least 8 characters long',
+              'Contains at least one uppercase letter',
+              'Contains at least one number',
             ].map((tip, i) => (
               <div key={i} className="flex items-center gap-3 text-sm text-white/75">
                 <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-white/[0.12]">
@@ -217,7 +219,7 @@ export default function ResetPasswordPage() {
                 )}
 
                 <button type="submit"
-                  disabled={loading || newPassword !== confirm || newPassword.length < 6}
+                  disabled={loading || newPassword !== confirm || newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)}
                   className="flex h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-[#DC143C] text-[15px] font-bold text-white shadow-[0_4px_18px_rgba(220,20,60,0.22)] transition-all hover:-translate-y-px hover:bg-[#b01030] hover:shadow-[0_6px_24px_rgba(220,20,60,0.28)] disabled:cursor-not-allowed disabled:opacity-60">
                   {loading ? (
                     <><svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>Resetting...</>

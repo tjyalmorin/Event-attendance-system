@@ -1,8 +1,3 @@
-// STEP 03 — server/src/routes/scan/scan.service.ts
-// TYPE: Full replacement
-// WHY: lookupParticipantService now accepts agent code OR surname.
-//      resolveParticipantService added for when multiple matches are returned.
-
 import pool from '../../config/database.js'
 
 // ── Lookup by agent code OR surname ──────────────────────────────────────────
@@ -10,7 +5,6 @@ export const lookupParticipantService = async (query: string, event_id: number) 
   if (!query?.trim()) throw new Error('Agent code or surname is required')
   if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
 
-  // 1. Check event
   const eventResult = await pool.query(
     `SELECT * FROM events WHERE event_id = $1 AND deleted_at IS NULL`,
     [event_id]
@@ -23,7 +17,6 @@ export const lookupParticipantService = async (query: string, event_id: number) 
   const currentTime = now.toTimeString().split(' ')[0]
   if (currentTime > event.checkin_cutoff) throw new Error('Check-in time has already passed.')
 
-  // 2. Try exact agent_code first if input is numeric
   const isNumeric = /^\d+$/.test(query.trim())
   let participantRows: any[] = []
 
@@ -36,7 +29,6 @@ export const lookupParticipantService = async (query: string, event_id: number) 
     participantRows = exact.rows
   }
 
-  // 3. Fall back to name search (also used when not numeric)
   if (participantRows.length === 0) {
     const byName = await pool.query(
       `SELECT * FROM participants
@@ -55,7 +47,6 @@ export const lookupParticipantService = async (query: string, event_id: number) 
     throw new Error('Participant registration has been cancelled.')
   }
 
-  // 4. Multiple matches → return list for user to pick from
   if (active.length > 1) {
     return {
       multiple: true,
@@ -70,7 +61,6 @@ export const lookupParticipantService = async (query: string, event_id: number) 
     }
   }
 
-  // 5. Single match → resolve session state
   const participant = active[0]
   const existingSession = await pool.query(
     `SELECT * FROM attendance_sessions
@@ -154,7 +144,12 @@ export const resolveParticipantService = async (participant_id: number, event_id
 }
 
 // ── Scan (actual check-in / check-out) ───────────────────────────────────────
-export const scanAgentCodeService = async (agent_code: string, event_id: number) => {
+export const scanAgentCodeService = async (
+  agent_code: string,
+  event_id: number,
+  is_early_out: boolean = false,
+  early_out_reason?: string | null
+) => {
   if (!agent_code?.trim()) throw new Error('Agent code is required')
   if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
   if (agent_code.length > 50) throw new Error('Invalid agent code')
@@ -214,6 +209,7 @@ export const scanAgentCodeService = async (agent_code: string, event_id: number)
     [participant.participant_id, event_id]
   )
 
+  // ── CHECK IN ─────────────────────────────────────────────
   if (existingSession.rows.length === 0) {
     const session = await pool.query(
       `INSERT INTO attendance_sessions
@@ -223,20 +219,39 @@ export const scanAgentCodeService = async (agent_code: string, event_id: number)
       [participant.participant_id, event_id]
     )
     await logScan('check_in')
-    return { action: 'check_in', message: 'Check-in successful', participant: participantPayload, session: session.rows[0] }
+    return {
+      action: 'check_in',
+      message: 'Check-in successful',
+      participant: participantPayload,
+      session: session.rows[0]
+    }
   }
 
   const session = existingSession.rows[0]
 
+  // ── CHECK OUT (with optional early out) ──────────────────
   if (session.check_in_time && !session.check_out_time) {
+    const checkOutMethod = is_early_out ? 'early_out' : 'manual'
+    const reason = is_early_out ? (early_out_reason?.trim() || 'Early departure') : null
+
     const updatedSession = await pool.query(
       `UPDATE attendance_sessions
-       SET check_out_time = NOW(), check_out_method = 'manual', updated_at = NOW()
-       WHERE session_id = $1 RETURNING *`,
-      [session.session_id]
+       SET check_out_time = NOW(),
+           check_out_method = $1,
+           early_out_reason = $2,
+           updated_at = NOW()
+       WHERE session_id = $3
+       RETURNING *`,
+      [checkOutMethod, reason, session.session_id]
     )
     await logScan('check_out')
-    return { action: 'check_out', message: 'Check-out successful', participant: participantPayload, session: updatedSession.rows[0] }
+    return {
+      action: 'check_out',
+      message: is_early_out ? 'Early out recorded' : 'Check-out successful',
+      is_early_out,
+      participant: participantPayload,
+      session: updatedSession.rows[0]
+    }
   }
 
   await logScan('denied', 'Participant already completed check-in and check-out')
@@ -263,8 +278,8 @@ export const logDenialService = async (agent_code: string, event_id: number, rea
 export const getSessionsByEventService = async (event_id: number) => {
   const result = await pool.query(
     `SELECT
-       a.session_id, a.check_in_time, a.check_out_time,
-       a.check_in_method, a.check_out_method,
+       a.session_id, a.participant_id, a.check_in_time, a.check_out_time,
+       a.check_in_method, a.check_out_method, a.early_out_reason,
        p.full_name, p.agent_code, p.branch_name, p.team_name
      FROM attendance_sessions a
      JOIN participants p ON a.participant_id = p.participant_id

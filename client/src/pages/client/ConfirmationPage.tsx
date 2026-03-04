@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Participant, Event } from '../../types'
-import pruLogo from '../../assets/pru.png'
+import pruLogo from '../../assets/pru.webp'
 
 interface LocationState {
   participant: Participant
@@ -42,11 +42,6 @@ const IconInfo = () => (
     <line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
   </svg>
 )
-const IconArrowLeft = () => (
-  <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-  </svg>
-)
 
 // ──────────────────────────────────────────────────────────────────
 
@@ -54,7 +49,6 @@ export default function ConfirmationPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const state = location.state as LocationState
-
   if (!state?.participant) {
     return (
       <div style={s.fullPage}>
@@ -64,7 +58,6 @@ export default function ConfirmationPage() {
           <h2 style={s.stateTitle}>No Registration Found</h2>
           <p style={s.stateText}>Please register for the event first.</p>
           <button onClick={() => navigate(-1 as any)} className="pru-ghost-btn">
-            <IconArrowLeft /> Go Back
           </button>
         </div>
       </div>

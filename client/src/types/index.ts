@@ -63,7 +63,7 @@ export interface CreateEventPayload {
   checkin_cutoff: string
 }
 
-// Participant types — NO QR fields
+// Participant types
 export interface Participant {
   participant_id: number
   event_id: number
@@ -93,6 +93,7 @@ export interface AttendanceSession {
   check_out_time: string | null
   check_in_method: string
   check_out_method: string | null
+  early_out_reason: string | null
   full_name: string
   agent_code: string
   branch_name: string
@@ -104,20 +105,22 @@ export interface ScanLog {
   scanned_at: string
   scan_type: 'check_in' | 'check_out' | 'denied'
   denial_reason: string | null
-  qr_token: string   // now stores agent_code value
+  qr_token: string
   full_name: string
   agent_code: string
 }
 
-// Changed from qr_token to agent_code
 export interface ScanPayload {
   agent_code: string
   event_id: number
+  is_early_out?: boolean
+  early_out_reason?: string | null
 }
 
 export interface ScanResponse {
   action: 'check_in' | 'check_out'
   message: string
+  is_early_out?: boolean
   participant: {
     full_name: string
     agent_code: string
@@ -144,18 +147,4 @@ export interface GrantAdminPayload {
   granted_to_user_id: string
   event_id: number
   is_edit_allowed: boolean
-}
-
-// Override types
-export interface OverrideLog {
-  override_id: number
-  override_type: 'fix_checkin' | 'force_checkout' | 'early_out'
-  reason: string
-  original_time: string | null
-  adjusted_time: string | null
-  early_out_cutoff: string | null
-  created_at: string
-  full_name: string
-  agent_code: string
-  admin_name: string
 }

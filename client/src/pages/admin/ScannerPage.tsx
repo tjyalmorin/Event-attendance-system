@@ -108,6 +108,8 @@ export default function ScannerPage() {
   const [countdown, setCountdown]   = useState(3)
   const [checkedInCount, setCheckedInCount] = useState(0)
   const [flashColor, setFlashColor] = useState<'green' | 'blue' | 'red' | null>(null)
+  const [isEarlyOut, setIsEarlyOut] = useState(false)
+  const [earlyOutReason, setEarlyOutReason] = useState('')
 
   const inputRef     = useRef<HTMLInputElement>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -163,6 +165,8 @@ export default function ScannerPage() {
     setError('')
     setQuery('')
     setPhotoError(false)
+    setIsEarlyOut(false)
+    setEarlyOutReason('')
   }
 
   // ── Step 1: Lookup ─────────────────────────────────────
@@ -237,7 +241,12 @@ export default function ScannerPage() {
     if (!lookup) return
     setLoading(true)
     try {
-      const data = await scanAgentCodeApi({ agent_code: lookup.participant.agent_code, event_id: Number(eventId) })
+      const data = await scanAgentCodeApi({
+        agent_code: lookup.participant.agent_code,
+        event_id: Number(eventId),
+        is_early_out: lookup.next_action === 'check_out' ? isEarlyOut : false,
+        early_out_reason: lookup.next_action === 'check_out' && isEarlyOut ? earlyOutReason || null : null
+      })
       setResult(data)
       const isIn = data.action === 'check_in'
       playTone(isIn ? 'success' : 'checkout')
@@ -511,6 +520,33 @@ export default function ScannerPage() {
                     </div>
                   </div>
 
+                  {/* Early Out toggle — only shown during check-out */}
+                  {lookup.next_action === 'check_out' && (
+                    <div style={{ marginBottom: 16, padding: '14px 16px', background: isEarlyOut ? (isDarkMode ? '#2a1f00' : '#fffbeb') : (isDarkMode ? '#141414' : '#f9fafb'), border: `1px solid ${isEarlyOut ? '#f59e0b' : border}`, borderRadius: 12, transition: 'all 0.2s' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                        <div
+                          onClick={() => { setIsEarlyOut(v => !v); if (isEarlyOut) setEarlyOutReason('') }}
+                          style={{ width: 40, height: 22, borderRadius: 11, background: isEarlyOut ? '#f59e0b' : (isDarkMode ? '#3a3a3a' : '#d1d5db'), position: 'relative', transition: 'background 0.2s', flexShrink: 0, cursor: 'pointer' }}
+                        >
+                          <div style={{ position: 'absolute', top: 3, left: isEarlyOut ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: isEarlyOut ? '#d97706' : textPrimary }}>Mark as Early Out</div>
+                          <div style={{ fontSize: 11, color: textSecondary, marginTop: 1 }}>Participant is leaving before the event ends</div>
+                        </div>
+                      </label>
+                      {isEarlyOut && (
+                        <input
+                          type="text"
+                          value={earlyOutReason}
+                          onChange={e => setEarlyOutReason(e.target.value)}
+                          placeholder="Reason (optional)..."
+                          style={{ marginTop: 10, width: '100%', padding: '9px 12px', fontSize: 13, background: isDarkMode ? '#1c1c1c' : '#fff', border: `1px solid #f59e0b`, borderRadius: 8, color: textPrimary, outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      )}
+                    </div>
+                  )}
+
                   {/* Action buttons */}
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button onClick={handleDeny} disabled={loading} style={{ flex: 1, padding: '14px', borderRadius: 12, border: `2px solid ${isDarkMode ? '#3a1520' : '#fecdd3'}`, background: isDarkMode ? '#1a0a0e' : '#fff5f5', color: '#DC143C', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
@@ -540,6 +576,11 @@ export default function ScannerPage() {
                       <div>
                         <div style={{ fontSize: 22, fontWeight: 800, color: accent }}>{isIn ? 'Checked In ✓' : 'Checked Out ✓'}</div>
                         <div style={{ fontSize: 13, color: textSecondary }}>{result.message}</div>
+                        {result.is_early_out && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 6, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 20, padding: '3px 10px' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#d97706' }}>⚠ Early Out</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div style={{ background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>

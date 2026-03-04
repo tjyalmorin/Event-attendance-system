@@ -2,14 +2,9 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { loginApi } from '../../api/auth.api'
 import { useDarkMode } from '../../contexts/DarkModeContext'
+import pruLogo from '../../assets/pru.webp'
 
 // ── SVG Icons ──────────────────────────────────────────────────────────────
-const LayersIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
-  </svg>
-)
-
 const UsersIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-white">
     <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" />
@@ -126,11 +121,15 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute right-[80px] top-[-40px] bottom-[-40px] w-[2px] rotate-[10deg] bg-white/[0.06]" />
         <div className="pointer-events-none absolute right-[130px] top-[-40px] bottom-[-40px] w-[2px] rotate-[10deg] bg-white/[0.03]" />
 
-        {/* Logo pill */}
+        {/* ── PRU LIFE UK LOGO PILL ── */}
         <div className="relative z-10">
           <div className="inline-flex w-fit items-center gap-3 rounded-2xl bg-white px-5 py-2.5 pl-3 shadow-[0_4px_24px_rgba(0,0,0,0.18)]">
-            <div className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-[10px] border border-gray-200 bg-gray-100 text-gray-400">
-              <LayersIcon />
+            <div className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-[10px] overflow-hidden bg-white border border-gray-100">
+              <img
+                src={pruLogo}
+                alt="Pru Life UK"
+                className="w-full h-full object-contain"
+              />
             </div>
             <div>
               <div className="text-[15px] font-bold tracking-tight text-gray-800">Pru Life UK</div>
@@ -170,6 +169,17 @@ export default function LoginPage() {
       {/* ── RIGHT PANEL ── */}
       <div className="relative flex w-full md:w-1/2 flex-col items-stretch justify-center bg-white dark:bg-[#0f0f0f] px-8 md:px-16 py-14">
         <div className="flex flex-col gap-8 w-full max-w-[420px] mx-auto">
+
+          {/* Mobile logo (shown only on small screens) */}
+          <div className="flex md:hidden items-center gap-3 mb-2">
+            <div className="flex h-[40px] w-[40px] items-center justify-center rounded-[10px] overflow-hidden border border-gray-200 bg-white shadow-sm">
+              <img src={pruLogo} alt="Pru Life UK" className="w-full h-full object-contain" />
+            </div>
+            <div>
+              <div className="text-[14px] font-bold text-gray-800 dark:text-white">Pru Life UK</div>
+              <div className="text-[11px] text-gray-500">Event Management</div>
+            </div>
+          </div>
 
           {/* Heading */}
           <div className="flex flex-col gap-1.5">
