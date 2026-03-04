@@ -61,8 +61,8 @@ export const uploadParticipantPhoto = asyncHandler(async (req: Request, res: Res
 
 export const setAwardee = asyncHandler(async (req: Request, res: Response) => {
   const { participant_id } = req.params
-  const { is_awardee, awardee_description } = req.body
-  if (typeof is_awardee !== 'boolean') throw new AppError('is_awardee (boolean) is required', 400)
-  const updated = await setAwardeeService(Number(participant_id), is_awardee, awardee_description ?? null)
+  const { label, label_description } = req.body
+  if (typeof label !== 'boolean') throw new AppError('label (boolean) is required', 400)
+  const updated = await setAwardeeService(Number(participant_id), label, label_description ?? null)
   res.json(updated)
 })

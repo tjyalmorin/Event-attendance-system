@@ -155,13 +155,13 @@ export default function EventDetail() {
     }
   }, [fetchData])
 
-  const handleSetAwardee = async (is_awardee: boolean) => {
+  const handleSetAwardee = async (label: boolean) => {
      if (!awardeeModal.participant) return
      setAwardeeLoading(true)
      try {
        await setAwardeeApi(awardeeModal.participant.participant_id, {
-         is_awardee,
-         awardee_description: is_awardee ? awardeeDesc : null
+         label,
+         label_description: label ? awardeeDesc : null
        })
        await fetchData()
        setAwardeeModal({ open: false, participant: null })
@@ -309,7 +309,7 @@ export default function EventDetail() {
     </div>
   )
 
-   const awardeeCount = participants.filter(p => p.is_awardee).length
+   const awardeeCount = participants.filter(p => p.label).length
 
    const tabs: { key: TabType; label: string }[] = [
      { key: 'participants', label: `Participants (${confirmedCount})` },
@@ -572,10 +572,10 @@ export default function EventDetail() {
                       <td className="px-5 py-3.5 flex gap-2">
      {(isAdmin || user.role === 'staff') && (
        <button
-         onClick={() => { setAwardeeModal({ open: true, participant: p }); setAwardeeDesc(p.awardee_description || '') }}
-         className={`text-xs font-semibold px-3 py-1 rounded-lg border transition-colors ${p.is_awardee ? 'bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+         onClick={() => { setAwardeeModal({ open: true, participant: p }); setAwardeeDesc(p.label_description || '') }}
+         className={`text-xs font-semibold px-3 py-1 rounded-lg border transition-colors ${p.label ? 'bg-yellow-50 border-yellow-300 text-yellow-700 hover:bg-yellow-100' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
                          >
-                        {p.is_awardee ? '🏆 Awardee' : '☆ Award'}
+                        {p.label ? '🏆 Awardee' : '☆ Award'}
                       </button>
                        )}
                       <button onClick={() => handleCancel(p.participant_id)} className="text-xs font-semibold text-red-500 border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50 transition-colors">Cancel</button>
@@ -723,17 +723,17 @@ export default function EventDetail() {
          </tr>
        </thead>
        <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
-         {participants.filter(p => p.is_awardee).length === 0 ? (
+         {participants.filter(p => p.label).length === 0 ? (
            <tr><td colSpan={6} className="text-center py-16 text-gray-400 dark:text-gray-500">No awardees yet. Mark participants from the Participants tab.</td></tr>
-         ) : participants.filter(p => p.is_awardee).map(p => (
+         ) : participants.filter(p => p.label).map(p => (
            <tr key={p.participant_id} className="hover:bg-yellow-50/30 dark:hover:bg-yellow-900/10 transition-colors">
              <td className="px-5 py-3.5"><span className="font-bold text-[#DC143C] text-xs tracking-wide font-mono">{p.agent_code}</span></td>
              <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{p.full_name} <span className="ml-1">🏆</span></td>
              <td className="px-5 py-3.5"><span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span></td>
              <td className="px-5 py-3.5"><span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-yellow-50 text-yellow-700 text-xs font-bold">{p.team_name}</span></td>
-             <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs max-w-[220px] truncate">{p.awardee_description || '—'}</td>
+             <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs max-w-[220px] truncate">{p.label_description || '—'}</td>
              <td className="px-5 py-3.5 flex gap-2">
-               <button onClick={() => { setAwardeeModal({ open: true, participant: p }); setAwardeeDesc(p.awardee_description || '') }} className="text-xs font-semibold text-yellow-600 border border-yellow-200 px-3 py-1 rounded-lg hover:bg-yellow-50 transition-colors">Edit</button>
+               <button onClick={() => { setAwardeeModal({ open: true, participant: p }); setAwardeeDesc(p.label_description || '') }} className="text-xs font-semibold text-yellow-600 border border-yellow-200 px-3 py-1 rounded-lg hover:bg-yellow-50 transition-colors">Edit</button>
                <button onClick={() => handleSetAwardee(false)} className="text-xs font-semibold text-gray-400 border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-50 transition-colors">Remove</button>
              </td>
            </tr>
@@ -902,7 +902,7 @@ export default function EventDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-8">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
-              {awardeeModal.participant.is_awardee ? 'Edit Award' : 'Mark as Awardee'}
+              {awardeeModal.participant.label ? 'Edit Award' : 'Mark as Awardee'}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
               {awardeeModal.participant.full_name} · {awardeeModal.participant.agent_code}
@@ -919,8 +919,8 @@ export default function EventDetail() {
               <button onClick={() => { setAwardeeModal({ open: false, participant: null }); setAwardeeDesc('') }} className="flex-1 px-4 py-3 border-2 border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#333333] transition-all">
                 Cancel
               </button>
-              {awardeeModal.participant.is_awardee && (
-                <button onClick={() => { setAwardeeModal(m => ({ ...m, participant: { ...m.participant, is_awardee: false } })); handleSetAwardee(false) }} disabled={awardeeLoading} className="flex-1 px-4 py-3 bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-200 dark:hover:bg-[#333333] transition-all disabled:opacity-50">
+              {awardeeModal.participant.label && (
+                <button onClick={() => { setAwardeeModal(m => ({ ...m, participant: { ...m.participant, label: false } })); handleSetAwardee(false) }} disabled={awardeeLoading} className="flex-1 px-4 py-3 bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-200 dark:hover:bg-[#333333] transition-all disabled:opacity-50">
                   Remove Award
                 </button>
               )}

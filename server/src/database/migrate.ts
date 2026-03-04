@@ -104,7 +104,9 @@ const migrate = async (): Promise<void> => {
         registered_at       TIMESTAMPTZ,
         updated_at          TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
         deleted_at          TIMESTAMPTZ,
-        photo_url           VARCHAR(500)
+        photo_url           VARCHAR(500),
+        label               VARCHAR(100),
+        label_description   TEXT
       );
     `);
 
@@ -155,21 +157,26 @@ const migrate = async (): Promise<void> => {
         created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
       );
     `);
+
     // ── Safe column additions for existing tables ──────────
     await pool.query(`
       ALTER TABLE participants
-       ADD COLUMN IF NOT EXISTS photo_url           VARCHAR(500);
+        ADD COLUMN IF NOT EXISTS photo_url          VARCHAR(500);
     `);
 
+    // Drop OLD column names if they still exist (renamed to label / label_description)
     await pool.query(`
       ALTER TABLE participants
-       ADD COLUMN IF NOT EXISTS is_awardee          BOOLEAN DEFAULT FALSE;
-`    );
+        DROP COLUMN IF EXISTS is_awardee,
+        DROP COLUMN IF EXISTS awardee_description;
+    `);
 
+    // Add new column names if not yet present
     await pool.query(`
       ALTER TABLE participants
-       ADD COLUMN IF NOT EXISTS awardee_description TEXT;
-`    );
+        ADD COLUMN IF NOT EXISTS label              VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS label_description  TEXT;
+    `);
 
     // ── OTP columns for forgot password (admin only) ───────
     await pool.query(`

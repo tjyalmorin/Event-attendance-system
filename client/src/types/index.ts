@@ -73,6 +73,8 @@ export interface Participant {
   team_name: string
   registration_status: 'confirmed' | 'cancelled'
   registered_at: string
+  label: boolean
+  label_description: string | null
 }
 
 export interface RegisterPayload {
@@ -121,7 +123,7 @@ export interface ScanResponse {
     agent_code: string
     branch_name: string
     team_name: string
-    photo_url?: string   // ← add this
+    photo_url?: string
   }
   session: AttendanceSession
 }
