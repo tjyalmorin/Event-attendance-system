@@ -9,6 +9,8 @@ export interface Participant {
   registered_at: Date
   updated_at: Date
   deleted_at: Date | null
+  label: boolean
+  label_description: string | null
 }
 
 export interface RegisterPayload {

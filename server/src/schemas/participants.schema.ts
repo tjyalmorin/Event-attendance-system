@@ -8,6 +8,6 @@ export const registerParticipantSchema = z.object({
 })
 
 export const setAwardeeSchema = z.object({
-  is_awardee: z.boolean({ error: 'is_awardee (boolean) is required' }),
-  awardee_description: z.string().max(500).optional().nullable()
+  label: z.boolean({ error: 'label (boolean) is required' }),
+  label_description: z.string().max(500).optional().nullable()
 })

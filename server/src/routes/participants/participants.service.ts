@@ -57,7 +57,7 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
            participant_id, event_id, agent_code, full_name,
            branch_name, team_name, registration_status,
            registered_at, updated_at, photo_url,
-           is_awardee, awardee_description
+           label, label_description
          FROM participants
          WHERE event_id = $1 AND deleted_at IS NULL AND branch_name = $2
          ORDER BY registered_at DESC`,
@@ -68,7 +68,7 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
            participant_id, event_id, agent_code, full_name,
            branch_name, team_name, registration_status,
            registered_at, updated_at, photo_url,
-           is_awardee, awardee_description
+           label, label_description
          FROM participants
          WHERE event_id = $1 AND deleted_at IS NULL
          ORDER BY registered_at DESC`,
@@ -94,19 +94,19 @@ export const cancelParticipantService = async (participant_id: number) => {
 // ── Feature 2: Awardee ────────────────────────────────────────────────────────
 export const setAwardeeService = async (
   participant_id: number,
-  is_awardee: boolean,
-  awardee_description: string | null
+  label: boolean,
+  label_description: string | null
 ) => {
   if (!participant_id || isNaN(participant_id)) throw new Error('Valid participant ID is required')
 
   const result = await pool.query(
     `UPDATE participants
-     SET is_awardee = $1,
-         awardee_description = $2,
+     SET label = $1,
+         label_description = $2,
          updated_at = NOW()
      WHERE participant_id = $3 AND deleted_at IS NULL
-     RETURNING participant_id, full_name, is_awardee, awardee_description`,
-    [is_awardee, is_awardee ? (awardee_description || null) : null, participant_id]
+     RETURNING participant_id, full_name, label, label_description`,
+    [label, label ? (label_description || null) : null, participant_id]
   )
   if (!result.rows[0]) throw new Error('Participant not found')
   return result.rows[0]
