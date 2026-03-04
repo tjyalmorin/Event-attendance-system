@@ -30,6 +30,12 @@ const CheckIcon = () => (
   </svg>
 )
 
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+)
+
 // ── Success Toast ──
 const SuccessToast: React.FC<{ message: string }> = ({ message }) => (
   <div className="fixed bottom-6 right-6 z-50 flex items-stretch bg-white dark:bg-[#1c1c1c] rounded-xl shadow-2xl border border-gray-100 dark:border-[#2a2a2a] overflow-hidden min-w-[280px]">
@@ -58,6 +64,7 @@ const TrashBin: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([])
   const [toast, setToast] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     fetchTrashedEvents()
@@ -82,11 +89,21 @@ const TrashBin: React.FC = () => {
     }
   }
 
-  const allSelected = trashedEvents.length > 0 && selected.length === trashedEvents.length
+  const filteredEvents = trashedEvents.filter(event => {
+    const q = search.toLowerCase().trim()
+    if (!q) return true
+    return (
+      event.title.toLowerCase().includes(q) ||
+      (event.venue ?? '').toLowerCase().includes(q) ||
+      (event.event_date ?? '').toLowerCase().includes(q)
+    )
+  })
+
+  const allSelected = filteredEvents.length > 0 && selected.length === filteredEvents.length
   const someSelected = selected.length > 0
 
   const toggleSelectAll = () => {
-    setSelected(allSelected ? [] : trashedEvents.map(e => e.event_id))
+    setSelected(allSelected ? [] : filteredEvents.map(e => e.event_id))
   }
 
   const toggleSelect = (id: number) => {
@@ -151,71 +168,96 @@ const TrashBin: React.FC = () => {
         {/* Header */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
           <div className="px-12 h-[76px] flex items-center">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => navigate('/admin/events')}
-                  className="flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors"
-                >
-                  <ArrowLeftIcon />
-                  Back
-                </button>
-                <div className="w-px h-5 bg-gray-200 dark:bg-[#2a2a2a]" />
-                <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
-                  Event<span className="text-[#DC143C]">.</span>Trash
-                </h1>
-              </div>
-              {someSelected && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">
-                    {selected.length} selected
-                  </span>
-                  <button
-                    onClick={handleBulkRestore}
-                    className="px-4 py-2 text-sm font-semibold text-green-600 border border-green-200 dark:border-green-800 rounded-xl hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
-                  >
-                    ↩ Restore
-                  </button>
-                  <button
-                    onClick={handleBulkDeleteForeverClick}
-                    className="px-4 py-2 text-sm font-semibold text-red-600 border border-red-200 dark:border-red-800 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                  >
-                    Delete Forever
-                  </button>
-                  <button
-                    onClick={() => setSelected([])}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#2a2a2a] transition-colors"
-                  >
-                    <XIcon />
-                  </button>
-                </div>
-              )}
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate('/admin/events')}
+                className="flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors"
+              >
+                <ArrowLeftIcon />
+                Back
+              </button>
+              <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
+                Event<span className="text-[#DC143C]">.</span>Trash
+              </h1>
             </div>
           </div>
         </div>
 
         {/* Content */}
         <div className="max-w-[900px] mx-auto px-8 py-8">
-          {/* Select all row */}
-          {!trashLoading && trashedEvents.length > 0 && (
-            <div className="flex items-center gap-2.5 mb-4">
+
+          {/* Search bar */}
+          <div className="relative mb-5">
+            <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-gray-400 dark:text-gray-500">
+              <SearchIcon />
+            </div>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by event name or location..."
+              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-800 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#DC143C]/20 focus:border-[#DC143C] transition-all"
+            />
+            {search && (
               <button
-                onClick={toggleSelectAll}
-                className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                  allSelected
-                    ? 'border-[#DC143C] bg-[#DC143C]'
-                    : 'border-gray-300 dark:border-[#3a3a3a] hover:border-[#DC143C]'
-                }`}
+                onClick={() => setSearch('')}
+                className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
               >
-                {allSelected && (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-                    <polyline points="20 6 9 17 4 12"/>
-                  </svg>
-                )}
+                <XIcon />
               </button>
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                Select all ({trashedEvents.length} event{trashedEvents.length !== 1 ? 's' : ''})
-              </span>
+            )}
+          </div>
+
+          {/* Select all row + bulk actions */}
+          {!trashLoading && filteredEvents.length > 0 && (
+            <div className="mb-4 space-y-3">
+              <div className="flex items-center gap-2.5">
+                <button
+                  onClick={toggleSelectAll}
+                  className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                    allSelected
+                      ? 'border-[#DC143C] bg-[#DC143C]'
+                      : 'border-gray-300 dark:border-[#3a3a3a] hover:border-[#DC143C]'
+                  }`}
+                >
+                  {allSelected && (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  )}
+                </button>
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                  Select all ({filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''})
+                </span>
+              </div>
+
+              {/* Bulk action bar — only visible when something is selected */}
+              {someSelected && (
+                <div className="flex items-center gap-2 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl px-4 py-2.5">
+                  <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 mr-1">
+                    {selected.length} selected
+                  </span>
+                  <div className="w-px h-4 bg-gray-200 dark:bg-[#2a2a2a]" />
+                  <button
+                    onClick={handleBulkRestore}
+                    className="px-4 py-1.5 text-sm font-semibold text-green-600 border border-green-200 dark:border-green-800 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors"
+                  >
+                    ↩ Restore
+                  </button>
+                  <button
+                    onClick={handleBulkDeleteForeverClick}
+                    className="px-4 py-1.5 text-sm font-semibold text-red-600 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    Delete Forever
+                  </button>
+                  <button
+                    onClick={() => setSelected([])}
+                    className="ml-auto w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#2a2a2a] transition-colors"
+                  >
+                    <XIcon />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -224,7 +266,7 @@ const TrashBin: React.FC = () => {
             <div className="flex justify-center py-20">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#DC143C]" />
             </div>
-          ) : trashedEvents.length === 0 ? (
+          ) : filteredEvents.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-32 gap-4">
               <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-[#2a2a2a] flex items-center justify-center text-gray-300 dark:text-gray-600">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-8 h-8">
@@ -233,13 +275,17 @@ const TrashBin: React.FC = () => {
                 </svg>
               </div>
               <div className="text-center">
-                <p className="text-base font-semibold text-gray-500 dark:text-gray-400">Trash is empty</p>
-                <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Deleted events will appear here</p>
+                <p className="text-base font-semibold text-gray-500 dark:text-gray-400">
+                  {search ? 'No events match your search' : 'Trash is empty'}
+                </p>
+                <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                  {search ? 'Try a different keyword' : 'Deleted events will appear here'}
+                </p>
               </div>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {trashedEvents.map(event => {
+              {filteredEvents.map(event => {
                 const isSelected = selected.includes(event.event_id)
                 return (
                   <div
@@ -270,7 +316,9 @@ const TrashBin: React.FC = () => {
                           {event.title}
                         </div>
                         <div className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                          {event.event_date} · Deleted{' '}
+                          {event.event_date}
+                          {event.venue ? ` · ${event.venue}` : ''}
+                          {' · Deleted '}
                           {(event as any).deleted_at
                             ? new Date((event as any).deleted_at).toLocaleDateString('en-PH')
                             : '—'}
@@ -300,7 +348,7 @@ const TrashBin: React.FC = () => {
           )}
 
           {/* Footer note */}
-          {trashedEvents.length > 0 && (
+          {trashedEvents.length > 0 && !search && (
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-6 text-center">
               Deleted events are kept here until permanently removed.
             </p>

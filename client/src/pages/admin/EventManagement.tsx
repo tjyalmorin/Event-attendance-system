@@ -895,13 +895,7 @@ const EventManagement: React.FC = () => {
               {user.role === 'admin' && (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => navigate('/admin/events/trash')}
-                    title="Trash"
-                    className="w-10 h-10 flex items-center justify-center rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-500 dark:text-gray-400 hover:border-red-300 hover:text-red-500 dark:hover:border-red-800 dark:hover:text-red-400 transition-all"
-                  >
-                    <TrashIcon />
-                  </button>
-                  <button onClick={() => navigate('/admin/events/create')}
+                    onClick={() => navigate('/admin/events/create')}
                     className="flex items-center gap-2 bg-[#DC143C] text-white px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b01030] transition-all hover:shadow-lg">
                     <PlusIcon />
                     Create Event
@@ -938,6 +932,15 @@ const EventManagement: React.FC = () => {
                   )}
                 </button>
               ))}
+              {user.role === 'admin' && (
+                <button
+                  onClick={() => navigate('/admin/events/trash')}
+                  title="Trash"
+                  className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-400 hover:border-red-300 hover:text-red-500 dark:hover:border-red-800 dark:hover:text-red-400 transition-all"
+                >
+                  <TrashIcon />
+                </button>
+              )}
             </div>
             <div className="relative" ref={sortDropdownRef}>
               <button onClick={() => setOpenSortDropdown(prev => !prev)}
