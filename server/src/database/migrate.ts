@@ -167,8 +167,8 @@ const migrate = async (): Promise<void> => {
     // Drop OLD column names if they still exist (renamed to label / label_description)
     await pool.query(`
       ALTER TABLE participants
-        DROP COLUMN IF EXISTS is_awardee,
-        DROP COLUMN IF EXISTS awardee_description;
+        DROP COLUMN IF EXISTS label,
+        DROP COLUMN IF EXISTS label_description;
     `);
 
     // Add new column names if not yet present
