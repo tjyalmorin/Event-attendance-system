@@ -544,7 +544,7 @@ export default function AccountManagement() {
                         </td>
                         <td className={`px-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
                           <div className="group relative w-fit">
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap cursor-default">
+                            <span className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap cursor-default">
                               {formatDate(createdAt)}
                             </span>
                             {createdAt && (
