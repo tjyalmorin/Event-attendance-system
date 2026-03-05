@@ -7,25 +7,25 @@ import { User } from '../../types'
 
 const SaveIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+    <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" />
   </svg>
 )
 
 const LockIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+    <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" />
   </svg>
 )
 
 const EyeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
   </svg>
 )
 
 const EyeOffIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
+    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" />
   </svg>
 )
 
@@ -88,7 +88,9 @@ export default function ProfileSettingsPage() {
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault()
     if (newPassword !== confirmPassword) { setPasswordError('Passwords do not match'); return }
-    if (newPassword.length < 6) { setPasswordError('Password must be at least 6 characters'); return }
+    if (newPassword.length < 8) { setPasswordError('Password must be at least 8 characters'); return }
+    if (!/[A-Z]/.test(newPassword)) { setPasswordError('Password must contain at least one uppercase letter'); return }
+    if (!/[0-9]/.test(newPassword)) { setPasswordError('Password must contain at least one number'); return }
     setPasswordLoading(true)
     setPasswordError('')
     setPasswordSuccess('')
@@ -134,11 +136,10 @@ export default function ProfileSettingsPage() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
-                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  activeTab === tab.key
+                className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.key
                     ? 'bg-white dark:bg-[#2a2a2a] text-gray-900 dark:text-white shadow-sm'
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                }`}
+                  }`}
               >
                 {tab.label}
               </button>
@@ -156,11 +157,10 @@ export default function ProfileSettingsPage() {
                   <div className="font-bold text-gray-900 dark:text-white text-lg">{user?.full_name}</div>
                   <div className="text-sm text-gray-500 dark:text-gray-400">{user?.email}</div>
                   <div className="mt-1">
-                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide ${
-                      userRole === 'admin'
+                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide ${userRole === 'admin'
                         ? 'bg-red-50 dark:bg-red-900/20 text-[#DC143C]'
                         : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600'
-                    }`}>
+                      }`}>
                       {userRole}
                     </span>
                   </div>
@@ -201,7 +201,7 @@ export default function ProfileSettingsPage() {
                 <button type="submit" disabled={profileLoading}
                   className="flex h-[46px] w-fit items-center gap-2 px-6 rounded-xl bg-[#DC143C] text-sm font-bold text-white shadow-[0_4px_18px_rgba(220,20,60,0.22)] transition-all hover:-translate-y-px hover:bg-[#b01030] disabled:opacity-60 disabled:cursor-not-allowed">
                   {profileLoading ? (
-                    <><svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Saving...</>
+                    <><svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>Saving...</>
                   ) : (
                     <><SaveIcon />Save Changes</>
                   )}
@@ -258,6 +258,19 @@ export default function ProfileSettingsPage() {
                       {showNew ? <EyeOffIcon /> : <EyeIcon />}
                     </button>
                   </div>
+                  {newPassword.length > 0 && (
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
+                      <span className={`text-[11px] font-medium ${newPassword.length >= 8 ? 'text-green-600' : 'text-gray-400'}`}>
+                        {newPassword.length >= 8 ? '✓' : '○'} 8+ characters
+                      </span>
+                      <span className={`text-[11px] font-medium ${/[A-Z]/.test(newPassword) ? 'text-green-600' : 'text-gray-400'}`}>
+                        {/[A-Z]/.test(newPassword) ? '✓' : '○'} Uppercase letter
+                      </span>
+                      <span className={`text-[11px] font-medium ${/[0-9]/.test(newPassword) ? 'text-green-600' : 'text-gray-400'}`}>
+                        {/[0-9]/.test(newPassword) ? '✓' : '○'} Number
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Confirm Password */}
@@ -295,10 +308,10 @@ export default function ProfileSettingsPage() {
                 )}
 
                 <button type="submit"
-                  disabled={passwordLoading || newPassword !== confirmPassword || newPassword.length < 6}
+                  disabled={passwordLoading || newPassword !== confirmPassword || newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)}
                   className="flex h-[46px] w-fit items-center gap-2 px-6 rounded-xl bg-[#DC143C] text-sm font-bold text-white shadow-[0_4px_18px_rgba(220,20,60,0.22)] transition-all hover:-translate-y-px hover:bg-[#b01030] disabled:opacity-60 disabled:cursor-not-allowed">
                   {passwordLoading ? (
-                    <><svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Updating...</>
+                    <><svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>Updating...</>
                   ) : (
                     <><LockIcon />Update Password</>
                   )}

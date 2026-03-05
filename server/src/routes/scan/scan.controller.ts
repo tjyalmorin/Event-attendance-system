@@ -26,9 +26,14 @@ export const resolveParticipant = asyncHandler(async (req: Request, res: Respons
 })
 
 export const scanAgentCode = asyncHandler(async (req: Request, res: Response) => {
-  const { agent_code, event_id } = req.body
+  const { agent_code, event_id, is_early_out, early_out_reason } = req.body
   if (!agent_code || !event_id) throw new AppError('agent_code and event_id are required', 400)
-  const result = await scanAgentCodeService(agent_code.trim(), Number(event_id))
+  const result = await scanAgentCodeService(
+    agent_code.trim(),
+    Number(event_id),
+    is_early_out === true,
+    early_out_reason || null
+  )
   res.json(result)
 })
 

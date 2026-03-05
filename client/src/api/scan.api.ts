@@ -11,7 +11,12 @@ export const resolveParticipantApi = async (payload: { participant_id: number; e
   return res.data
 }
 
-export const scanAgentCodeApi = async (payload: { agent_code: string; event_id: number }): Promise<ScanResponse> => {
+export const scanAgentCodeApi = async (payload: {
+  agent_code: string
+  event_id: number
+  is_early_out?: boolean
+  early_out_reason?: string | null
+}): Promise<ScanResponse> => {
   const res = await api.post('/attendance/scan', payload)
   return res.data
 }

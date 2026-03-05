@@ -2,13 +2,13 @@ import { Router } from 'express'
 import authenticate from '../../middlewares/authenticate.js'
 import roleGuard from '../../middlewares/roleGuard.js'
 import validate from '../../middlewares/validate.js'
-import { registerParticipantSchema, setAwardeeSchema } from '../../schemas/participants.schema.js'
+import { registerParticipantSchema, setLabelSchema } from '../../schemas/participants.schema.js'
 import {
   registerParticipant,
   getParticipantsByEvent,
   cancelParticipant,
   uploadParticipantPhoto,
-  setAwardee
+  setLabel
 } from './participants.controller.js'
 
 const router = Router()
@@ -23,7 +23,7 @@ router.delete('/:participant_id', authenticate, roleGuard('admin'), cancelPartic
 // PHOTO UPLOAD — admin only (multipart/form-data, no body validation needed)
 router.post('/:participant_id/photo', authenticate, roleGuard('admin'), uploadParticipantPhoto)
 
-// AWARDEE — admin and staff
-router.patch('/:participant_id/awardee', authenticate, roleGuard('admin', 'staff'), validate(setAwardeeSchema), setAwardee)
+// LABEL — admin and staff
+router.patch('/:participant_id/label', authenticate, roleGuard('admin', 'staff'), validate(setLabelSchema), setLabel)
 
 export default router

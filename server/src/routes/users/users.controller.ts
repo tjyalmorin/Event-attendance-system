@@ -6,7 +6,9 @@ import {
   softDeleteUserService,
   updateProfileService,
   changePasswordService,
-  adminResetPasswordService
+  adminResetPasswordService,
+  updateUserService,
+  toggleUserActiveService,
 } from './users.service.js'
 
 export const createUser = asyncHandler(async (req: Request, res: Response) => {
@@ -39,4 +41,14 @@ export const adminResetPassword = asyncHandler(async (req: Request, res: Respons
   const { newPassword } = req.body
   const result = await adminResetPasswordService(req.params.user_id, newPassword)
   res.json(result)
+})
+
+export const updateUser = asyncHandler(async (req: Request, res: Response) => {
+  const user = await updateUserService(req.params.user_id, req.body)
+  res.json(user)
+})
+
+export const toggleUserActive = asyncHandler(async (req: Request, res: Response) => {
+  const user = await toggleUserActiveService(req.params.user_id)
+  res.json(user)
 })

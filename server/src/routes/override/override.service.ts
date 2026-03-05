@@ -5,14 +5,48 @@ import {
   EarlyOutPayload
 } from '../../types/override.types'
 
-// ── Fix Wrong Check-in Time ──────────────────────────────
+// ── Fix Wrong Check-in Time / Manual Check-in ────────────
 export const fixCheckinService = async (payload: FixCheckinPayload, admin_id: string) => {
   const { session_id, participant_id, event_id, adjusted_time, reason } = payload
 
-  if (!session_id) throw new Error('Session ID is required')
   if (!adjusted_time) throw new Error('Adjusted time is required')
   if (!reason?.trim()) throw new Error('Reason is required')
 
+  // session_id === 0 means "create a new attendance session" (manual check-in)
+  if (!session_id || session_id === 0) {
+    // Check participant isn't already checked in for this event
+    const existing = await pool.query(
+      `SELECT session_id FROM attendance_sessions
+       WHERE participant_id = $1 AND event_id = $2 AND check_out_time IS NULL`,
+      [participant_id, event_id]
+    )
+    if (existing.rows.length > 0) throw new Error('Participant already has an active session')
+
+    const newSession = await pool.query(
+      `INSERT INTO attendance_sessions
+        (participant_id, event_id, check_in_time, check_in_method, created_at, updated_at)
+       VALUES ($1, $2, $3, 'manual_override', NOW(), NOW())
+       RETURNING *`,
+      [participant_id, event_id, adjusted_time]
+    )
+    const created = newSession.rows[0]
+
+    const log = await pool.query(
+      `INSERT INTO override_logs
+        (attendance_session_id, participant_id, event_id, admin_id,
+         override_type, reason, original_time, adjusted_time, created_at)
+       VALUES ($1,$2,$3,$4,'fix_checkin',$5,NULL,$6,NOW())
+       RETURNING *`,
+      [created.session_id, participant_id, event_id, admin_id, reason.trim(), adjusted_time]
+    )
+
+    return {
+      message: 'Manual check-in recorded successfully',
+      override: log.rows[0]
+    }
+  }
+
+  // Otherwise update an existing session's check-in time
   const sessionResult = await pool.query(
     'SELECT * FROM attendance_sessions WHERE session_id = $1',
     [session_id]

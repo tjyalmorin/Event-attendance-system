@@ -38,12 +38,10 @@ const playTone = (type: 'success' | 'checkout' | 'denied') => {
       type === 'success'  ? [[880, 0, 0.12], [1100, 0.13, 0.12], [1320, 0.26, 0.18]] :
       type === 'checkout' ? [[660, 0, 0.12], [880, 0.13, 0.18]] :
                             [[300, 0, 0.10], [220, 0.12, 0.18]]
-
     notes.forEach(([freq, start, dur]) => {
       const osc = ctx.createOscillator()
       const g   = ctx.createGain()
-      osc.connect(g)
-      g.connect(ctx.destination)
+      osc.connect(g); g.connect(ctx.destination)
       osc.frequency.value = freq
       osc.type = type === 'denied' ? 'sawtooth' : 'sine'
       g.gain.setValueAtTime(0.4, ctx.currentTime + start)
@@ -55,18 +53,14 @@ const playTone = (type: 'success' | 'checkout' | 'denied') => {
 }
 
 // ── Icons ────────────────────────────────────────────────
-const UsersIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-    <circle cx="9" cy="7" r="4"/>
-    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+const ArrowLeftIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
   </svg>
 )
-const ScanIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-    <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/>
-    <rect x="7" y="7" width="10" height="10" rx="1"/>
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
   </svg>
 )
 const CheckIcon = () => (
@@ -89,6 +83,14 @@ const ShieldIcon = () => (
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
   </svg>
 )
+const UsersIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+    <circle cx="9" cy="7" r="4"/>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  </svg>
+)
 
 // ── Component ────────────────────────────────────────────
 export default function ScannerPage() {
@@ -108,6 +110,17 @@ export default function ScannerPage() {
   const [countdown, setCountdown]   = useState(3)
   const [checkedInCount, setCheckedInCount] = useState(0)
   const [flashColor, setFlashColor] = useState<'green' | 'blue' | 'red' | null>(null)
+  const [isEarlyOut, setIsEarlyOut] = useState(false)
+  const [earlyOutReason, setEarlyOutReason] = useState('')
+
+  // ── Suggestions state ──
+  const [suggestions, setSuggestions]         = useState<PickItem[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [sugLoading, setSugLoading]           = useState(false)
+  const [activeSugIdx, setActiveSugIdx]       = useState(-1)
+  const [inputFocused, setInputFocused]       = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sugBoxRef   = useRef<HTMLDivElement>(null)
 
   const inputRef     = useRef<HTMLInputElement>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -116,7 +129,6 @@ export default function ScannerPage() {
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
   const userRole   = storedUser?.role || 'staff'
 
-  // Load event & initial count
   useEffect(() => {
     if (!eventId) return
     getEventByIdApi(Number(eventId)).then(setEvent).catch(console.error)
@@ -127,12 +139,10 @@ export default function ScannerPage() {
     if (!eventId) return
     try {
       const sessions = await getSessionsByEventApi(Number(eventId))
-      const checkedIn = sessions.filter((s: any) => s.check_in_time && !s.check_out_time).length
-      setCheckedInCount(checkedIn)
+      setCheckedInCount(sessions.filter((s: any) => s.check_in_time && !s.check_out_time).length)
     } catch (_) {}
   }, [eventId])
 
-  // Focus input when on input state
   useEffect(() => {
     if (pageState === 'input') setTimeout(() => inputRef.current?.focus(), 80)
   }, [pageState])
@@ -150,94 +160,132 @@ export default function ScannerPage() {
     return () => { if (countdownRef.current) clearInterval(countdownRef.current) }
   }, [pageState])
 
+  // ── Debounced suggestions ──
+  useEffect(() => {
+    if (pageState !== 'input') return
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    if (!query.trim() || query.trim().length < 2) {
+      setSuggestions([])
+      setShowSuggestions(false)
+      setSugLoading(false)
+      return
+    }
+
+    setSugLoading(true)
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const data = await lookupParticipantApi({ query: query.trim(), event_id: Number(eventId) })
+        if (data.multiple) {
+          setSuggestions(data.participants || [])
+        } else if (data.participant) {
+          setSuggestions([data.participant])
+        } else {
+          setSuggestions([])
+        }
+        setShowSuggestions(true)
+        setActiveSugIdx(-1)
+      } catch {
+        setSuggestions([])
+        setShowSuggestions(false)
+      } finally {
+        setSugLoading(false)
+      }
+    }, 300)
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [query, pageState, eventId])
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (sugBoxRef.current && !sugBoxRef.current.contains(e.target as Node))
+        setShowSuggestions(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   const triggerFlash = (color: 'green' | 'blue' | 'red') => {
     setFlashColor(color)
+    if (flashRef.current) clearTimeout(flashRef.current)
     flashRef.current = setTimeout(() => setFlashColor(null), 700)
   }
 
   const resetToInput = () => {
     setPageState('input')
-    setPickList([])
-    setLookup(null)
-    setResult(null)
-    setError('')
-    setQuery('')
-    setPhotoError(false)
+    setPickList([]); setLookup(null); setResult(null)
+    setError(''); setQuery(''); setPhotoError(false)
+    setIsEarlyOut(false); setEarlyOutReason('')
+    setSuggestions([]); setShowSuggestions(false)
   }
 
-  // ── Step 1: Lookup ─────────────────────────────────────
   const handleLookup = async (q: string) => {
     if (!q.trim()) return
+    setShowSuggestions(false)
     setLoading(true)
     try {
       const data = await lookupParticipantApi({ query: q.trim(), event_id: Number(eventId) })
-
-      // Multiple matches → show pick screen
-      if (data.multiple) {
-        setPickList(data.participants)
-        setPageState('pick')
-        setLoading(false)
-        return
-      }
-
+      if (data.multiple) { setPickList(data.participants); setPageState('pick'); setLoading(false); return }
       if (data.next_action === 'blocked') {
-        playTone('denied')
-        triggerFlash('red')
+        playTone('denied'); triggerFlash('red')
         setError('Participant has already completed attendance. No further entries allowed.')
-        setPageState('error')
-        setQuery('')
-        setLoading(false)
-        return
+        setPageState('error'); setQuery(''); setLoading(false); return
       }
-
-      setLookup(data)
-      setPhotoError(false)
-      setPageState('verify')
+      setLookup(data); setPhotoError(false); setPageState('verify')
     } catch (err: any) {
-      playTone('denied')
-      triggerFlash('red')
+      playTone('denied'); triggerFlash('red')
       setError(err.response?.data?.error || 'Lookup failed. Please try again.')
-      setQuery('')
-      setPageState('error')
-    } finally {
-      setLoading(false)
-    }
+      setQuery(''); setPageState('error')
+    } finally { setLoading(false) }
   }
 
-  // ── Step 1b: Pick from list ────────────────────────────
+  const handlePickSuggestion = async (item: PickItem) => {
+    setQuery(item.full_name)
+    setShowSuggestions(false)
+    setLoading(true)
+    try {
+      const data = await resolveParticipantApi({ participant_id: item.participant_id, event_id: Number(eventId) })
+      if (data.next_action === 'blocked') {
+        playTone('denied'); triggerFlash('red')
+        setError('Participant has already completed attendance. No further entries allowed.')
+        setPageState('error'); setLoading(false); return
+      }
+      setLookup(data); setPhotoError(false); setPageState('verify')
+    } catch (err: any) {
+      playTone('denied'); triggerFlash('red')
+      setError(err.response?.data?.error || 'Resolve failed. Please try again.')
+      setPageState('error')
+    } finally { setLoading(false) }
+  }
+
   const handlePickParticipant = async (item: PickItem) => {
     setLoading(true)
     try {
       const data = await resolveParticipantApi({ participant_id: item.participant_id, event_id: Number(eventId) })
-
       if (data.next_action === 'blocked') {
-        playTone('denied')
-        triggerFlash('red')
+        playTone('denied'); triggerFlash('red')
         setError('Participant has already completed attendance. No further entries allowed.')
-        setPageState('error')
-        setLoading(false)
-        return
+        setPageState('error'); setLoading(false); return
       }
-
-      setLookup(data)
-      setPhotoError(false)
-      setPageState('verify')
+      setLookup(data); setPhotoError(false); setPageState('verify')
     } catch (err: any) {
-      playTone('denied')
-      triggerFlash('red')
+      playTone('denied'); triggerFlash('red')
       setError(err.response?.data?.error || 'Resolve failed. Please try again.')
       setPageState('error')
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
 
-  // ── Step 2a: Confirm ───────────────────────────────────
   const handleConfirm = async () => {
     if (!lookup) return
     setLoading(true)
     try {
-      const data = await scanAgentCodeApi({ agent_code: lookup.participant.agent_code, event_id: Number(eventId) })
+      const data = await scanAgentCodeApi({
+        agent_code: lookup.participant.agent_code,
+        event_id: Number(eventId),
+        is_early_out: lookup.next_action === 'check_out' ? isEarlyOut : false,
+        early_out_reason: lookup.next_action === 'check_out' && isEarlyOut ? earlyOutReason || null : null
+      })
       setResult(data)
       const isIn = data.action === 'check_in'
       playTone(isIn ? 'success' : 'checkout')
@@ -245,31 +293,35 @@ export default function ScannerPage() {
       setPageState('result')
       refreshCount()
     } catch (err: any) {
-      playTone('denied')
-      triggerFlash('red')
+      playTone('denied'); triggerFlash('red')
       setError(err.response?.data?.error || 'Scan failed. Please try again.')
       setPageState('error')
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
 
-  // ── Step 2b: Deny ──────────────────────────────────────
   const handleDeny = async () => {
     if (!lookup) return
     setLoading(true)
     try {
       await logDenialApi({ agent_code: lookup.participant.agent_code, event_id: Number(eventId), reason: 'Staff denied — identity mismatch' })
     } catch (_) {}
-    playTone('denied')
-    triggerFlash('red')
+    playTone('denied'); triggerFlash('red')
     setError('Access denied. Identity could not be verified.')
-    setPageState('error')
-    setLoading(false)
+    setPageState('error'); setLoading(false)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') handleLookup(query)
+    if (!showSuggestions || suggestions.length === 0) {
+      if (e.key === 'Enter') handleLookup(query)
+      return
+    }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveSugIdx(i => Math.min(i + 1, suggestions.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveSugIdx(i => Math.max(i - 1, -1)) }
+    else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (activeSugIdx >= 0 && suggestions[activeSugIdx]) handlePickSuggestion(suggestions[activeSugIdx])
+      else handleLookup(query)
+    } else if (e.key === 'Escape') { setShowSuggestions(false); setActiveSugIdx(-1) }
   }
 
   const getPhotoUrl = (photo_url: string | null | undefined): string | null => {
@@ -290,23 +342,19 @@ export default function ScannerPage() {
   const verifyPhotoUrl = getPhotoUrl(lookup?.participant.photo_url)
   const resultPhotoUrl = getPhotoUrl(result?.participant.photo_url)
 
-  // ── Color tokens ───────────────────────────────────────
   const bg            = isDarkMode ? '#0f0f0f' : '#f0f1f3'
   const card          = isDarkMode ? '#1c1c1c' : '#ffffff'
   const border        = isDarkMode ? '#2a2a2a' : '#e5e7eb'
   const textPrimary   = isDarkMode ? '#ffffff' : '#111827'
   const textSecondary = isDarkMode ? '#9ca3af' : '#6b7280'
   const inputBg       = isDarkMode ? '#141414' : '#f9fafb'
-  const subCard       = isDarkMode ? '#141414' : '#f9fafb'
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: bg, position: 'relative' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: bg }}>
       {/* Flash overlay */}
       {flashColor && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none',
-          background: flashColor === 'green' ? 'rgba(22,163,74,0.15)' : flashColor === 'blue' ? 'rgba(37,99,235,0.15)' : 'rgba(220,20,60,0.18)',
-          transition: 'opacity 0.3s'
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none', transition: 'opacity 0.3s',
+          background: flashColor === 'green' ? 'rgba(22,163,74,0.15)' : flashColor === 'blue' ? 'rgba(37,99,235,0.15)' : 'rgba(220,20,60,0.18)'
         }} />
       )}
 
@@ -314,94 +362,209 @@ export default function ScannerPage() {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
-        {/* ── HEADER ──────────────────────────────────── */}
-        <header style={{ background: card, borderBottom: `1px solid ${border}`, flexShrink: 0 }}>
-          <div style={{ padding: '0 48px', height: 76, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: textSecondary, padding: '6px 10px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
-                ← Back
-              </button>
-              <div style={{ color: textSecondary }}>|</div>
-              <div style={{ color: '#DC143C' }}><ScanIcon /></div>
-              <div>
-                <div style={{ fontWeight: 800, fontSize: 18, color: textPrimary, letterSpacing: '-0.3px' }}>Scanner</div>
-                {event && <div style={{ fontSize: 12, color: textSecondary }}>{event.title}</div>}
-              </div>
+        {/* ── HEADER — matches EventDetail style ── */}
+        <header className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a] shadow-sm flex-shrink-0">
+          <div className="px-12 h-[76px] flex items-center gap-4">
+            <button
+              onClick={() => navigate(-1)}
+              className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors mr-2"
+            >
+              <ArrowLeftIcon />
+              <span className="font-medium">Back</span>
+            </button>
+
+            <div className="flex items-baseline gap-3">
+              <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
+                {event?.title ?? ''}
+              </h1>
+              <span className="text-sm font-semibold text-gray-400 dark:text-gray-500 whitespace-nowrap">Check-in Station</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: '#DC143C' }}>{checkedInCount}</div>
-                <div style={{ fontSize: 11, color: textSecondary, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inside</div>
-              </div>
+
+            <div className="flex-1" />
+
+            {/* Attendees Inside */}
+            <div className="text-right">
+              <div className="text-2xl font-extrabold text-[#DC143C] leading-none">{checkedInCount}</div>
+              <div className="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold mt-0.5">Attendees Inside</div>
             </div>
           </div>
         </header>
 
-        {/* Event info bar */}
+        {/* ── EVENT INFO BAR ── */}
         {event && (
-          <div style={{ background: isDarkMode ? '#161616' : '#fafafa', borderBottom: `1px solid ${border}`, padding: '10px 48px', display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div style={{ background: isDarkMode ? '#161616' : '#fafafa', borderBottom: `1px solid ${border}`, padding: '10px 48px', display: 'flex', alignItems: 'center', gap: 20, flexShrink: 0 }}>
             <span style={{ fontSize: 13, color: textSecondary }}>{formatDate(event.event_date)}</span>
             <span style={{ color: border }}>·</span>
             <span style={{ fontSize: 13, color: textSecondary }}>{formatTime(event.start_time)} – {formatTime(event.end_time)}</span>
-            {event.venue && <><span style={{ color: border }}>·</span><span style={{ fontSize: 13, color: textSecondary }}>{event.venue}</span></>}
-            <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: event.status === 'open' ? 'rgba(22,163,74,0.12)' : 'rgba(107,114,128,0.12)', color: event.status === 'open' ? '#16a34a' : textSecondary, border: `1px solid ${event.status === 'open' ? 'rgba(22,163,74,0.25)' : border}` }}>
-              {event.status}
+            {event.venue && (<><span style={{ color: border }}>·</span><span style={{ fontSize: 13, color: textSecondary }}>{event.venue}</span></>)}
+            <span style={{
+              marginLeft: 'auto', fontSize: 12, fontWeight: 700, padding: '3px 12px', borderRadius: 20,
+              background: event.status === 'open' ? 'rgba(22,163,74,0.10)' : 'rgba(107,114,128,0.10)',
+              color: event.status === 'open' ? '#16a34a' : textSecondary,
+              border: `1px solid ${event.status === 'open' ? 'rgba(22,163,74,0.25)' : border}`
+            }}>
+              {event.status === 'open' ? 'Registration Open' : 'Registration Closed'}
             </span>
           </div>
         )}
 
-        {/* ── MAIN CONTENT ────────────────────────────── */}
+        {/* ── MAIN CONTENT ── */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px 60px', overflowY: 'auto' }}>
           <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            {/* ── INPUT STATE ─────────────────────────── */}
+            {/* ── INPUT STATE ── */}
             {pageState === 'input' && (
-              <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
-                {/* Card top accent */}
-                <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)' }} />
+              <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 20, boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)', borderRadius: '20px 20px 0 0' }} />
                 <div style={{ padding: '32px 32px 36px' }}>
+
+                  {/* Title */}
                   <div style={{ textAlign: 'center', marginBottom: 28 }}>
-                    <div style={{ width: 56, height: 56, borderRadius: 16, background: isDarkMode ? '#2a1518' : '#fff0f2', border: `2px solid ${isDarkMode ? '#4a1520' : '#fecdd3'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#DC143C' }}>
-                      <ScanIcon />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, color: textSecondary }}>
+                      <SearchIcon />
                     </div>
                     <h2 style={{ fontSize: 22, fontWeight: 800, color: textPrimary, marginBottom: 6, letterSpacing: '-0.3px' }}>
-                      Scan Agent
+                      Search Agent
                     </h2>
                     <p style={{ fontSize: 13, color: textSecondary, lineHeight: 1.6 }}>
-                      Enter agent code (e.g. 10001) or surname (e.g. Santos)
+                      Enter agent code or name
                     </p>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={query}
-                      onChange={e => setQuery(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      disabled={loading}
-                      placeholder="Agent code or surname..."
-                      style={{ width: '100%', padding: '14px 18px', fontSize: 16, fontWeight: 600, background: inputBg, border: `2px solid ${border}`, borderRadius: 12, color: textPrimary, outline: 'none', boxSizing: 'border-box', letterSpacing: '0.5px' }}
-                      autoComplete="off"
-                    />
+
+                    {/* Input + suggestions wrapper */}
+                    <div ref={sugBoxRef} style={{ position: 'relative' }}>
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={query}
+                        onChange={e => { setQuery(e.target.value); setActiveSugIdx(-1) }}
+                        onKeyDown={handleKeyDown}
+                        onFocus={() => { setInputFocused(true); if (suggestions.length > 0) setShowSuggestions(true) }}
+                        onBlur={() => setInputFocused(false)}
+                        disabled={loading}
+                        placeholder="Search..."
+                        style={{
+                          width: '100%', padding: `14px 44px 14px ${inputFocused ? '44px' : '18px'}`, fontSize: 16, fontWeight: 600,
+                          background: inputBg,
+                          border: `2px solid ${border}`,
+                          borderRadius: showSuggestions && suggestions.length > 0 ? '12px 12px 0 0' : 12,
+                          color: textPrimary, outline: 'none', boxSizing: 'border-box', letterSpacing: '0.5px',
+                          transition: 'border-radius 0.1s, padding 0.1s'
+                        }}
+                        autoComplete="off"
+                      />
+
+                      {/* Search icon — left side, only when focused */}
+                      {inputFocused && !sugLoading && (
+                        <div style={{
+                          position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
+                          color: textSecondary, pointerEvents: 'none', display: 'flex', alignItems: 'center'
+                        }}>
+                          <SearchIcon />
+                        </div>
+                      )}
+
+                      {/* Spinner */}
+                      {sugLoading && (
+                        <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: textSecondary }}>
+                          <svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
+                            <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                          </svg>
+                        </div>
+                      )}
+
+                      {/* Suggestions dropdown */}
+                      {showSuggestions && suggestions.length > 0 && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                          background: card, border: `2px solid ${border}`, borderTop: 'none',
+                          borderRadius: '0 0 12px 12px', overflow: 'hidden',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.10)'
+                        }}>
+                          {suggestions.map((item, idx) => {
+                            const isActive = idx === activeSugIdx
+                            return (
+                              <button
+                                key={item.participant_id}
+                                onMouseDown={e => { e.preventDefault(); handlePickSuggestion(item) }}
+                                onMouseEnter={() => setActiveSugIdx(idx)}
+                                style={{
+                                  width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+                                  padding: '10px 16px', textAlign: 'left', border: 'none', cursor: 'pointer',
+                                  background: isActive ? (isDarkMode ? '#251010' : '#fff5f5') : 'transparent',
+                                  borderBottom: idx < suggestions.length - 1 ? `1px solid ${border}` : 'none',
+                                  transition: 'background 0.1s'
+                                }}
+                              >
+                                {/* Search icon */}
+                                <div style={{ color: textSecondary, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
+                                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                  </svg>
+                                </div>
+                                {/* Full Name + divider + agent code */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                                  <span style={{ fontWeight: 700, fontSize: 14, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {item.full_name}
+                                  </span>
+                                  <span style={{ width: 1, height: 14, background: border, flexShrink: 0 }} />
+                                  <span style={{ fontSize: 12, color: '#DC143C', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px', flexShrink: 0 }}>
+                                    {item.agent_code}
+                                  </span>
+                                </div>
+                                {/* Right: Branch · Team */}
+                                <div style={{ fontSize: 11, color: textSecondary, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                                  {item.branch_name} · {item.team_name}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* No results */}
+                      {showSuggestions && !sugLoading && suggestions.length === 0 && query.trim().length >= 2 && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                          background: card, border: `2px solid ${border}`, borderTop: 'none',
+                          borderRadius: '0 0 12px 12px', padding: '14px 16px',
+                          textAlign: 'center', fontSize: 13, color: textSecondary
+                        }}>
+                          No participants found for "{query}"
+                        </div>
+                      )}
+                    </div>
+
                     <button
                       onClick={() => handleLookup(query)}
                       disabled={loading || !query.trim()}
-                      style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: loading || !query.trim() ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || !query.trim() ? textSecondary : '#fff', fontSize: 14, fontWeight: 700, cursor: loading || !query.trim() ? 'not-allowed' : 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                      style={{
+                        width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+                        background: loading || !query.trim() ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C',
+                        color: loading || !query.trim() ? textSecondary : '#fff',
+                        fontSize: 14, fontWeight: 700,
+                        cursor: loading || !query.trim() ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+                      }}
                     >
-                      {loading ? (
-                        <><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Searching...</>
-                      ) : '🔍 Look Up'}
+                      {loading
+                        ? <><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Searching...</>
+                        : 'Enter'
+                      }
                     </button>
                   </div>
 
+                  {/* How it works */}
                   <div style={{ marginTop: 20, padding: '14px 16px', background: isDarkMode ? '#0f0f0f' : '#f9fafb', borderRadius: 12, border: `1px solid ${border}` }}>
                     <p style={{ fontSize: 11, fontWeight: 700, color: textSecondary, letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 10 }}>How it works</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {[
-                        { dot: '#DC143C', text: 'Enter agent code or surname, press Enter or click Look Up' },
-                        { dot: '#f59e0b', text: 'If multiple matches, pick the correct person from the list' },
-                        { dot: '#16a34a', text: 'Verify identity, then Confirm to record check-in or check-out' },
+                        { dot: '#DC143C', text: 'Type agent code or name — suggestions appear as you type' },
+                        { dot: '#f59e0b', text: 'Select from suggestions or press Enter to search' },
+                        { dot: '#16a34a', text: 'Verify identity, then Confirm to record attendance' },
                       ].map(({ dot, text }, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <div style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />
@@ -411,12 +574,11 @@ export default function ScannerPage() {
                     </div>
                   </div>
                 </div>
-
                 <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes fillBar { from { width: 0% } to { width: 100% } }`}</style>
               </div>
             )}
 
-            {/* ── PICK STATE ──────────────────────────── */}
+            {/* ── PICK STATE ── */}
             {pageState === 'pick' && (
               <div style={{ background: card, border: `2px solid #f59e0b`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(245,158,11,0.15)' }}>
                 <div style={{ height: 4, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />
@@ -430,23 +592,17 @@ export default function ScannerPage() {
                       <div style={{ fontSize: 13, color: textSecondary }}>{pickList.length} participants matched — select the correct person</div>
                     </div>
                   </div>
-
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {pickList.map(item => {
                       const pUrl = getPhotoUrl(item.photo_url)
                       return (
-                        <button
-                          key={item.participant_id}
-                          onClick={() => handlePickParticipant(item)}
-                          disabled={loading}
+                        <button key={item.participant_id} onClick={() => handlePickParticipant(item)} disabled={loading}
                           style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: isDarkMode ? '#141414' : '#f9fafb', border: `1px solid ${border}`, borderRadius: 14, cursor: loading ? 'not-allowed' : 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#DC143C'; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1a1010' : '#fff5f5' }}
                           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = border; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#141414' : '#f9fafb' }}
                         >
                           <div style={{ width: 48, height: 48, borderRadius: 12, overflow: 'hidden', border: `2px solid ${border}`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#e5e7eb' }}>
-                            {pUrl ? (
-                              <img src={pUrl} alt={item.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            ) : (
+                            {pUrl ? <img src={pUrl} alt={item.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
                               <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <span style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>{item.full_name.charAt(0).toUpperCase()}</span>
                               </div>
@@ -462,7 +618,6 @@ export default function ScannerPage() {
                       )
                     })}
                   </div>
-
                   <button onClick={resetToInput} style={{ width: '100%', marginTop: 16, padding: '12px', background: 'none', border: `1px solid ${border}`, borderRadius: 12, color: textSecondary, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                     ← Search Again
                   </button>
@@ -470,23 +625,18 @@ export default function ScannerPage() {
               </div>
             )}
 
-            {/* ── VERIFY STATE ────────────────────────── */}
+            {/* ── VERIFY STATE ── */}
             {pageState === 'verify' && lookup && (
               <div style={{ background: card, border: `2px solid #f59e0b`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(245,158,11,0.15)' }}>
                 <div style={{ height: 4, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />
                 <div style={{ padding: '28px 32px 32px' }}>
-
                   <div style={{ textAlign: 'center', marginBottom: 24 }}>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: isDarkMode ? '#2a2005' : '#fffbeb', border: '1px solid #f59e0b', borderRadius: 20, padding: '6px 16px', marginBottom: 12 }}>
                       <ShieldIcon />
                       <span style={{ fontSize: 13, fontWeight: 700, color: '#d97706' }}>Verify Identity</span>
                     </div>
-                    <div style={{ fontSize: 14, color: textSecondary }}>
-                      Does the photo match the person in front of you?
-                    </div>
+                    <div style={{ fontSize: 14, color: textSecondary }}>Does the photo match the person in front of you?</div>
                   </div>
-
-                  {/* Photo + Info */}
                   <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 24, padding: '16px 20px', background: isDarkMode ? '#141414' : '#f9fafb', borderRadius: 16, border: `1px solid ${border}` }}>
                     <div style={{ width: 88, height: 88, borderRadius: 16, overflow: 'hidden', border: `3px solid #f59e0b`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#f3f4f6' }}>
                       {verifyPhotoUrl && !photoError ? (
@@ -511,12 +661,32 @@ export default function ScannerPage() {
                     </div>
                   </div>
 
-                  {/* Action buttons */}
+                  {lookup.next_action === 'check_out' && (
+                    <div style={{ marginBottom: 16, padding: '14px 16px', background: isEarlyOut ? (isDarkMode ? '#2a1f00' : '#fffbeb') : (isDarkMode ? '#141414' : '#f9fafb'), border: `1px solid ${isEarlyOut ? '#f59e0b' : border}`, borderRadius: 12, transition: 'all 0.2s' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                        <div onClick={() => { setIsEarlyOut(v => !v); if (isEarlyOut) setEarlyOutReason('') }}
+                          style={{ width: 40, height: 22, borderRadius: 11, background: isEarlyOut ? '#f59e0b' : (isDarkMode ? '#3a3a3a' : '#d1d5db'), position: 'relative', transition: 'background 0.2s', flexShrink: 0, cursor: 'pointer' }}>
+                          <div style={{ position: 'absolute', top: 3, left: isEarlyOut ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: isEarlyOut ? '#d97706' : textPrimary }}>Mark as Early Out</div>
+                          <div style={{ fontSize: 11, color: textSecondary, marginTop: 1 }}>Participant is leaving before the event ends</div>
+                        </div>
+                      </label>
+                      {isEarlyOut && (
+                        <input type="text" value={earlyOutReason} onChange={e => setEarlyOutReason(e.target.value)} placeholder="Reason (optional)..."
+                          style={{ marginTop: 10, width: '100%', padding: '9px 12px', fontSize: 13, background: isDarkMode ? '#1c1c1c' : '#fff', border: `1px solid #f59e0b`, borderRadius: 8, color: textPrimary, outline: 'none', boxSizing: 'border-box' }} />
+                      )}
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={handleDeny} disabled={loading} style={{ flex: 1, padding: '14px', borderRadius: 12, border: `2px solid ${isDarkMode ? '#3a1520' : '#fecdd3'}`, background: isDarkMode ? '#1a0a0e' : '#fff5f5', color: '#DC143C', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <button onClick={handleDeny} disabled={loading}
+                      style={{ flex: 1, padding: '14px', borderRadius: 12, border: `2px solid ${isDarkMode ? '#3a1520' : '#fecdd3'}`, background: isDarkMode ? '#1a0a0e' : '#fff5f5', color: '#DC143C', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                       <XIcon /> Deny
                     </button>
-                    <button onClick={handleConfirm} disabled={loading || lookup.next_action === 'blocked'} style={{ flex: 2, padding: '14px', borderRadius: 12, border: 'none', background: loading || lookup.next_action === 'blocked' ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || lookup.next_action === 'blocked' ? textSecondary : '#fff', fontSize: 14, fontWeight: 700, cursor: loading || lookup.next_action === 'blocked' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <button onClick={handleConfirm} disabled={loading || lookup.next_action === 'blocked'}
+                      style={{ flex: 2, padding: '14px', borderRadius: 12, border: 'none', background: loading || lookup.next_action === 'blocked' ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || lookup.next_action === 'blocked' ? textSecondary : '#fff', fontSize: 14, fontWeight: 700, cursor: loading || lookup.next_action === 'blocked' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                       {loading ? (<><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Processing...</>) : '✓ Confirm & Record'}
                     </button>
                   </div>
@@ -524,7 +694,7 @@ export default function ScannerPage() {
               </div>
             )}
 
-            {/* ── RESULT STATE ────────────────────────── */}
+            {/* ── RESULT STATE ── */}
             {pageState === 'result' && result && (() => {
               const isIn   = result.action === 'check_in'
               const accent = isIn ? '#16a34a' : '#2563eb'
@@ -540,13 +710,16 @@ export default function ScannerPage() {
                       <div>
                         <div style={{ fontSize: 22, fontWeight: 800, color: accent }}>{isIn ? 'Checked In ✓' : 'Checked Out ✓'}</div>
                         <div style={{ fontSize: 13, color: textSecondary }}>{result.message}</div>
+                        {result.is_early_out && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 6, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 20, padding: '3px 10px' }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#d97706' }}>⚠ Early Out</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div style={{ background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
                       <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: `3px solid ${accent}`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#f3f4f6' }}>
-                        {pUrl ? (
-                          <img src={pUrl} alt={result.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
+                        {pUrl ? <img src={pUrl} alt={result.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
                           <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <span style={{ fontSize: 26, fontWeight: 800, color: '#fff' }}>{result.participant.full_name.charAt(0).toUpperCase()}</span>
                           </div>
@@ -565,15 +738,13 @@ export default function ScannerPage() {
                     <div style={{ width: '100%', height: 6, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
                       <div style={{ height: '100%', background: accent, borderRadius: 3, animation: 'fillBar 3s linear forwards' }} />
                     </div>
-                    <div style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: textSecondary }}>
-                      Next scan in {countdown}s
-                    </div>
+                    <div style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: textSecondary }}>Next scan in {countdown}s</div>
                   </div>
                 </div>
               )
             })()}
 
-            {/* ── ERROR STATE ─────────────────────────── */}
+            {/* ── ERROR STATE ── */}
             {pageState === 'error' && (
               <div style={{ background: card, border: `2px solid #DC143C`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(220,20,60,0.12)' }}>
                 <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)' }} />
@@ -590,9 +761,7 @@ export default function ScannerPage() {
                   <div style={{ width: '100%', height: 6, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
                     <div style={{ height: '100%', background: '#DC143C', borderRadius: 3, animation: 'fillBar 3s linear forwards' }} />
                   </div>
-                  <div style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: textSecondary }}>
-                    Next scan in {countdown}s
-                  </div>
+                  <div style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: textSecondary }}>Next scan in {countdown}s</div>
                 </div>
               </div>
             )}

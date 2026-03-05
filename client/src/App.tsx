@@ -20,8 +20,8 @@ import VerifyOtpPage from './pages/admin/VerifyOtpPage'
 import ResetPasswordPage from './pages/admin/ResetPasswordPage'
 
 // Settings pages
-import ProfileSettingsPage from './pages/admin/Profilesettingspage'
-import AccountSettingsPage from './pages/admin/AccountSettingsPage'
+import ProfileSettingsPage from './pages/admin/ProfileSettingsPage'
+import AccountManagement from './pages/admin/AccountManagement'
 
 // Protected route wrapper
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -56,7 +56,7 @@ function App() {
 
             {/* Settings */}
             <Route path="/admin/settings/profile" element={<PrivateRoute><ProfileSettingsPage /></PrivateRoute>} />
-            <Route path="/admin/settings/accounts" element={<PrivateRoute><AccountSettingsPage /></PrivateRoute>} />
+            <Route path="/admin/settings/accounts" element={<PrivateRoute><AccountManagement /></PrivateRoute>} />
             <Route path="/admin/settings" element={<Navigate to="/admin/settings/profile" />} />
 
             {/* Staff Routes */}
