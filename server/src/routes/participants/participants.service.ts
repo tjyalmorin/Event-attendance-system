@@ -91,10 +91,10 @@ export const cancelParticipantService = async (participant_id: number) => {
   if (!result.rows[0]) throw new Error('Participant not found')
 }
 
-// ── Feature 2: Awardee ────────────────────────────────────────────────────────
-export const setAwardeeService = async (
+// ── Label ─────────────────────────────────────────────────────────────────────
+export const setLabelService = async (
   participant_id: number,
-  label: boolean,
+  label: string | null,
   label_description: string | null
 ) => {
   if (!participant_id || isNaN(participant_id)) throw new Error('Valid participant ID is required')

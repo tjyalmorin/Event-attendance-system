@@ -7,7 +7,7 @@ export const registerParticipantSchema = z.object({
   team_name: z.string().min(1, 'Team name is required').max(255),
 })
 
-export const setAwardeeSchema = z.object({
-  label: z.boolean({ error: 'label (boolean) is required' }),
+export const setLabelSchema = z.object({
+  label: z.string().max(100).nullable(),
   label_description: z.string().max(500).optional().nullable()
 })

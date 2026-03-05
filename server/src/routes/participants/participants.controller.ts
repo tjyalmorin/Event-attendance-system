@@ -8,7 +8,7 @@ import {
   registerParticipantService,
   getParticipantsByEventService,
   cancelParticipantService,
-  setAwardeeService
+  setLabelService
 } from './participants.service.js'
 
 export const registerParticipant = asyncHandler(async (req: Request, res: Response) => {
@@ -59,10 +59,9 @@ export const uploadParticipantPhoto = asyncHandler(async (req: Request, res: Res
   res.json({ message: 'Photo uploaded successfully', photo_url })
 })
 
-export const setAwardee = asyncHandler(async (req: Request, res: Response) => {
+export const setLabel = asyncHandler(async (req: Request, res: Response) => {
   const { participant_id } = req.params
   const { label, label_description } = req.body
-  if (typeof label !== 'boolean') throw new AppError('label (boolean) is required', 400)
-  const updated = await setAwardeeService(Number(participant_id), label, label_description ?? null)
+  const updated = await setLabelService(Number(participant_id), label ?? null, label_description ?? null)
   res.json(updated)
 })

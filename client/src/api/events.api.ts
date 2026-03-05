@@ -43,4 +43,7 @@ export const permanentDeleteEventApi = async (event_id: number): Promise<void> =
   await api.delete(`/events/${event_id}/permanent`)
 }
 
-
+export const updateEventStatusApi = async (event_id: number, status: string): Promise<Event> => {
+  const res = await api.put(`/events/${event_id}`, { status })
+  return res.data
+}
