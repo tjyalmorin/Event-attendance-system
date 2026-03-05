@@ -23,49 +23,81 @@ export const createEventService = async (created_by: string, payload: CreateEven
 }
 
 export const getAllEventsService = async (userId?: string, userRole?: string, userBranch?: string) => {
-  const countSubquery = `(
-    SELECT COUNT(*) FROM participants p
-    WHERE p.event_id = e.event_id
-    AND p.deleted_at IS NULL
-    AND p.registration_status != 'cancelled'
-  )::int AS registered_count`
+
+  // Single aggregation JOIN — runs once, not once per event row
+  const countJoin = `
+    LEFT JOIN (
+      SELECT event_id, COUNT(*)::int AS registered_count
+      FROM participants
+      WHERE deleted_at IS NULL
+        AND registration_status != 'cancelled'
+      GROUP BY event_id
+    ) pc ON pc.event_id = e.event_id
+  `
 
   if (userRole === 'admin') {
     const result = await pool.query(
-      `SELECT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date, ${countSubquery}
-       FROM events e WHERE e.deleted_at IS NULL ORDER BY e.event_date DESC`
+      `SELECT e.*,
+              TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+              COALESCE(pc.registered_count, 0) AS registered_count
+       FROM events e
+       ${countJoin}
+       WHERE e.deleted_at IS NULL
+       ORDER BY e.event_date DESC`
     )
     return result.rows
   }
 
   if (userRole === 'staff' && userId && userBranch) {
     const result = await pool.query(
-      `SELECT DISTINCT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date, ${countSubquery}
+      `SELECT DISTINCT e.*,
+              TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+              COALESCE(pc.registered_count, 0) AS registered_count
        FROM events e
+       ${countJoin}
        LEFT JOIN users u ON e.created_by = u.user_id
-       LEFT JOIN admin_grants ag ON e.event_id = ag.event_id AND ag.granted_to_user_id = $1
-       WHERE e.deleted_at IS NULL 
-       AND (u.branch_name = $2 OR ag.grant_id IS NOT NULL)
+       LEFT JOIN admin_grants ag
+         ON e.event_id = ag.event_id
+         AND ag.granted_to_user_id = $1
+         AND ag.revoked_at IS NULL
+         AND ag.expires_at > NOW()
+       WHERE e.deleted_at IS NULL
+         AND (u.branch_name = $2 OR ag.grant_id IS NOT NULL)
        ORDER BY e.event_date DESC`,
       [userId, userBranch]
     )
     return result.rows
   }
 
+  // Fallback
   const result = await pool.query(
-    `SELECT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date, ${countSubquery}
-     FROM events e WHERE e.deleted_at IS NULL ORDER BY e.event_date DESC`
+    `SELECT e.*,
+            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+            COALESCE(pc.registered_count, 0) AS registered_count
+     FROM events e
+     ${countJoin}
+     WHERE e.deleted_at IS NULL
+     ORDER BY e.event_date DESC`
   )
   return result.rows
 }
 
 export const getEventByIdService = async (event_id: number) => {
   const result = await pool.query(
-    `SELECT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date,
-      (SELECT COUNT(*) FROM participants p
-       WHERE p.event_id = e.event_id AND p.deleted_at IS NULL
-       AND p.registration_status != 'cancelled')::int AS registered_count
-     FROM events e WHERE e.event_id = $1 AND e.deleted_at IS NULL`,
+    `SELECT e.*,
+            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+            COALESCE(pc.registered_count, 0) AS registered_count
+     FROM events e
+     LEFT JOIN (
+       SELECT event_id, COUNT(*)::int AS registered_count
+       FROM participants
+       WHERE deleted_at IS NULL
+         AND registration_status != 'cancelled'
+         AND event_id = $1
+       GROUP BY event_id
+     ) pc ON pc.event_id = e.event_id
+     WHERE e.event_id = $1
+       AND e.deleted_at IS NULL`,
     [event_id]
   )
   if (!result.rows[0]) throw new Error('Event not found')
@@ -117,11 +149,17 @@ export const assignPermissionService = async (event_id: number, user_id: string)
 
 export const getTrashedEventsService = async () => {
   const result = await pool.query(
-    `SELECT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date,
-      (SELECT COUNT(*) FROM participants p
-       WHERE p.event_id = e.event_id AND p.deleted_at IS NULL
-       AND p.registration_status != 'cancelled')::int AS registered_count
+    `SELECT e.*,
+            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+            COALESCE(pc.registered_count, 0) AS registered_count
      FROM events e
+     LEFT JOIN (
+       SELECT event_id, COUNT(*)::int AS registered_count
+       FROM participants
+       WHERE deleted_at IS NULL
+         AND registration_status != 'cancelled'
+       GROUP BY event_id
+     ) pc ON pc.event_id = e.event_id
      WHERE e.deleted_at IS NOT NULL
      ORDER BY e.deleted_at DESC`
   )
