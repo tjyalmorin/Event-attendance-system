@@ -7,6 +7,7 @@ export interface User {
   branch_name: string
   team_name: string
   role: 'admin' | 'staff'
+  is_active: boolean
 }
 
 export interface LoginPayload {

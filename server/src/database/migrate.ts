@@ -186,10 +186,17 @@ const migrate = async (): Promise<void> => {
         ADD COLUMN IF NOT EXISTS otp_verified BOOLEAN DEFAULT FALSE;
     `);
 
+    // ── is_active column for account deactivation ─────────
+    await pool.query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+
     // ── Indexes ────────────────────────────────────────────
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_users_agent_code              ON users(agent_code);
       CREATE INDEX IF NOT EXISTS idx_users_deleted_at              ON users(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_users_is_active               ON users(is_active);
       CREATE INDEX IF NOT EXISTS idx_events_created_by             ON events(created_by);
       CREATE INDEX IF NOT EXISTS idx_events_event_date             ON events(event_date);
       CREATE INDEX IF NOT EXISTS idx_events_status                 ON events(status);

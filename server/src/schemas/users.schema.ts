@@ -7,26 +7,36 @@ const strongPassword = z.string()
   .regex(/[0-9]/, 'Must contain at least one number')
 
 export const createUserSchema = z.object({
-  agent_code: z.string().min(1, 'Agent code is required').max(50),
-  full_name: z.string().min(1, 'Full name is required').max(255),
-  email: z.string().email('Invalid email').toLowerCase(),
-  password: strongPassword,
+  agent_code:  z.string().min(1, 'Agent code is required').max(50),
+  full_name:   z.string().min(1, 'Full name is required').max(255),
+  email:       z.string().email('Invalid email').toLowerCase(),
+  password:    strongPassword,
   branch_name: z.string().min(1, 'Branch name is required').max(255),
-  team_name: z.string().min(1, 'Team name is required').max(255),
-  role: z.enum(['admin', 'staff'], { error: 'Role must be admin or staff' })
+  team_name:   z.string().min(1, 'Team name is required').max(255),
+  role:        z.enum(['admin', 'staff'], { error: 'Role must be admin or staff' }),
+})
+
+export const updateUserSchema = z.object({
+  agent_code:  z.string().min(1).max(50).optional(),
+  full_name:   z.string().min(1).max(255).optional(),
+  email:       z.string().email('Invalid email').toLowerCase().optional(),
+  password:    strongPassword.optional(),
+  branch_name: z.string().min(1).max(255).optional(),
+  team_name:   z.string().min(1).max(255).optional(),
+  role:        z.enum(['admin', 'staff']).optional(),
 })
 
 export const updateProfileSchema = z.object({
-  full_name: z.string().min(1).max(255).optional(),
+  full_name:   z.string().min(1).max(255).optional(),
   branch_name: z.string().min(1).max(255).optional(),
-  team_name: z.string().min(1).max(255).optional(),
+  team_name:   z.string().min(1).max(255).optional(),
 })
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
-  newPassword: strongPassword
+  newPassword:     strongPassword,
 })
 
 export const adminResetPasswordSchema = z.object({
-  newPassword: strongPassword
+  newPassword: strongPassword,
 })

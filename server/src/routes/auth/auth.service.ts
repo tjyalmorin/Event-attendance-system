@@ -24,6 +24,9 @@ export const loginService = async (email: string, password: string) => {
   const isMatch = await bcrypt.compare(password, user.password_hash)
   if (!isMatch) throw new Error('Invalid email or password')
 
+  // ── Block deactivated accounts ─────────────────────────
+  if (!user.is_active) throw new Error('Your account has been deactivated. Please contact your administrator.')
+
   const token = jwt.sign(
     { user_id: user.user_id, role: user.role },
     process.env.JWT_SECRET!,

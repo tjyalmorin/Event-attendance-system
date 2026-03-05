@@ -1,13 +1,23 @@
 import api from './axios'
 import { User, CreateUserPayload } from '../types'
 
+export const getAllUsersApi = async (): Promise<User[]> => {
+  const res = await api.get('/users')
+  return res.data
+}
+
 export const createUserApi = async (payload: CreateUserPayload): Promise<User> => {
   const res = await api.post('/users', payload)
   return res.data
 }
 
-export const getAllUsersApi = async (): Promise<User[]> => {
-  const res = await api.get('/users')
+export const updateUserApi = async (user_id: string, payload: Partial<CreateUserPayload>): Promise<User> => {
+  const res = await api.put(`/users/${user_id}`, payload)
+  return res.data
+}
+
+export const toggleUserActiveApi = async (user_id: string): Promise<User> => {
+  const res = await api.patch(`/users/${user_id}/active`)
   return res.data
 }
 
@@ -30,10 +40,5 @@ export const changePasswordApi = async (payload: {
   newPassword: string
 }): Promise<{ message: string }> => {
   const res = await api.put('/users/change-password', payload)
-  return res.data
-}
-
-export const adminResetPasswordApi = async (user_id: string, newPassword: string): Promise<{ message: string }> => {
-  const res = await api.put(`/users/${user_id}/reset-password`, { newPassword })
   return res.data
 }
