@@ -26,7 +26,6 @@ export interface CreateUserPayload {
   email: string
   password: string
   branch_name: string
-  team_name: string
   role: 'admin' | 'staff'
 }
 

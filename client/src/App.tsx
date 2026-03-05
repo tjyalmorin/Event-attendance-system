@@ -8,6 +8,7 @@ import ConfirmationPage from './pages/client/ConfirmationPage'
 
 // Admin pages
 import AdminLogin from './pages/admin/AdminLogin'
+import BranchManagement from './pages/admin/BranchManagement'
 import EventManagement from './pages/admin/EventManagement'
 import CreateEvent from './pages/admin/CreateEvent'
 import EventDetail from './pages/admin/EventDetail'
@@ -38,6 +39,9 @@ function App() {
             {/* Public Client Routes */}
             <Route path="/register/:eventId" element={<RegistrationPage />} />
             <Route path="/confirmation" element={<ConfirmationPage />} />
+
+            {/*Branch and Team Management (Admin-only)*/}
+            <Route path="/admin/settings/branches" element={<PrivateRoute><BranchManagement /></PrivateRoute>} />
 
             {/* Auth */}
             <Route path="/admin/login" element={<AdminLogin />} />

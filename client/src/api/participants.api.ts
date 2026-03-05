@@ -11,6 +11,14 @@ export const getParticipantsByEventApi = async (event_id: number): Promise<Parti
   return res.data
 }
 
+export const setLabel = async (
+  participant_id: number,
+  payload: { label: boolean; label_description?: string | null }
+) => {
+  const res = await api.patch(`/participants/${participant_id}/awardee`, payload)
+  return res.data
+}
+
 export const cancelParticipantApi = async (participant_id: number): Promise<void> => {
   await api.delete(`/participants/${participant_id}`)
 }

@@ -1,9 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import api from '../../api/axios';
 import Sidebar from '../../components/Sidebar';
+import { useBranches } from '../../hooks/useBranches';
+
+// ── Branch/Team checklist types ──
+interface BranchSelection {
+  branch_name: string
+  teams: string[]
+}
 
 // ── Icons ──
 const ArrowLeftIcon = () => (
@@ -51,6 +58,99 @@ const TimeInput = React.forwardRef<HTMLButtonElement, { value?: string; onClick?
 
 const CreateEvent: React.FC = () => {
   const navigate = useNavigate();
+  const { branches } = useBranches();
+
+  // ── Who is creating? ──────────────────────────────────
+  const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
+  const userRole: 'admin' | 'staff' = storedUser?.role || 'staff'
+  const userBranch: string = storedUser?.branch_name || ''
+
+  // ── Branch/Team checklist state ───────────────────────
+  // For admin: all branches available; for staff: only their branch
+  const availableBranches = userRole === 'admin'
+    ? branches
+    : branches.filter(b => b.name === userBranch)
+
+  const [selectedBranches, setSelectedBranches] = useState<BranchSelection[]>([])
+  const [branchesError, setBranchesError] = useState('')
+
+  // Auto-init staff — their branch is pre-selected, no other choice
+  useEffect(() => {
+    if (userRole === 'staff' && userBranch && branches.length > 0) {
+      const staffBranch = branches.find(b => b.name === userBranch)
+      if (staffBranch && selectedBranches.length === 0) {
+        setSelectedBranches([{ branch_name: staffBranch.name, teams: [] }])
+      }
+    }
+  }, [branches])
+
+  const isBranchChecked = (branchName: string) =>
+    selectedBranches.some(b => b.branch_name === branchName)
+
+  const isTeamChecked = (branchName: string, teamName: string) =>
+    selectedBranches.find(b => b.branch_name === branchName)?.teams.includes(teamName) ?? false
+
+  const allTeamsSelected = (branchName: string) => {
+    const branch = branches.find(b => b.name === branchName)
+    const sel = selectedBranches.find(b => b.branch_name === branchName)
+    if (!branch || !sel) return false
+    return (branch.teams ?? []).every(t => sel.teams.includes(t.name))
+  }
+
+  const toggleBranch = (branchName: string) => {
+    setBranchesError('')
+    if (isBranchChecked(branchName)) {
+      setSelectedBranches(prev => prev.filter(b => b.branch_name !== branchName))
+    } else {
+      // Auto-select all teams when branch is checked
+      const branch = branches.find(b => b.name === branchName)
+      const allTeams = (branch?.teams ?? []).map(t => t.name)
+      setSelectedBranches(prev => [...prev, { branch_name: branchName, teams: allTeams }])
+    }
+  }
+
+  const toggleTeam = (branchName: string, teamName: string) => {
+    setBranchesError('')
+    setSelectedBranches(prev => prev.map(b => {
+      if (b.branch_name !== branchName) return b
+      return {
+        ...b,
+        teams: b.teams.includes(teamName)
+          ? b.teams.filter(t => t !== teamName)
+          : [...b.teams, teamName]
+      }
+    }))
+  }
+
+  const toggleAllTeamsInBranch = (branchName: string) => {
+    const branch = branches.find(b => b.name === branchName)
+    if (!branch) return
+    const allTeams = (branch.teams ?? []).map(t => t.name)
+    const all = allTeamsSelected(branchName)
+    setSelectedBranches(prev => prev.map(b =>
+      b.branch_name === branchName ? { ...b, teams: all ? [] : allTeams } : b
+    ))
+  }
+
+  const selectAllBranches = () => {
+    setBranchesError('')
+    setSelectedBranches(availableBranches.map(b => ({
+      branch_name: b.name,
+      teams: (b.teams ?? []).map(t => t.name)
+    })))
+  }
+
+  const deselectAllBranches = () => {
+    if (userRole === 'staff') {
+      // Staff can't deselect their branch, only teams
+      setSelectedBranches([{ branch_name: userBranch, teams: [] }])
+    } else {
+      setSelectedBranches([])
+    }
+  }
+
+  const allBranchesSelected = availableBranches.length > 0 &&
+    availableBranches.every(b => isBranchChecked(b.name) && allTeamsSelected(b.name))
 
   const [eventDate, setEventDate] = useState<Date | null>(null);
   const [startTime, setStartTime] = useState<Date | null>(null);
@@ -91,7 +191,7 @@ const CreateEvent: React.FC = () => {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     if (name === 'title' && value.length > 100) return;
     if (name === 'description' && value.length > 500) return;
@@ -117,6 +217,18 @@ const CreateEvent: React.FC = () => {
     if (!formData.title.trim()) errors.title = 'Event name is required.';
     if (!eventDate) errors.eventDate = 'Event date is required.';
     if (!formData.venue.trim()) errors.venue = 'Venue is required.';
+    if (selectedBranches.length === 0) {
+      setBranchesError('Please select at least one branch.');
+      setFieldErrors(errors);
+      return false;
+    }
+    const hasNoTeams = selectedBranches.some(b => b.teams.length === 0)
+    if (hasNoTeams) {
+      setBranchesError('Please select at least one team for each checked branch.')
+      setFieldErrors(errors);
+      return false;
+    }
+    setBranchesError('');
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -138,6 +250,7 @@ const CreateEvent: React.FC = () => {
         start_time: formatTime(startTime) || null,
         end_time: formatTime(endTime) || null,
         venue: formData.venue,
+        event_branches: selectedBranches,
         checkin_cutoff: checkinCutoff ? formatTime(checkinCutoff) : null,
         registration_start: registrationStart ? registrationStart.toISOString() : null,
         registration_end: registrationEnd ? registrationEnd.toISOString() : null,
@@ -152,6 +265,12 @@ const CreateEvent: React.FC = () => {
 
   const handleClear = () => {
     setFormData({ title: '', description: '', venue: '' });
+    if (userRole === 'staff') {
+      setSelectedBranches([{ branch_name: userBranch, teams: [] }])
+    } else {
+      setSelectedBranches([]);
+    }
+    setBranchesError('');
     setEventDate(null);
     setStartTime(null);
     setEndTime(null);
@@ -249,7 +368,7 @@ const CreateEvent: React.FC = () => {
         </div>
       )}
 
-      <Sidebar userRole="admin" />
+      <Sidebar userRole={userRole} />
 
       <div className="flex-1 overflow-auto">
         {/* Header */}
@@ -398,12 +517,121 @@ const CreateEvent: React.FC = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{formData.venue.length}/200 characters</p>
               </div>
 
+              {/* Branch & Team Checklist */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    {userRole === 'admin' ? 'Branches & Teams' : 'Teams'} <span className="text-[#DC143C]">*</span>
+                  </label>
+                  {userRole === 'admin' && availableBranches.length > 0 && (
+                    <button type="button"
+                      onClick={allBranchesSelected ? deselectAllBranches : selectAllBranches}
+                      className="text-xs font-bold text-[#DC143C] hover:text-[#b01030] transition-colors px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10">
+                      {allBranchesSelected ? 'Deselect All' : 'Select All'}
+                    </button>
+                  )}
+                </div>
+
+                <div className={`rounded-xl border-[1.5px] overflow-hidden ${branchesError ? 'border-red-400' : 'border-gray-200 dark:border-[#2a2a2a]'}`}>
+                  {availableBranches.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-sm text-gray-400">Loading branches...</div>
+                  ) : availableBranches.map((branch, bi) => {
+                    const checked = isBranchChecked(branch.name)
+                    const teams = branch.teams ?? []
+                    const allTeams = allTeamsSelected(branch.name)
+
+                    return (
+                      <div key={branch.branch_id} className={bi > 0 ? 'border-t border-gray-100 dark:border-[#2a2a2a]' : ''}>
+                        {/* Branch row */}
+                        <div className={`flex items-center gap-3 px-4 py-3 ${checked ? 'bg-red-50/60 dark:bg-[#DC143C]/5' : 'bg-white dark:bg-[#1c1c1c]'} ${userRole === 'staff' ? 'cursor-default' : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1a1a1a]'} transition-colors`}
+                          onClick={() => userRole === 'admin' && toggleBranch(branch.name)}>
+                          {/* Checkbox */}
+                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                            userRole === 'staff'
+                              ? 'border-[#DC143C] bg-[#DC143C]'
+                              : checked
+                                ? 'border-[#DC143C] bg-[#DC143C]'
+                                : 'border-gray-300 dark:border-[#444] bg-white dark:bg-[#0f0f0f]'
+                          }`}>
+                            {(checked || userRole === 'staff') && (
+                              <svg viewBox="0 0 12 9" fill="none" className="w-3 h-3">
+                                <path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            )}
+                          </div>
+                          <span className={`font-semibold text-sm flex-1 ${checked || userRole === 'staff' ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
+                            {branch.name}
+                          </span>
+                          {(checked || userRole === 'staff') && teams.length > 0 && (
+                            <span className="text-xs text-gray-400 dark:text-gray-500">
+                              {selectedBranches.find(b => b.branch_name === branch.name)?.teams.length ?? 0}/{teams.length} teams
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Teams — compact pill tags */}
+                        {(checked || userRole === 'staff') && teams.length > 0 && (
+                          <div className="bg-gray-50 dark:bg-[#161616] border-t border-gray-100 dark:border-[#2a2a2a] px-4 py-2.5" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Teams</span>
+                              <button type="button"
+                                onClick={e => { e.stopPropagation(); toggleAllTeamsInBranch(branch.name) }}
+                                className="text-[11px] font-bold text-[#DC143C] hover:text-[#b01030] px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
+                                {allTeams ? 'Deselect All' : 'Select All'}
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {teams.map(team => {
+                                const teamChecked = isTeamChecked(branch.name, team.name)
+                                return (
+                                  <button key={team.team_id} type="button"
+                                    onClick={e => { e.stopPropagation(); toggleTeam(branch.name, team.name) }}
+                                    className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+                                      teamChecked
+                                        ? 'bg-[#DC143C] border-[#DC143C] text-white'
+                                        : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#333] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+                                    }`}>
+                                    {team.name}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {branchesError && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    {branchesError}
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+                  {userRole === 'admin'
+                    ? 'Registrants will only see teams from the selected branches when signing up.'
+                    : 'Select the teams from your branch that are included in this event.'}
+                </p>
+              </div>
+
               {/* Check-in Cutoff */}
               <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Check-in Cutoff (Optional)</label>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Check-in Cutoff <span className="text-gray-400 font-normal">(Optional)</span>
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  Participants who scan their agent code <span className="font-semibold text-gray-600 dark:text-gray-300">after this time</span> will be marked as <span className="font-semibold text-yellow-600 dark:text-yellow-400">Late</span>. Leave blank if you don't need late tracking.
+                </p>
                 <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}
                   showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Cutoff" dateFormat="h:mm aa"
-                  placeholderText="Pick cutoff time" customInput={<TimeInput />} popperPlacement="bottom-start" />
+                  placeholderText="e.g., 9:00 AM" customInput={<TimeInput />} popperPlacement="bottom-start" />
+                {checkinCutoff && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+                    Anyone checking in after <span className="font-semibold text-gray-700 dark:text-gray-300">{checkinCutoff.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</span> will be marked Late.
+                  </p>
+                )}
               </div>
 
               {/* Registration Window */}
