@@ -88,6 +88,8 @@ export const lookupParticipantService = async (query: string, event_id: number) 
       branch_name: participant.branch_name,
       team_name: participant.team_name,
       photo_url: participant.photo_url || null,
+      label: participant.label || null,                          // ← ADDED
+      label_description: participant.label_description || null,  // ← ADDED
     },
     next_action: nextAction
   }
@@ -143,6 +145,8 @@ export const resolveParticipantService = async (participant_id: number, event_id
       branch_name: participant.branch_name,
       team_name: participant.team_name,
       photo_url: participant.photo_url || null,
+      label: participant.label || null,                          // ← ADDED
+      label_description: participant.label_description || null,  // ← ADDED
     },
     next_action: nextAction
   }

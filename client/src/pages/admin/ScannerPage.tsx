@@ -26,8 +26,34 @@ interface LookupResult {
     branch_name: string
     team_name: string
     photo_url?: string | null
+    label?: string | null
+    label_description?: string | null
   }
   next_action: 'check_in' | 'check_out' | 'blocked'
+}
+
+// ── Label Colors (mirrors EventDetail) ───────────────────
+const LABEL_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  'Awardee': { bg: '#fef3c7', text: '#b45309', border: '#fcd34d' },
+  'VIP':     { bg: '#f3e8ff', text: '#7c3aed', border: '#d8b4fe' },
+  'Sponsor': { bg: '#dbeafe', text: '#1d4ed8', border: '#93c5fd' },
+  'Speaker': { bg: '#ccfbf1', text: '#0f766e', border: '#5eead4' },
+  'Staff':   { bg: '#f3f4f6', text: '#4b5563', border: '#d1d5db' },
+}
+const getLabelStyle = (label: string, isDarkMode: boolean) => {
+  const c = LABEL_COLORS[label] ?? { bg: '#fee2e2', text: '#b91c1c', border: '#fca5a5' }
+  if (isDarkMode) {
+    // darken for dark mode
+    const darkMap: Record<string, { bg: string; text: string; border: string }> = {
+      'Awardee': { bg: 'rgba(180,83,9,0.2)',   text: '#fcd34d', border: 'rgba(252,211,77,0.35)' },
+      'VIP':     { bg: 'rgba(124,58,237,0.2)',  text: '#c4b5fd', border: 'rgba(196,181,253,0.35)' },
+      'Sponsor': { bg: 'rgba(29,78,216,0.2)',   text: '#93c5fd', border: 'rgba(147,197,253,0.35)' },
+      'Speaker': { bg: 'rgba(15,118,110,0.2)',  text: '#5eead4', border: 'rgba(94,234,212,0.35)' },
+      'Staff':   { bg: 'rgba(75,85,99,0.25)',   text: '#d1d5db', border: 'rgba(209,213,219,0.3)' },
+    }
+    return darkMap[label] ?? { bg: 'rgba(185,28,28,0.2)', text: '#fca5a5', border: 'rgba(252,165,165,0.35)' }
+  }
+  return c
 }
 
 // ── Audio Helpers ────────────────────────────────────────
@@ -98,6 +124,7 @@ export default function ScannerPage() {
   const [isEarlyOut, setIsEarlyOut] = useState(false)
   const [earlyOutReason, setEarlyOutReason] = useState('')
   const [resultTime, setResultTime] = useState('')
+  const [labelModalOpen, setLabelModalOpen] = useState(false)
 
   // ── Suggestions state ──
   const [suggestions, setSuggestions]         = useState<PickItem[]>([])
@@ -584,7 +611,14 @@ export default function ScannerPage() {
             {/* ── VERIFY STATE ── */}
             {pageState === 'verify' && lookup && (
               <div style={{ background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 40px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)', border: `1px solid ${border}` }}>
-                <div style={{ height: 5, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)' }} />
+                {lookup.participant.label ? (() => {
+                  const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
+                  return (
+                    <div style={{ height: 6, background: `linear-gradient(90deg, ${lc.border}, ${lc.text}, ${lc.border}, ${lc.text}, ${lc.border})`, backgroundSize: '300% 100%', animation: 'barShine 2s linear infinite' }} />
+                  )
+                })() : (
+                  <div style={{ height: 5, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)' }} />
+                )}
                 <div style={{ padding: '36px 36px 32px', display: 'flex', gap: 36 }}>
 
                   {/* LEFT: photo + status pill */}
@@ -610,8 +644,43 @@ export default function ScannerPage() {
 
                   {/* RIGHT: name + info rows + actions */}
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                    <div style={{ fontSize: 36, fontWeight: 700, color: textPrimary, letterSpacing: '-1px', lineHeight: 1.1, marginBottom: 4 }}>{lookup.participant.full_name}</div>
+
+                    {/* ── Name row with label badge ── */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
+                      <div style={{ fontSize: 36, fontWeight: 700, color: textPrimary, letterSpacing: '-1px', lineHeight: 1.1 }}>
+                        {lookup.participant.full_name}
+                      </div>
+                      {lookup.participant.label && (() => {
+                        const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
+                        return (
+                          <button
+                            onClick={() => setLabelModalOpen(true)}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 5,
+                              fontSize: 13, fontWeight: 800,
+                              padding: '5px 14px', borderRadius: 999,
+                              background: lc.bg, color: lc.text,
+                              border: `2px solid ${lc.border}`,
+                              letterSpacing: '0.3px',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                              alignSelf: 'center',
+                              cursor: 'pointer',
+                              animation: 'labelPulse 1.6s ease-in-out 4',
+                              boxShadow: `0 0 0 0 ${lc.border}`,
+                            }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; (e.currentTarget as HTMLElement).style.animation = 'none' }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
+                          >
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: lc.text, flexShrink: 0, opacity: 0.8 }} />
+                            {lookup.participant.label}
+                          </button>
+                        )
+                      })()}
+                    </div>
+
                     <div style={{ fontSize: 13, color: '#DC143C', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 24 }}>Agent Profile</div>
+
                     <div style={{ border: `1px solid ${border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 28 }}>
                       {[
                         { label: 'Agent Code', value: lookup.participant.agent_code, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16, color: '#DC143C' }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15h10M7 11h4"/></svg> },
@@ -661,7 +730,7 @@ export default function ScannerPage() {
                     </div>
                   </div>
                 </div>
-                <style>{`@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } } @keyframes spin { to { transform: rotate(360deg) } }`}</style>
+                <style>{`@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } } @keyframes spin { to { transform: rotate(360deg) } } @keyframes labelPulse { 0% { box-shadow: 0 0 0 0 currentColor; transform: scale(1); } 40% { box-shadow: 0 0 0 7px transparent; transform: scale(1.06); } 70% { box-shadow: 0 0 0 10px transparent; transform: scale(1); } 100% { box-shadow: 0 0 0 0 transparent; transform: scale(1); } } @keyframes barShine { 0% { background-position: 0% 0%; } 100% { background-position: 300% 0%; } }`}</style>
               </div>
             )}
 
@@ -762,6 +831,69 @@ export default function ScannerPage() {
           </div>
         </div>
       </div>
+
+      {/* ── LABEL DETAIL MODAL ── */}
+      {labelModalOpen && lookup?.participant.label && (() => {
+        const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
+        return (
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setLabelModalOpen(false)}
+          >
+            <div
+              style={{ background: card, border: `1px solid ${border}`, borderRadius: 24, width: '100%', maxWidth: 420, margin: '0 16px', padding: 32, boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+                <div>
+                  <h2 style={{ fontSize: 20, fontWeight: 800, color: textPrimary, margin: 0, marginBottom: 4 }}>Label Details</h2>
+                  <p style={{ fontSize: 13, color: textSecondary, margin: 0 }}>
+                    {lookup.participant.full_name} · <span style={{ fontFamily: 'monospace', color: '#DC143C' }}>{lookup.participant.agent_code}</span>
+                  </p>
+                </div>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center',
+                  fontSize: 12, fontWeight: 700,
+                  padding: '4px 12px', borderRadius: 999,
+                  background: lc.bg, color: lc.text,
+                  border: `1.5px solid ${lc.border}`,
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}>
+                  {lookup.participant.label}
+                </span>
+              </div>
+
+              {/* Body */}
+              <div style={{ background: isDarkMode ? '#141414' : '#f9fafb', borderRadius: 16, padding: 20, marginBottom: 24 }}>
+                <div>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', margin: 0, marginBottom: 4 }}>Label</p>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: textPrimary, margin: 0 }}>{lookup.participant.label}</p>
+                </div>
+                <div style={{ height: 1, background: border, margin: '14px 0' }} />
+                {lookup.participant.label_description ? (
+                  <div>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', margin: 0, marginBottom: 4 }}>Note</p>
+                    <p style={{ fontSize: 14, color: textPrimary, margin: 0, lineHeight: 1.6 }}>{lookup.participant.label_description}</p>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 13, color: textSecondary, fontStyle: 'italic', margin: 0 }}>No note added.</p>
+                )}
+              </div>
+
+              {/* Close button */}
+              <button
+                onClick={() => setLabelModalOpen(false)}
+                style={{ width: '100%', height: 48, borderRadius: 14, border: `1.5px solid ${border}`, background: 'transparent', color: textSecondary, fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#2a2a2a' : '#f3f4f6' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
