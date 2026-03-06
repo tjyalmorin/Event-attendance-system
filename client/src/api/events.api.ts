@@ -47,3 +47,20 @@ export const updateEventStatusApi = async (event_id: number, status: string): Pr
   const res = await api.put(`/events/${event_id}`, { status })
   return res.data
 }
+
+// ── Staff management ──────────────────────────────────────────────────────────
+
+export const getEventStaffApi = async (event_id: number) => {
+  const res = await api.get(`/events/${event_id}/staff`)
+  return res.data
+}
+
+export const removeEventStaffApi = async (event_id: number, user_id: string) => {
+  const res = await api.delete(`/events/${event_id}/staff/${user_id}`)
+  return res.data
+}
+
+export const getStaffByBranchesApi = async (branch_names: string[]) => {
+  const res = await api.get(`/users/staff-by-branches?branches=${branch_names.join(',')}`)
+  return res.data
+}

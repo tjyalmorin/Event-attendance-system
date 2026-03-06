@@ -30,8 +30,8 @@ export interface CreateEventPayload {
   venue: string
   capacity: number
   checkin_cutoff: string
+  staff_ids?: string[]   // ← staff to assign on creation
 }
-
 export interface UpdateEventPayload extends Partial<CreateEventPayload> {
   status?: 'draft' | 'open' | 'closed' | 'completed'
 }

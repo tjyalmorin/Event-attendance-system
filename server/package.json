@@ -5,12 +5,13 @@
   "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "db:migrate": "tsx src/database/migrate.ts",
-    "db:seed": "tsx src/database/seed.ts"
-  },
+  "dev": "tsx watch src/server.ts",
+  "build": "tsc",
+  "start": "node dist/server.js",
+  "db:migrate": "tsx src/database/migrate.ts",
+  "db:seed": "tsx src/database/seed.ts",
+  "db:migrate:branches": "tsx src/database/migrate_branches.ts"
+},
   "keywords": [
     "event",
     "attendance",

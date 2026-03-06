@@ -12,7 +12,6 @@ export const createUserSchema = z.object({
   email:       z.string().email('Invalid email').toLowerCase(),
   password:    strongPassword,
   branch_name: z.string().min(1, 'Branch name is required').max(255),
-  team_name:   z.string().min(1, 'Team name is required').max(255),
   role:        z.enum(['admin', 'staff'], { error: 'Role must be admin or staff' }),
 })
 

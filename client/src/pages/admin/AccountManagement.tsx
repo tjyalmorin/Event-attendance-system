@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Sidebar from '../../components/Sidebar'
 import { getAllUsersApi, createUserApi, deleteUserApi, updateUserApi, toggleUserActiveApi } from '../../api/users.api'
 import { User } from '../../types'
+import { useBranches } from '../../hooks/useBranches'
 
 // ── Icons ──────────────────────────────────────────────────
 const PlusIcon = () => (
@@ -113,12 +114,12 @@ type ModalType = 'create' | 'edit' | 'delete' | 'toggle' | null
 
 interface UserFormState {
   agent_code: string; full_name: string; email: string; password: string
-  branch_name: string; team_name: string; role: 'admin' | 'staff'
+  branch_name: string; role: 'admin' | 'staff'
 }
 
 const ITEMS_PER_PAGE = 10
 const EMPTY_FORM: UserFormState = {
-  agent_code: '', full_name: '', email: '', password: '', branch_name: '', team_name: '', role: 'staff'
+  agent_code: '', full_name: '', email: '', password: '', branch_name: '', role: 'staff'
 }
 
 // ── ActionDropdown ─────────────────────────────────────────
@@ -241,6 +242,7 @@ export default function AccountManagement() {
 
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
   const userRole = storedUser?.role || 'staff'
+  const { branches: BRANCHES } = useBranches()
 
   useEffect(() => {
     if (userRole !== 'admin') { navigate('/admin/settings/profile'); return }
@@ -270,8 +272,7 @@ export default function AccountManagement() {
     if (type === 'edit' && user) {
       setForm({
         agent_code: user.agent_code || '', full_name: user.full_name, email: user.email,
-        password: '', branch_name: (user as any).branch_name || '',
-        team_name: (user as any).team_name || '', role: user.role as 'admin' | 'staff',
+        password: '', branch_name: (user as any).branch_name || '', role: user.role as 'admin' | 'staff',
       })
     } else { setForm(EMPTY_FORM) }
   }
@@ -279,6 +280,7 @@ export default function AccountManagement() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault(); setModalLoading(true); setModalError('')
+    if (form.agent_code.length !== 8) { setModalError('Agent code must be exactly 8 digits'); setModalLoading(false); return }
     try {
       const created = await createUserApi(form)
       setUsers(prev => [created as any, ...prev])
@@ -290,8 +292,9 @@ export default function AccountManagement() {
 
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault(); setModalLoading(true); setModalError('')
+    if (form.agent_code.length !== 8) { setModalError('Agent code must be exactly 8 digits'); setModalLoading(false); return }
     try {
-      const payload: any = { agent_code: form.agent_code, full_name: form.full_name, email: form.email, branch_name: form.branch_name, team_name: form.team_name, role: form.role }
+      const payload: any = { agent_code: form.agent_code, full_name: form.full_name, email: form.email, branch_name: form.branch_name, role: form.role }
       if (form.password.trim()) payload.password = form.password
       const updated = await updateUserApi(selectedUser!.user_id, payload)
       setUsers(prev => prev.map(u => u.user_id === updated.user_id ? { ...u, ...updated } : u))
@@ -642,7 +645,21 @@ export default function AccountManagement() {
                         </div>
                         <div className="flex flex-col gap-1.5">
                           <label className={labelClass}>Agent Code</label>
-                          <input className={inputClass} value={form.agent_code} onChange={e => setForm(p => ({...p, agent_code: e.target.value}))} placeholder="AGT-001" required />
+                          <input
+                            className={inputClass}
+                            value={form.agent_code}
+                            onChange={e => {
+                              const digits = e.target.value.replace(/\D/g, '').slice(0, 8)
+                              setForm(p => ({ ...p, agent_code: digits }))
+                            }}
+                            placeholder="8-digit code"
+                            maxLength={8}
+                            inputMode="numeric"
+                            required
+                          />
+                          {form.agent_code.length > 0 && form.agent_code.length !== 8 && (
+                            <span className="text-[11px] text-red-500">Must be exactly 8 digits</span>
+                          )}
                         </div>
                         <div className="flex flex-col gap-1.5">
                           <label className={labelClass}>Role</label>
@@ -651,13 +668,19 @@ export default function AccountManagement() {
                             <option value="admin">Admin</option>
                           </select>
                         </div>
-                        <div className="flex flex-col gap-1.5">
+                        <div className="flex flex-col gap-1.5 col-span-2">
                           <label className={labelClass}>Branch</label>
-                          <input className={inputClass} value={form.branch_name} onChange={e => setForm(p => ({...p, branch_name: e.target.value}))} placeholder="Branch name" required />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <label className={labelClass}>Team</label>
-                          <input className={inputClass} value={form.team_name} onChange={e => setForm(p => ({...p, team_name: e.target.value}))} placeholder="Team name" required />
+                          <select
+                            className={inputClass}
+                            value={form.branch_name}
+                            onChange={e => setForm(p => ({ ...p, branch_name: e.target.value }))}
+                            required
+                          >
+                            <option value="">— Select branch —</option>
+                            {BRANCHES.map(b => (
+                              <option key={b.name} value={b.name}>{b.name}</option>
+                            ))}
+                          </select>
                         </div>
                         <div className="flex flex-col gap-1.5 col-span-2">
                           <label className={labelClass}>

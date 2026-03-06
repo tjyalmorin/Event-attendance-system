@@ -19,53 +19,96 @@ export const createEventService = async (created_by: string, payload: CreateEven
       payload.checkin_cutoff, registration_link
     ]
   )
-  return result.rows[0]
+
+  const event = result.rows[0]
+
+  // Assign staff if provided
+  if (payload.staff_ids && payload.staff_ids.length > 0) {
+    for (const uid of payload.staff_ids) {
+      await pool.query(
+        `INSERT INTO event_permissions (event_id, user_id)
+         VALUES ($1, $2)
+         ON CONFLICT (event_id, user_id) DO NOTHING`,
+        [event.event_id, uid]
+      )
+    }
+  }
+
+  return event
 }
 
-export const getAllEventsService = async (userId?: string, userRole?: string, userBranch?: string) => {
-  const countSubquery = `(
-    SELECT COUNT(*) FROM participants p
-    WHERE p.event_id = e.event_id
-    AND p.deleted_at IS NULL
-    AND p.registration_status != 'cancelled'
-  )::int AS registered_count`
+export const getAllEventsService = async (userId?: string, userRole?: string, _userBranch?: string) => {
+
+  // Single aggregation JOIN — runs once, not once per event row
+  const countJoin = `
+    LEFT JOIN (
+      SELECT event_id, COUNT(*)::int AS registered_count
+      FROM participants
+      WHERE deleted_at IS NULL
+        AND registration_status != 'cancelled'
+      GROUP BY event_id
+    ) pc ON pc.event_id = e.event_id
+  `
 
   if (userRole === 'admin') {
     const result = await pool.query(
-      `SELECT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date, ${countSubquery}
-       FROM events e WHERE e.deleted_at IS NULL ORDER BY e.event_date DESC`
-    )
-    return result.rows
-  }
-
-  if (userRole === 'staff' && userId && userBranch) {
-    const result = await pool.query(
-      `SELECT DISTINCT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date, ${countSubquery}
+      `SELECT e.*,
+              TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+              COALESCE(pc.registered_count, 0) AS registered_count
        FROM events e
-       LEFT JOIN users u ON e.created_by = u.user_id
-       LEFT JOIN admin_grants ag ON e.event_id = ag.event_id AND ag.granted_to_user_id = $1
-       WHERE e.deleted_at IS NULL 
-       AND (u.branch_name = $2 OR ag.grant_id IS NOT NULL)
-       ORDER BY e.event_date DESC`,
-      [userId, userBranch]
+       ${countJoin}
+       WHERE e.deleted_at IS NULL
+       ORDER BY e.event_date DESC`
     )
     return result.rows
   }
 
+  if (userRole === 'staff' && userId) {
+    const result = await pool.query(
+      `SELECT DISTINCT e.*,
+              TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+              COALESCE(pc.registered_count, 0) AS registered_count
+       FROM events e
+       ${countJoin}
+       INNER JOIN event_permissions ep
+         ON ep.event_id = e.event_id
+         AND ep.user_id = $1
+       WHERE e.deleted_at IS NULL
+       ORDER BY e.event_date DESC`,
+      [userId]
+    )
+    return result.rows
+  }
+
+  // Fallback
   const result = await pool.query(
-    `SELECT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date, ${countSubquery}
-     FROM events e WHERE e.deleted_at IS NULL ORDER BY e.event_date DESC`
+    `SELECT e.*,
+            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+            COALESCE(pc.registered_count, 0) AS registered_count
+     FROM events e
+     ${countJoin}
+     WHERE e.deleted_at IS NULL
+     ORDER BY e.event_date DESC`
   )
   return result.rows
 }
 
 export const getEventByIdService = async (event_id: number) => {
   const result = await pool.query(
-    `SELECT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date,
-      (SELECT COUNT(*) FROM participants p
-       WHERE p.event_id = e.event_id AND p.deleted_at IS NULL
-       AND p.registration_status != 'cancelled')::int AS registered_count
-     FROM events e WHERE e.event_id = $1 AND e.deleted_at IS NULL`,
+    `SELECT e.*,
+            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+            COALESCE(pc.registered_count, 0) AS registered_count
+     FROM events e
+     LEFT JOIN (
+       SELECT event_id, COUNT(*)::int AS registered_count
+       FROM participants
+       WHERE deleted_at IS NULL
+         AND registration_status != 'cancelled'
+         AND event_id = $1
+       GROUP BY event_id
+     ) pc ON pc.event_id = e.event_id
+     WHERE e.event_id = $1
+       AND e.deleted_at IS NULL`,
     [event_id]
   )
   if (!result.rows[0]) throw new Error('Event not found')
@@ -113,15 +156,48 @@ export const assignPermissionService = async (event_id: number, user_id: string)
   return result.rows[0]
 }
 
+// ── Staff management ──────────────────────────────────────────────────────────
+
+export const getEventStaffService = async (event_id: number) => {
+  const result = await pool.query(
+    `SELECT u.user_id, u.full_name, u.agent_code, u.branch_name, u.email,
+            ep.created_at as assigned_at
+     FROM event_permissions ep
+     INNER JOIN users u ON u.user_id = ep.user_id
+     WHERE ep.event_id = $1
+       AND u.deleted_at IS NULL
+     ORDER BY ep.created_at ASC`,
+    [event_id]
+  )
+  return result.rows
+}
+
+export const removeEventStaffService = async (event_id: number, user_id: string) => {
+  const result = await pool.query(
+    `DELETE FROM event_permissions
+     WHERE event_id = $1 AND user_id = $2
+     RETURNING permission_id`,
+    [event_id, user_id]
+  )
+  if (!result.rows[0]) throw new Error('Permission not found')
+  return result.rows[0]
+}
+
 // ── Feature 3: Trash Bin ──────────────────────────────────────────────────────
 
 export const getTrashedEventsService = async () => {
   const result = await pool.query(
-    `SELECT e.*, TO_CHAR(e.event_date, 'YYYY-MM-DD') as event_date,
-      (SELECT COUNT(*) FROM participants p
-       WHERE p.event_id = e.event_id AND p.deleted_at IS NULL
-       AND p.registration_status != 'cancelled')::int AS registered_count
+    `SELECT e.*,
+            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+            COALESCE(pc.registered_count, 0) AS registered_count
      FROM events e
+     LEFT JOIN (
+       SELECT event_id, COUNT(*)::int AS registered_count
+       FROM participants
+       WHERE deleted_at IS NULL
+         AND registration_status != 'cancelled'
+       GROUP BY event_id
+     ) pc ON pc.event_id = e.event_id
      WHERE e.deleted_at IS NOT NULL
      ORDER BY e.deleted_at DESC`
   )

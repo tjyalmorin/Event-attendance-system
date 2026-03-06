@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { getEventByIdApi } from '../../api/events.api'
 import { registerParticipantApi } from '../../api/participants.api'
 import { Event } from '../../types'
+import { useBranches } from '../../hooks/useBranches'
 import pruLogo from '../../assets/pru.webp'
 import imgFamily     from '../../assets/Family.webp'
 import imgInvest     from '../../assets/Invest.webp'
@@ -236,12 +237,39 @@ export default function RegistrationPage() {
     }, 4500)
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value })
+  const { branches: allBranches, getTeamsForBranch } = useBranches()
+  const [agentCodeError, setAgentCodeError] = useState('')
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target
+
+    if (name === 'agent_code') {
+      // Only allow digits, max 8
+      const digits = value.replace(/\D/g, '').slice(0, 8)
+      setForm(prev => ({ ...prev, agent_code: digits }))
+      if (digits.length > 0 && digits.length !== 8) {
+        setAgentCodeError('Agent code must be exactly 8 digits')
+      } else {
+        setAgentCodeError('')
+      }
+      return
+    }
+
+    if (name === 'branch_name') {
+      // Reset team when branch changes
+      setForm(prev => ({ ...prev, branch_name: value, team_name: '' }))
+      return
+    }
+
+    setForm(prev => ({ ...prev, [name]: value }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (form.agent_code.length !== 8) {
+      setAgentCodeError('Agent code must be exactly 8 digits')
+      return
+    }
     setSubmitting(true)
     setError('')
     try {
@@ -254,7 +282,12 @@ export default function RegistrationPage() {
     }
   }
 
-  // ── Loading ──
+  // Filter branches: if event has a branch_name, only show that one
+  const availableBranches = event
+    ? (event as any).branch_name
+      ? allBranches.filter(b => b.name === (event as any).branch_name)
+      : allBranches
+    : allBranches
   if (loading) return (
     <div style={s.fullPage}>
       <Styles />
@@ -363,8 +396,13 @@ export default function RegistrationPage() {
                   value={form.agent_code}
                   onChange={handleChange}
                   required
-                  placeholder="e.g. 12345678"
+                  placeholder="8-digit code (e.g. 12345678)"
+                  inputMode="numeric"
+                  maxLength={8}
                 />
+                {agentCodeError && (
+                  <span style={{ fontSize: 11, color: '#dc2626', marginTop: 3 }}>{agentCodeError}</span>
+                )}
               </div>
               <div style={s.field}>
                 <label style={s.label}>FULL NAME</label>
@@ -379,25 +417,36 @@ export default function RegistrationPage() {
               </div>
               <div style={s.field}>
                 <label style={s.label}>BRANCH NAME</label>
-                <input
+                <select
                   className="pru-input"
                   name="branch_name"
                   value={form.branch_name}
                   onChange={handleChange}
                   required
-                  placeholder="e.g. Makati Branch"
-                />
+                >
+                  <option value="">— Select branch —</option>
+                  {availableBranches.map(b => (
+                    <option key={b.name} value={b.name}>{b.name}</option>
+                  ))}
+                </select>
               </div>
               <div style={s.field}>
                 <label style={s.label}>TEAM NAME</label>
-                <input
+                <select
                   className="pru-input"
                   name="team_name"
                   value={form.team_name}
                   onChange={handleChange}
                   required
-                  placeholder="e.g. Team Alpha"
-                />
+                  disabled={!form.branch_name}
+                >
+                  <option value="">
+                    {form.branch_name ? '— Select team —' : '— Select branch first —'}
+                  </option>
+                  {getTeamsForBranch(form.branch_name).map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -506,6 +555,14 @@ function Styles() {
         color: #1f2937;
         outline: none;
         transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        appearance: auto;
+      }
+      select.pru-input {
+        cursor: pointer;
+      }
+      select.pru-input:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
       .pru-input:focus {
         border-color: #DC143C;

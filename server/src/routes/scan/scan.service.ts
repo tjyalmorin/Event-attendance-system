@@ -288,9 +288,11 @@ export const getSessionsByEventService = async (event_id: number) => {
        a.check_in_method, a.check_out_method, a.early_out_reason,
        p.full_name, p.agent_code, p.branch_name, p.team_name
      FROM attendance_sessions a
-     JOIN participants p ON a.participant_id = p.participant_id
+     JOIN participants p
+       ON a.participant_id = p.participant_id
+       AND p.event_id = a.event_id
      WHERE a.event_id = $1
-     ORDER BY a.check_in_time DESC`,
+     ORDER BY a.check_in_time DESC NULLS LAST`,
     [event_id]
   )
   return result.rows

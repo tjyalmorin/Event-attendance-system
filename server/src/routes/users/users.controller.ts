@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import asyncHandler from '../../middlewares/asyncHandler.js'
+import pool from '../../config/database.js'
 import {
   createUserService,
   getAllUsersService,
@@ -51,4 +52,28 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 export const toggleUserActive = asyncHandler(async (req: Request, res: Response) => {
   const user = await toggleUserActiveService(req.params.user_id)
   res.json(user)
+})
+
+export const getStaffByBranches = asyncHandler(async (req: Request, res: Response) => {
+  const branches = (req.query.branches as string || '')
+    .split(',')
+    .map(b => b.trim())
+    .filter(Boolean)
+
+  if (branches.length === 0) {
+    res.json([])
+    return
+  }
+
+  const result = await pool.query(
+    `SELECT user_id, full_name, agent_code, branch_name, email
+     FROM users
+     WHERE role = 'staff'
+       AND deleted_at IS NULL
+       AND is_active = true
+       AND branch_name = ANY($1)
+     ORDER BY branch_name, full_name`,
+    [branches]
+  )
+  res.json(result.rows)
 })
