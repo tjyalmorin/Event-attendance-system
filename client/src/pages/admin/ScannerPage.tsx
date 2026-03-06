@@ -63,24 +63,9 @@ const SearchIcon = () => (
     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
   </svg>
 )
-const CheckIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
-    <polyline points="20 6 9 17 4 12"/>
-  </svg>
-)
 const XIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-  </svg>
-)
-const LogOutIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-  </svg>
-)
-const ShieldIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
   </svg>
 )
 const UsersIcon = () => (
@@ -107,11 +92,12 @@ export default function ScannerPage() {
   const [error, setError]           = useState('')
   const [loading, setLoading]       = useState(false)
   const [photoError, setPhotoError] = useState(false)
-  const [countdown, setCountdown]   = useState(3)
+  const [countdown, setCountdown]   = useState(2)
   const [checkedInCount, setCheckedInCount] = useState(0)
   const [flashColor, setFlashColor] = useState<'green' | 'blue' | 'red' | null>(null)
   const [isEarlyOut, setIsEarlyOut] = useState(false)
   const [earlyOutReason, setEarlyOutReason] = useState('')
+  const [resultTime, setResultTime] = useState('')
 
   // ── Suggestions state ──
   const [suggestions, setSuggestions]         = useState<PickItem[]>([])
@@ -128,6 +114,9 @@ export default function ScannerPage() {
 
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
   const userRole   = storedUser?.role || 'staff'
+
+  // Countdown duration in seconds
+  const COUNTDOWN_SECS = 3
 
   useEffect(() => {
     if (!eventId) return
@@ -149,13 +138,26 @@ export default function ScannerPage() {
 
   useEffect(() => {
     if (pageState === 'result' || pageState === 'error') {
-      setCountdown(3)
-      countdownRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) { clearInterval(countdownRef.current!); resetToInput(); return 0 }
-          return prev - 1
-        })
-      }, 1000)
+      setCountdown(COUNTDOWN_SECS)
+      // Tick immediately after a short delay so bar starts draining right away
+      const firstTick = setTimeout(() => {
+        setCountdown(COUNTDOWN_SECS - 1)
+        countdownRef.current = setInterval(() => {
+          setCountdown(prev => {
+            const next = prev - 1
+            if (next <= 0) {
+              clearInterval(countdownRef.current!)
+              setTimeout(() => resetToInput(), 1000)
+              return 0
+            }
+            return next
+          })
+        }, 1000)
+      }, 50)
+      return () => {
+        clearTimeout(firstTick)
+        if (countdownRef.current) clearInterval(countdownRef.current)
+      }
     }
     return () => { if (countdownRef.current) clearInterval(countdownRef.current) }
   }, [pageState])
@@ -172,12 +174,17 @@ export default function ScannerPage() {
       return
     }
 
+    if (skipNextDebounce.current) {
+      skipNextDebounce.current = false
+      return
+    }
+
     setSugLoading(true)
     debounceRef.current = setTimeout(async () => {
       try {
         const data = await lookupParticipantApi({ query: query.trim(), event_id: Number(eventId) })
         if (data.multiple) {
-          setSuggestions(data.participants || [])
+          setSuggestions((data.participants || []).slice(0, 5))
         } else if (data.participant) {
           setSuggestions([data.participant])
         } else {
@@ -185,9 +192,15 @@ export default function ScannerPage() {
         }
         setShowSuggestions(true)
         setActiveSugIdx(-1)
-      } catch {
-        setSuggestions([])
-        setShowSuggestions(false)
+      } catch (err: any) {
+        const participants = err?.response?.data?.participants
+        if (participants?.length) {
+          setSuggestions(participants.slice(0, 5))
+          setShowSuggestions(true)
+        } else {
+          setSuggestions([])
+          setShowSuggestions(false)
+        }
       } finally {
         setSugLoading(false)
       }
@@ -196,7 +209,6 @@ export default function ScannerPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
   }, [query, pageState, eventId])
 
-  // Close suggestions on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (sugBoxRef.current && !sugBoxRef.current.contains(e.target as Node))
@@ -240,23 +252,15 @@ export default function ScannerPage() {
     } finally { setLoading(false) }
   }
 
-  const handlePickSuggestion = async (item: PickItem) => {
+  const skipNextDebounce = useRef(false)
+
+  const handlePickSuggestion = (item: PickItem) => {
+    skipNextDebounce.current = true
     setQuery(item.full_name)
     setShowSuggestions(false)
-    setLoading(true)
-    try {
-      const data = await resolveParticipantApi({ participant_id: item.participant_id, event_id: Number(eventId) })
-      if (data.next_action === 'blocked') {
-        playTone('denied'); triggerFlash('red')
-        setError('Participant has already completed attendance. No further entries allowed.')
-        setPageState('error'); setLoading(false); return
-      }
-      setLookup(data); setPhotoError(false); setPageState('verify')
-    } catch (err: any) {
-      playTone('denied'); triggerFlash('red')
-      setError(err.response?.data?.error || 'Resolve failed. Please try again.')
-      setPageState('error')
-    } finally { setLoading(false) }
+    setSuggestions([])
+    setActiveSugIdx(-1)
+    setTimeout(() => inputRef.current?.focus(), 50)
   }
 
   const handlePickParticipant = async (item: PickItem) => {
@@ -287,6 +291,7 @@ export default function ScannerPage() {
         early_out_reason: lookup.next_action === 'check_out' && isEarlyOut ? earlyOutReason || null : null
       })
       setResult(data)
+      setResultTime(new Date().toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
       const isIn = data.action === 'check_in'
       playTone(isIn ? 'success' : 'checkout')
       triggerFlash(isIn ? 'green' : 'blue')
@@ -340,7 +345,6 @@ export default function ScannerPage() {
     new Date(d).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
   const verifyPhotoUrl = getPhotoUrl(lookup?.participant.photo_url)
-  const resultPhotoUrl = getPhotoUrl(result?.participant.photo_url)
 
   const bg            = isDarkMode ? '#0f0f0f' : '#f0f1f3'
   const card          = isDarkMode ? '#1c1c1c' : '#ffffff'
@@ -362,7 +366,7 @@ export default function ScannerPage() {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
-        {/* ── HEADER — matches EventDetail style ── */}
+        {/* ── HEADER ── */}
         <header className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a] shadow-sm flex-shrink-0">
           <div className="px-12 h-[76px] flex items-center gap-4">
             <button
@@ -372,17 +376,13 @@ export default function ScannerPage() {
               <ArrowLeftIcon />
               <span className="font-medium">Back</span>
             </button>
-
             <div className="flex items-baseline gap-3">
               <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
                 {event?.title ?? ''}
               </h1>
               <span className="text-sm font-semibold text-gray-400 dark:text-gray-500 whitespace-nowrap">Check-in Station</span>
             </div>
-
             <div className="flex-1" />
-
-            {/* Attendees Inside */}
             <div className="text-right">
               <div className="text-2xl font-extrabold text-[#DC143C] leading-none">{checkedInCount}</div>
               <div className="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold mt-0.5">Attendees Inside</div>
@@ -392,16 +392,36 @@ export default function ScannerPage() {
 
         {/* ── EVENT INFO BAR ── */}
         {event && (
-          <div style={{ background: isDarkMode ? '#161616' : '#fafafa', borderBottom: `1px solid ${border}`, padding: '10px 48px', display: 'flex', alignItems: 'center', gap: 20, flexShrink: 0 }}>
-            <span style={{ fontSize: 13, color: textSecondary }}>{formatDate(event.event_date)}</span>
-            <span style={{ color: border }}>·</span>
-            <span style={{ fontSize: 13, color: textSecondary }}>{formatTime(event.start_time)} – {formatTime(event.end_time)}</span>
-            {event.venue && (<><span style={{ color: border }}>·</span><span style={{ fontSize: 13, color: textSecondary }}>{event.venue}</span></>)}
+          <div className="bg-[#fafafa] dark:bg-[#161616] border-b border-gray-200 dark:border-[#2a2a2a] px-12 py-2.5 flex items-center gap-5 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              <span className="text-sm text-gray-500 dark:text-gray-400">{formatDate(event.event_date)}</span>
+            </div>
+            <span className="text-gray-300 dark:text-gray-700">·</span>
+            <div className="flex items-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span className="text-sm text-gray-500 dark:text-gray-400">{formatTime(event.start_time)} – {formatTime(event.end_time)}</span>
+            </div>
+            {event.venue && (
+              <>
+                <span className="text-gray-300 dark:text-gray-700">·</span>
+                <div className="flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">{event.venue}</span>
+                </div>
+              </>
+            )}
             <span style={{
               marginLeft: 'auto', fontSize: 12, fontWeight: 700, padding: '3px 12px', borderRadius: 20,
               background: event.status === 'open' ? 'rgba(22,163,74,0.10)' : 'rgba(107,114,128,0.10)',
-              color: event.status === 'open' ? '#16a34a' : textSecondary,
-              border: `1px solid ${event.status === 'open' ? 'rgba(22,163,74,0.25)' : border}`
+              color: event.status === 'open' ? '#16a34a' : '#6b7280',
+              border: `1px solid ${event.status === 'open' ? 'rgba(22,163,74,0.25)' : '#e5e7eb'}`
             }}>
               {event.status === 'open' ? 'Registration Open' : 'Registration Closed'}
             </span>
@@ -410,30 +430,22 @@ export default function ScannerPage() {
 
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px 60px', overflowY: 'auto' }}>
-          <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ width: '100%', maxWidth: pageState === 'verify' || pageState === 'result' ? 820 : 520, display: 'flex', flexDirection: 'column', gap: 16, transition: 'max-width 0.2s' }}>
 
             {/* ── INPUT STATE ── */}
             {pageState === 'input' && (
-              <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 20, boxShadow: '0 4px 24px rgba(0,0,0,0.06)' }}>
-                <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)', borderRadius: '20px 20px 0 0' }} />
+              <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 20, boxShadow: '0 4px 24px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)' }} />
                 <div style={{ padding: '32px 32px 36px' }}>
-
-                  {/* Title */}
                   <div style={{ textAlign: 'center', marginBottom: 28 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, color: textSecondary }}>
                       <SearchIcon />
                     </div>
-                    <h2 style={{ fontSize: 22, fontWeight: 800, color: textPrimary, marginBottom: 6, letterSpacing: '-0.3px' }}>
-                      Search Agent
-                    </h2>
-                    <p style={{ fontSize: 13, color: textSecondary, lineHeight: 1.6 }}>
-                      Enter agent code or name
-                    </p>
+                    <h2 style={{ fontSize: 22, fontWeight: 800, color: textPrimary, marginBottom: 6, letterSpacing: '-0.3px' }}>Search Agent</h2>
+                    <p style={{ fontSize: 13, color: textSecondary, lineHeight: 1.6 }}>Enter agent code or name</p>
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-                    {/* Input + suggestions wrapper */}
                     <div ref={sugBoxRef} style={{ position: 'relative' }}>
                       <input
                         ref={inputRef}
@@ -447,26 +459,18 @@ export default function ScannerPage() {
                         placeholder="Search..."
                         style={{
                           width: '100%', padding: `14px 44px 14px ${inputFocused ? '44px' : '18px'}`, fontSize: 16, fontWeight: 600,
-                          background: inputBg,
-                          border: `2px solid ${border}`,
+                          background: inputBg, border: `2px solid ${border}`,
                           borderRadius: showSuggestions && suggestions.length > 0 ? '12px 12px 0 0' : 12,
                           color: textPrimary, outline: 'none', boxSizing: 'border-box', letterSpacing: '0.5px',
                           transition: 'border-radius 0.1s, padding 0.1s'
                         }}
                         autoComplete="off"
                       />
-
-                      {/* Search icon — left side, only when focused */}
                       {inputFocused && !sugLoading && (
-                        <div style={{
-                          position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
-                          color: textSecondary, pointerEvents: 'none', display: 'flex', alignItems: 'center'
-                        }}>
+                        <div style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: textSecondary, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
                           <SearchIcon />
                         </div>
                       )}
-
-                      {/* Spinner */}
                       {sugLoading && (
                         <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: textSecondary }}>
                           <svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
@@ -475,89 +479,42 @@ export default function ScannerPage() {
                           </svg>
                         </div>
                       )}
-
-                      {/* Suggestions dropdown */}
                       {showSuggestions && suggestions.length > 0 && (
-                        <div style={{
-                          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                          background: card, border: `2px solid ${border}`, borderTop: 'none',
-                          borderRadius: '0 0 12px 12px', overflow: 'hidden',
-                          boxShadow: '0 8px 24px rgba(0,0,0,0.10)'
-                        }}>
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: card, border: `2px solid ${border}`, borderTop: 'none', borderRadius: '0 0 12px 12px', overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}>
                           {suggestions.map((item, idx) => {
                             const isActive = idx === activeSugIdx
                             return (
-                              <button
-                                key={item.participant_id}
-                                onMouseDown={e => { e.preventDefault(); handlePickSuggestion(item) }}
-                                onMouseEnter={() => setActiveSugIdx(idx)}
-                                style={{
-                                  width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                                  padding: '10px 16px', textAlign: 'left', border: 'none', cursor: 'pointer',
-                                  background: isActive ? (isDarkMode ? '#251010' : '#fff5f5') : 'transparent',
-                                  borderBottom: idx < suggestions.length - 1 ? `1px solid ${border}` : 'none',
-                                  transition: 'background 0.1s'
-                                }}
-                              >
-                                {/* Search icon */}
+                              <button key={item.participant_id} onMouseDown={e => { e.preventDefault(); handlePickSuggestion(item) }} onMouseEnter={() => setActiveSugIdx(idx)}
+                                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', textAlign: 'left', border: 'none', cursor: 'pointer', background: isActive ? (isDarkMode ? '#251010' : '#fff5f5') : 'transparent', borderBottom: idx < suggestions.length - 1 ? `1px solid ${border}` : 'none', transition: 'background 0.1s' }}>
                                 <div style={{ color: textSecondary, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
                                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
                                     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                                   </svg>
                                 </div>
-                                {/* Full Name + divider + agent code */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-                                  <span style={{ fontWeight: 700, fontSize: 14, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {item.full_name}
-                                  </span>
+                                  <span style={{ fontWeight: 500, fontSize: 14, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.full_name}</span>
                                   <span style={{ width: 1, height: 14, background: border, flexShrink: 0 }} />
-                                  <span style={{ fontSize: 12, color: '#DC143C', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px', flexShrink: 0 }}>
-                                    {item.agent_code}
-                                  </span>
+                                  <span style={{ fontSize: 13, color: '#DC143C', fontFamily: 'inherit', fontWeight: 400, letterSpacing: '0.3px', flexShrink: 0 }}>{item.agent_code}</span>
                                 </div>
-                                {/* Right: Branch · Team */}
-                                <div style={{ fontSize: 11, color: textSecondary, flexShrink: 0, whiteSpace: 'nowrap' }}>
-                                  {item.branch_name} · {item.team_name}
-                                </div>
+                                <div style={{ fontSize: 11, color: textSecondary, flexShrink: 0, whiteSpace: 'nowrap' }}>{item.branch_name} · {item.team_name}</div>
                               </button>
                             )
                           })}
                         </div>
                       )}
-
-                      {/* No results */}
                       {showSuggestions && !sugLoading && suggestions.length === 0 && query.trim().length >= 2 && (
-                        <div style={{
-                          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                          background: card, border: `2px solid ${border}`, borderTop: 'none',
-                          borderRadius: '0 0 12px 12px', padding: '14px 16px',
-                          textAlign: 'center', fontSize: 13, color: textSecondary
-                        }}>
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: card, border: `2px solid ${border}`, borderTop: 'none', borderRadius: '0 0 12px 12px', padding: '14px 16px', textAlign: 'center', fontSize: 13, color: textSecondary }}>
                           No participants found for "{query}"
                         </div>
                       )}
                     </div>
 
-                    <button
-                      onClick={() => handleLookup(query)}
-                      disabled={loading || !query.trim()}
-                      style={{
-                        width: '100%', padding: '14px', borderRadius: 12, border: 'none',
-                        background: loading || !query.trim() ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C',
-                        color: loading || !query.trim() ? textSecondary : '#fff',
-                        fontSize: 14, fontWeight: 700,
-                        cursor: loading || !query.trim() ? 'not-allowed' : 'pointer',
-                        transition: 'all 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
-                      }}
-                    >
-                      {loading
-                        ? <><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Searching...</>
-                        : 'Enter'
-                      }
+                    <button onClick={() => handleLookup(query)} disabled={loading || !query.trim()}
+                      style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: loading || !query.trim() ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || !query.trim() ? textSecondary : '#fff', fontSize: 14, fontWeight: 700, cursor: loading || !query.trim() ? 'not-allowed' : 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      {loading ? <><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Searching...</> : 'Enter'}
                     </button>
                   </div>
 
-                  {/* How it works */}
                   <div style={{ marginTop: 20, padding: '14px 16px', background: isDarkMode ? '#0f0f0f' : '#f9fafb', borderRadius: 12, border: `1px solid ${border}` }}>
                     <p style={{ fontSize: 11, fontWeight: 700, color: textSecondary, letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 10 }}>How it works</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -574,7 +531,7 @@ export default function ScannerPage() {
                     </div>
                   </div>
                 </div>
-                <style>{`@keyframes spin { to { transform: rotate(360deg) } } @keyframes fillBar { from { width: 0% } to { width: 100% } }`}</style>
+                <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
               </div>
             )}
 
@@ -599,8 +556,7 @@ export default function ScannerPage() {
                         <button key={item.participant_id} onClick={() => handlePickParticipant(item)} disabled={loading}
                           style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: isDarkMode ? '#141414' : '#f9fafb', border: `1px solid ${border}`, borderRadius: 14, cursor: loading ? 'not-allowed' : 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
                           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#DC143C'; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1a1010' : '#fff5f5' }}
-                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = border; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#141414' : '#f9fafb' }}
-                        >
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = border; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#141414' : '#f9fafb' }}>
                           <div style={{ width: 48, height: 48, borderRadius: 12, overflow: 'hidden', border: `2px solid ${border}`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#e5e7eb' }}>
                             {pUrl ? <img src={pUrl} alt={item.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
                               <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -627,119 +583,156 @@ export default function ScannerPage() {
 
             {/* ── VERIFY STATE ── */}
             {pageState === 'verify' && lookup && (
-              <div style={{ background: card, border: `2px solid #f59e0b`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(245,158,11,0.15)' }}>
-                <div style={{ height: 4, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />
-                <div style={{ padding: '28px 32px 32px' }}>
-                  <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: isDarkMode ? '#2a2005' : '#fffbeb', border: '1px solid #f59e0b', borderRadius: 20, padding: '6px 16px', marginBottom: 12 }}>
-                      <ShieldIcon />
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#d97706' }}>Verify Identity</span>
-                    </div>
-                    <div style={{ fontSize: 14, color: textSecondary }}>Does the photo match the person in front of you?</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginBottom: 24, padding: '16px 20px', background: isDarkMode ? '#141414' : '#f9fafb', borderRadius: 16, border: `1px solid ${border}` }}>
-                    <div style={{ width: 88, height: 88, borderRadius: 16, overflow: 'hidden', border: `3px solid #f59e0b`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#f3f4f6' }}>
-                      {verifyPhotoUrl && !photoError ? (
-                        <img src={verifyPhotoUrl} alt={lookup.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setPhotoError(true)} />
-                      ) : (
-                        <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span style={{ fontSize: 32, fontWeight: 800, color: '#fff' }}>{lookup.participant.full_name.charAt(0).toUpperCase()}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 19, fontWeight: 800, color: textPrimary, marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lookup.participant.full_name}</div>
-                      <div style={{ fontFamily: 'monospace', fontSize: 13, color: '#DC143C', fontWeight: 700, letterSpacing: '2px', marginBottom: 8 }}>{lookup.participant.agent_code}</div>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {[lookup.participant.branch_name, lookup.participant.team_name].filter(Boolean).map((tag, i) => (
-                          <span key={i} style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 8, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', color: textSecondary }}>{tag}</span>
-                        ))}
+              <div style={{ background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 40px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)', border: `1px solid ${border}` }}>
+                <div style={{ height: 5, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)' }} />
+                <div style={{ padding: '36px 36px 32px', display: 'flex', gap: 36 }}>
+
+                  {/* LEFT: photo + status pill */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, flexShrink: 0 }}>
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ width: 230, height: 230, borderRadius: 20, background: isDarkMode ? '#2a2a2a' : '#f2f2f2', border: `2px solid ${border}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {verifyPhotoUrl && !photoError ? (
+                          <img src={verifyPhotoUrl} alt={lookup.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setPhotoError(true)} />
+                        ) : (
+                          <svg viewBox="0 0 80 80" fill="none" style={{ width: 80, height: 80 }}>
+                            <circle cx="40" cy="30" r="18" fill={isDarkMode ? '#444' : '#d0d0d0'} />
+                            <path d="M8 72c0-17.673 14.327-32 32-32s32 14.327 32 32" fill={isDarkMode ? '#444' : '#d0d0d0'} />
+                          </svg>
+                        )}
                       </div>
-                      <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, color: lookup.next_action === 'check_in' ? '#16a34a' : '#2563eb', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                        → {lookup.next_action === 'check_in' ? 'Check In' : lookup.next_action === 'check_out' ? 'Check Out' : 'Blocked'}
-                      </div>
+                      <div style={{ position: 'absolute', inset: -5, borderRadius: 24, border: '2px solid rgba(220,20,60,0.2)', pointerEvents: 'none' }} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 100, fontSize: 13, fontWeight: 600, background: lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.07)' : 'rgba(37,99,235,0.07)', color: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', border: `1.5px solid ${lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.2)' : 'rgba(37,99,235,0.2)'}`, width: 230, justifyContent: 'center' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', animation: 'pulse 1.8s infinite' }} />
+                      {lookup.next_action === 'check_in' ? 'Not Yet Checked In' : lookup.next_action === 'check_out' ? 'Currently Inside' : 'Blocked'}
                     </div>
                   </div>
 
-                  {lookup.next_action === 'check_out' && (
-                    <div style={{ marginBottom: 16, padding: '14px 16px', background: isEarlyOut ? (isDarkMode ? '#2a1f00' : '#fffbeb') : (isDarkMode ? '#141414' : '#f9fafb'), border: `1px solid ${isEarlyOut ? '#f59e0b' : border}`, borderRadius: 12, transition: 'all 0.2s' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
-                        <div onClick={() => { setIsEarlyOut(v => !v); if (isEarlyOut) setEarlyOutReason('') }}
-                          style={{ width: 40, height: 22, borderRadius: 11, background: isEarlyOut ? '#f59e0b' : (isDarkMode ? '#3a3a3a' : '#d1d5db'), position: 'relative', transition: 'background 0.2s', flexShrink: 0, cursor: 'pointer' }}>
-                          <div style={{ position: 'absolute', top: 3, left: isEarlyOut ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                  {/* RIGHT: name + info rows + actions */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <div style={{ fontSize: 36, fontWeight: 700, color: textPrimary, letterSpacing: '-1px', lineHeight: 1.1, marginBottom: 4 }}>{lookup.participant.full_name}</div>
+                    <div style={{ fontSize: 13, color: '#DC143C', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 24 }}>Agent Profile</div>
+                    <div style={{ border: `1px solid ${border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 28 }}>
+                      {[
+                        { label: 'Agent Code', value: lookup.participant.agent_code, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16, color: '#DC143C' }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15h10M7 11h4"/></svg> },
+                        { label: 'Branch', value: lookup.participant.branch_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16, color: '#DC143C' }}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
+                        { label: 'Team', value: lookup.participant.team_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16, color: '#DC143C' }}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> },
+                      ].map(({ label, value, icon }, i, arr) => (
+                        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none' }}>
+                          <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: 'rgba(220,20,60,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</div>
+                          <div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>{label}</div>
+                            <div style={{ fontSize: 15, fontWeight: 500, color: textPrimary }}>{value}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: isEarlyOut ? '#d97706' : textPrimary }}>Mark as Early Out</div>
-                          <div style={{ fontSize: 11, color: textSecondary, marginTop: 1 }}>Participant is leaving before the event ends</div>
-                        </div>
-                      </label>
-                      {isEarlyOut && (
-                        <input type="text" value={earlyOutReason} onChange={e => setEarlyOutReason(e.target.value)} placeholder="Reason (optional)..."
-                          style={{ marginTop: 10, width: '100%', padding: '9px 12px', fontSize: 13, background: isDarkMode ? '#1c1c1c' : '#fff', border: `1px solid #f59e0b`, borderRadius: 8, color: textPrimary, outline: 'none', boxSizing: 'border-box' }} />
-                      )}
+                      ))}
                     </div>
-                  )}
 
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={handleDeny} disabled={loading}
-                      style={{ flex: 1, padding: '14px', borderRadius: 12, border: `2px solid ${isDarkMode ? '#3a1520' : '#fecdd3'}`, background: isDarkMode ? '#1a0a0e' : '#fff5f5', color: '#DC143C', fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                      <XIcon /> Deny
-                    </button>
-                    <button onClick={handleConfirm} disabled={loading || lookup.next_action === 'blocked'}
-                      style={{ flex: 2, padding: '14px', borderRadius: 12, border: 'none', background: loading || lookup.next_action === 'blocked' ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || lookup.next_action === 'blocked' ? textSecondary : '#fff', fontSize: 14, fontWeight: 700, cursor: loading || lookup.next_action === 'blocked' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                      {loading ? (<><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Processing...</>) : '✓ Confirm & Record'}
-                    </button>
+                    {lookup.next_action === 'check_out' && (
+                      <div style={{ marginBottom: 20, padding: '14px 16px', background: isEarlyOut ? (isDarkMode ? '#2a1f00' : '#fffbeb') : (isDarkMode ? '#141414' : '#f9fafb'), border: `1px solid ${isEarlyOut ? '#f59e0b' : border}`, borderRadius: 12, transition: 'all 0.2s' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                          <div onClick={() => { setIsEarlyOut(v => !v); if (isEarlyOut) setEarlyOutReason('') }} style={{ width: 40, height: 22, borderRadius: 11, background: isEarlyOut ? '#f59e0b' : (isDarkMode ? '#3a3a3a' : '#d1d5db'), position: 'relative', transition: 'background 0.2s', flexShrink: 0, cursor: 'pointer' }}>
+                            <div style={{ position: 'absolute', top: 3, left: isEarlyOut ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: isEarlyOut ? '#d97706' : textPrimary }}>Mark as Early Out</div>
+                            <div style={{ fontSize: 11, color: textSecondary, marginTop: 1 }}>Participant is leaving before the event ends</div>
+                          </div>
+                        </label>
+                        {isEarlyOut && (
+                          <input type="text" value={earlyOutReason} onChange={e => setEarlyOutReason(e.target.value)} placeholder="Reason (optional)..."
+                            style={{ marginTop: 10, width: '100%', padding: '9px 12px', fontSize: 13, background: isDarkMode ? '#1c1c1c' : '#fff', border: `1px solid #f59e0b`, borderRadius: 8, color: textPrimary, outline: 'none', boxSizing: 'border-box' }} />
+                        )}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 14, marginTop: 'auto' }}>
+                      <button onClick={handleConfirm} disabled={loading || lookup.next_action === 'blocked'}
+                        style={{ flex: 1, height: 56, borderRadius: 14, border: 'none', background: loading || lookup.next_action === 'blocked' ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || lookup.next_action === 'blocked' ? textSecondary : '#fff', fontSize: 16, fontWeight: 600, cursor: loading || lookup.next_action === 'blocked' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: loading || lookup.next_action === 'blocked' ? 'none' : '0 4px 20px rgba(220,20,60,0.3)', transition: 'all 0.18s', letterSpacing: '-0.2px' }}>
+                        {loading ? <><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Processing...</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}><polyline points="20 6 9 17 4 12"/></svg>{lookup.next_action === 'check_in' ? 'Check-In' : 'Check-Out'}</>}
+                      </button>
+                      <button onClick={handleDeny} disabled={loading}
+                        style={{ flex: 1, height: 56, borderRadius: 14, background: isDarkMode ? '#1c1c1c' : '#fff', color: isDarkMode ? '#9ca3af' : '#666', border: `1.5px solid ${border}`, fontSize: 16, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'all 0.18s', letterSpacing: '-0.2px' }}
+                        onMouseEnter={e => { if (!loading) { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#2a2a2a' : '#f2f2f2'; (e.currentTarget as HTMLElement).style.color = textPrimary } }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1c1c1c' : '#fff'; (e.currentTarget as HTMLElement).style.color = isDarkMode ? '#9ca3af' : '#666' }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        Deny
+                      </button>
+                    </div>
                   </div>
                 </div>
+                <style>{`@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } } @keyframes spin { to { transform: rotate(360deg) } }`}</style>
               </div>
             )}
 
             {/* ── RESULT STATE ── */}
             {pageState === 'result' && result && (() => {
-              const isIn   = result.action === 'check_in'
-              const accent = isIn ? '#16a34a' : '#2563eb'
-              const pUrl   = getPhotoUrl(result.participant.photo_url)
+              const isIn = result.action === 'check_in'
               return (
-                <div style={{ background: card, border: `2px solid ${accent}`, borderRadius: 20, overflow: 'hidden', boxShadow: `0 4px 32px ${isIn ? 'rgba(22,163,74,0.12)' : 'rgba(37,99,235,0.12)'}` }}>
-                  <div style={{ height: 4, background: `linear-gradient(90deg, ${accent}, ${isIn ? '#4ade80' : '#60a5fa'})` }} />
-                  <div style={{ padding: '28px 32px 32px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
-                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
-                        {isIn ? <CheckIcon /> : <LogOutIcon />}
+                <div style={{ background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 40px rgba(0,0,0,0.08)', border: `1px solid ${border}` }}>
+                  <div style={{ height: 5, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)' }} />
+
+                  <div style={{ padding: '36px 40px 32px', display: 'flex', gap: 40, alignItems: 'center' }}>
+
+                    {/* LEFT: success icon */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, gap: 16 }}>
+                      <div style={{ position: 'relative', width: 96, height: 96 }}>
+                        <div style={{ position: 'absolute', inset: -12, borderRadius: '50%', border: '2px solid rgba(220,20,60,0.15)', animation: 'ripple 2s ease-out infinite' }} />
+                        <div style={{ position: 'absolute', inset: -24, borderRadius: '50%', border: '2px solid rgba(220,20,60,0.08)', animation: 'ripple 2s ease-out infinite', animationDelay: '0.5s' }} />
+                        <div style={{ width: 96, height: 96, borderRadius: '50%', background: 'linear-gradient(135deg, rgba(220,20,60,0.12), rgba(220,20,60,0.06))', border: '2px solid rgba(220,20,60,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#DC143C" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 44, height: 44 }}>
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        </div>
                       </div>
-                      <div>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: accent }}>{isIn ? 'Checked In ✓' : 'Checked Out ✓'}</div>
-                        <div style={{ fontSize: 13, color: textSecondary }}>{result.message}</div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#DC143C', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 4 }}>Success</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: textPrimary, letterSpacing: '-0.5px', lineHeight: 1.1 }}>
+                          {isIn ? 'Check-In' : 'Check-Out'}<br />Successful
+                        </div>
                         {result.is_early_out && (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 6, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 20, padding: '3px 10px' }}>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: '#d97706' }}>⚠ Early Out</span>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 20, padding: '3px 10px' }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#d97706' }}>⚠ Early Out</span>
                           </div>
                         )}
                       </div>
                     </div>
-                    <div style={{ background: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)', borderRadius: 14, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-                      <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: `3px solid ${accent}`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#f3f4f6' }}>
-                        {pUrl ? <img src={pUrl} alt={result.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
-                          <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <span style={{ fontSize: 26, fontWeight: 800, color: '#fff' }}>{result.participant.full_name.charAt(0).toUpperCase()}</span>
-                          </div>
-                        )}
+
+                    {/* DIVIDER */}
+                    <div style={{ width: 1, alignSelf: 'stretch', background: border, flexShrink: 0 }} />
+
+                    {/* RIGHT: agent info + progress bar */}
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {/* Name */}
+                      <div style={{ fontSize: 28, fontWeight: 800, color: textPrimary, letterSpacing: '-0.8px', lineHeight: 1.1, marginBottom: 18 }}>
+                        {result.participant.full_name}
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 17, fontWeight: 800, color: textPrimary, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{result.participant.full_name}</div>
-                        <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#DC143C', fontWeight: 700, letterSpacing: '2px', marginBottom: 8 }}>{result.participant.agent_code}</div>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {[result.participant.branch_name, result.participant.team_name].filter(Boolean).map((tag, i) => (
-                            <span key={i} style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 8, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', color: textSecondary }}>{tag}</span>
-                          ))}
+
+                      {/* Info rows */}
+                      <div style={{ border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
+                        {[
+                          { label: 'Agent Code', value: result.participant.agent_code, highlight: false },
+                          { label: isIn ? 'Checked In At' : 'Checked Out At', value: resultTime, highlight: true },
+                        ].map(({ label, value, highlight }, i, arr) => (
+                          <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none', background: 'transparent' }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: textSecondary, textTransform: 'uppercase', letterSpacing: '0.8px' }}>{label}</span>
+                            <span style={{ fontSize: highlight ? 16 : 14, fontWeight: highlight ? 800 : 700, color: highlight ? '#DC143C' : textPrimary, letterSpacing: highlight ? '-0.3px' : '0.5px', fontVariantNumeric: 'tabular-nums', fontFamily: !highlight ? 'monospace' : 'inherit' }}>{value}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Progress bar */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ fontSize: 11, color: textSecondary, fontWeight: 500 }}>
+                          Next scan in {countdown}s…
+                        </div>
+                        <div style={{ width: '100%', height: 5, background: isDarkMode ? '#2a2a2a' : '#f0f1f3', borderRadius: 99, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 99, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)', width: `${(countdown / COUNTDOWN_SECS) * 100}%`, transition: 'width 1s linear' }} />
                         </div>
                       </div>
                     </div>
-                    <div style={{ width: '100%', height: 6, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', background: accent, borderRadius: 3, animation: 'fillBar 3s linear forwards' }} />
-                    </div>
-                    <div style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: textSecondary }}>Next scan in {countdown}s</div>
                   </div>
+                  <style>{`@keyframes ripple { 0% { transform: scale(0.85); opacity: 1; } 100% { transform: scale(1.1); opacity: 0; } }`}</style>
                 </div>
               )
             })()}
@@ -759,7 +752,7 @@ export default function ScannerPage() {
                     </div>
                   </div>
                   <div style={{ width: '100%', height: 6, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', background: '#DC143C', borderRadius: 3, animation: 'fillBar 3s linear forwards' }} />
+                    <div style={{ height: '100%', background: '#DC143C', borderRadius: 3, width: `${(countdown / COUNTDOWN_SECS) * 100}%`, transition: 'width 1s linear' }} />
                   </div>
                   <div style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: textSecondary }}>Next scan in {countdown}s</div>
                 </div>

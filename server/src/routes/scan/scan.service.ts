@@ -11,7 +11,9 @@ export const lookupParticipantService = async (query: string, event_id: number) 
   )
   const event = eventResult.rows[0]
   if (!event) throw new Error('Event not found.')
-  if (event.status !== 'open') throw new Error('Event is not currently active.')
+  // ── NOTE: status check intentionally removed here ──
+  // Lookup is used for search suggestions and should work regardless of registration status.
+  // The status check is enforced at the actual scan step (scanAgentCodeService).
 
   const now = new Date()
   const currentTime = now.toTimeString().split(' ')[0]
@@ -21,12 +23,13 @@ export const lookupParticipantService = async (query: string, event_id: number) 
   let participantRows: any[] = []
 
   if (isNumeric) {
-    const exact = await pool.query(
+    // Contains match so suggestions appear immediately as user types any part of the code
+    const partial = await pool.query(
       `SELECT * FROM participants
-       WHERE agent_code = $1 AND event_id = $2 AND deleted_at IS NULL`,
-      [query.trim(), event_id]
+       WHERE agent_code ILIKE $1 AND event_id = $2 AND deleted_at IS NULL`,
+      [`%${query.trim()}%`, event_id]
     )
-    participantRows = exact.rows
+    participantRows = partial.rows
   }
 
   if (participantRows.length === 0) {
@@ -101,7 +104,9 @@ export const resolveParticipantService = async (participant_id: number, event_id
   )
   const event = eventResult.rows[0]
   if (!event) throw new Error('Event not found.')
-  if (event.status !== 'open') throw new Error('Event is not currently active.')
+  // ── NOTE: status check intentionally removed here ──
+  // Resolve is used for the verify screen and should work regardless of registration status.
+  // The status check is enforced at the actual scan step (scanAgentCodeService).
 
   const now = new Date()
   const currentTime = now.toTimeString().split(' ')[0]
@@ -185,7 +190,8 @@ export const scanAgentCodeService = async (
   )
   const event = eventResult.rows[0]
   if (!event) { await logScan('denied', 'Event not found'); throw new Error('Event not found.') }
-  if (event.status !== 'open') { await logScan('denied', 'Event is not active'); throw new Error('Event is not currently active.') }
+  // NOTE: Registration open/closed status does not block check-in/out.
+  // open/closed only controls the public registration form.
 
   const now = new Date()
   const currentTime = now.toTimeString().split(' ')[0]
