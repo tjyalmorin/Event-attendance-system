@@ -19,10 +19,25 @@ export const createEventService = async (created_by: string, payload: CreateEven
       payload.checkin_cutoff, registration_link
     ]
   )
-  return result.rows[0]
+
+  const event = result.rows[0]
+
+  // Assign staff if provided
+  if (payload.staff_ids && payload.staff_ids.length > 0) {
+    for (const uid of payload.staff_ids) {
+      await pool.query(
+        `INSERT INTO event_permissions (event_id, user_id)
+         VALUES ($1, $2)
+         ON CONFLICT (event_id, user_id) DO NOTHING`,
+        [event.event_id, uid]
+      )
+    }
+  }
+
+  return event
 }
 
-export const getAllEventsService = async (userId?: string, userRole?: string, userBranch?: string) => {
+export const getAllEventsService = async (userId?: string, userRole?: string, _userBranch?: string) => {
 
   // Single aggregation JOIN — runs once, not once per event row
   const countJoin = `
@@ -48,23 +63,19 @@ export const getAllEventsService = async (userId?: string, userRole?: string, us
     return result.rows
   }
 
-  if (userRole === 'staff' && userId && userBranch) {
+  if (userRole === 'staff' && userId) {
     const result = await pool.query(
       `SELECT DISTINCT e.*,
               TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
               COALESCE(pc.registered_count, 0) AS registered_count
        FROM events e
        ${countJoin}
-       LEFT JOIN users u ON e.created_by = u.user_id
-       LEFT JOIN admin_grants ag
-         ON e.event_id = ag.event_id
-         AND ag.granted_to_user_id = $1
-         AND ag.revoked_at IS NULL
-         AND ag.expires_at > NOW()
+       INNER JOIN event_permissions ep
+         ON ep.event_id = e.event_id
+         AND ep.user_id = $1
        WHERE e.deleted_at IS NULL
-         AND (u.branch_name = $2 OR ag.grant_id IS NOT NULL)
        ORDER BY e.event_date DESC`,
-      [userId, userBranch]
+      [userId]
     )
     return result.rows
   }
@@ -142,6 +153,33 @@ export const assignPermissionService = async (event_id: number, user_id: string)
      RETURNING *`,
     [user_id, event_id]
   )
+  return result.rows[0]
+}
+
+// ── Staff management ──────────────────────────────────────────────────────────
+
+export const getEventStaffService = async (event_id: number) => {
+  const result = await pool.query(
+    `SELECT u.user_id, u.full_name, u.agent_code, u.branch_name, u.email,
+            ep.created_at as assigned_at
+     FROM event_permissions ep
+     INNER JOIN users u ON u.user_id = ep.user_id
+     WHERE ep.event_id = $1
+       AND u.deleted_at IS NULL
+     ORDER BY ep.created_at ASC`,
+    [event_id]
+  )
+  return result.rows
+}
+
+export const removeEventStaffService = async (event_id: number, user_id: string) => {
+  const result = await pool.query(
+    `DELETE FROM event_permissions
+     WHERE event_id = $1 AND user_id = $2
+     RETURNING permission_id`,
+    [event_id, user_id]
+  )
+  if (!result.rows[0]) throw new Error('Permission not found')
   return result.rows[0]
 }
 

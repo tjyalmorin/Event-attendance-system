@@ -52,15 +52,17 @@ export interface Event {
 
 export interface CreateEventPayload {
   title: string
-  description: string
+  description?: string | null
   event_date: string
-  start_time: string
-  end_time: string
-  registration_start: string
-  registration_end: string
+  start_time?: string | null
+  end_time?: string | null
+  registration_start?: string | null
+  registration_end?: string | null
   venue: string
-  capacity: number
-  checkin_cutoff: string
+  capacity?: number
+  checkin_cutoff?: string | null
+  event_branches?: { branch_name: string; teams: string[] }[]
+  staff_ids?: string[]
 }
 
 // Participant types

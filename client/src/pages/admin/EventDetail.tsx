@@ -1,13 +1,22 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ExcelJS from 'exceljs'
-import { getEventByIdApi, updateEventStatusApi } from '../../api/events.api'
+import { getEventByIdApi, updateEventStatusApi, getEventStaffApi, removeEventStaffApi } from '../../api/events.api'
 import { getParticipantsByEventApi, cancelParticipantApi, setLabelApi } from '../../api/participants.api'
 import { getSessionsByEventApi, getScanLogsByEventApi } from '../../api/scan.api'
 import { Event, Participant, AttendanceSession, ScanLog } from '../../types'
 import Sidebar from '../../components/Sidebar'
 
-type TabType = 'registrants' | 'attendance' | 'scanlogs' | 'reports'
+type TabType = 'registrants' | 'attendance' | 'scanlogs' | 'reports' | 'staff'
+
+interface AssignedStaff {
+  user_id: string
+  full_name: string
+  agent_code: string
+  branch_name: string
+  email: string
+  assigned_at: string
+}
 
 const LABEL_OPTIONS = ['Awardee', 'VIP', 'Sponsor', 'Speaker', 'Staff', 'Custom…']
 
@@ -218,6 +227,11 @@ export default function EventDetail() {
   const [removeModal, setRemoveModal] = useState<{ open: boolean; participant: Participant | null }>({ open: false, participant: null })
   const [removeLoading, setRemoveLoading] = useState(false)
 
+  // Assigned staff state (admin only)
+  const [assignedStaff, setAssignedStaff] = useState<AssignedStaff[]>([])
+  const [removingStaffId, setRemovingStaffId] = useState<string | null>(null)
+  const [removeStaffModal, setRemoveStaffModal] = useState<{ open: boolean; staff: AssignedStaff | null }>({ open: false, staff: null })
+
   // ── Per-tab search, sort, filter states ──
   const [registrantsSearch, setRegistrantsSearch] = useState('')
   const [registrantsSort, setRegistrantsSort] = useState<'name' | 'date'>('date')
@@ -238,16 +252,18 @@ export default function EventDetail() {
   const fetchData = useCallback(async () => {
     const id = Number(eventId)
     try {
-      const [eventData, participantsData, sessionsData, logsData] = await Promise.all([
+      const [eventData, participantsData, sessionsData, logsData, staffData] = await Promise.all([
         getEventByIdApi(id),
         getParticipantsByEventApi(id),
         getSessionsByEventApi(id),
-        getScanLogsByEventApi(id)
+        getScanLogsByEventApi(id),
+        isAdmin ? getEventStaffApi(id) : Promise.resolve([])
       ])
       setEvent(eventData)
       setParticipants(participantsData)
       setSessions(sessionsData)
       setScanLogs(logsData)
+      setAssignedStaff(staffData)
     } catch (err) {
       console.error(err)
     } finally {
@@ -307,6 +323,19 @@ export default function EventDetail() {
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to remove registrant')
     } finally { setRemoveLoading(false) }
+  }
+
+  // ── Remove staff access ──
+  const handleRemoveStaff = async () => {
+    if (!removeStaffModal.staff) return
+    setRemovingStaffId(removeStaffModal.staff.user_id)
+    try {
+      await removeEventStaffApi(Number(eventId), removeStaffModal.staff.user_id)
+      setAssignedStaff(prev => prev.filter(s => s.user_id !== removeStaffModal.staff!.user_id))
+      setRemoveStaffModal({ open: false, staff: null })
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to remove staff access')
+    } finally { setRemovingStaffId(null) }
   }
 
   // ── Registration open/close toggle ──
@@ -378,7 +407,7 @@ export default function EventDetail() {
       const ws = wb.addWorksheet('Registrants')
       const headers = ['Participant ID', 'Agent Code', 'Full Name', 'Branch', 'Team', 'Status', 'Registered At']
       applyHeader(ws, headers)
-      participants.forEach(p => {
+      visibleParticipants.forEach(p => {
         ws.addRow([
           p.participant_id, p.agent_code, p.full_name, p.branch_name, p.team_name,
           p.registration_status, new Date(p.registered_at).toLocaleString('en-PH')
@@ -396,7 +425,7 @@ export default function EventDetail() {
       const ws = wb.addWorksheet('Attendance')
       const headers = ['Session ID', 'Agent Code', 'Full Name', 'Branch', 'Team', 'Check In', 'Check Out', 'Status']
       applyHeader(ws, headers)
-      sessions.forEach(s => {
+      visibleSessions.forEach(s => {
         ws.addRow([
           s.session_id, s.agent_code, s.full_name, s.branch_name, s.team_name,
           new Date(s.check_in_time).toLocaleString('en-PH'),
@@ -442,7 +471,24 @@ export default function EventDetail() {
   // FIX #2: no-shows only shown after event ends
   const noShowCount     = Math.max(0, confirmedCount - totalAttended)
 
-  const recentCheckIns = [...sessions]
+  // ── Branch-filtered data (staff sees only their branch) ──
+  const visibleParticipants = isAdmin
+    ? participants
+    : participants.filter(p => p.branch_name === user.branch_name)
+
+  const visibleSessions = isAdmin
+    ? sessions
+    : sessions.filter(s => s.branch_name === user.branch_name)
+
+  // Visible stats (used in stat cards and reports for staff)
+  const visibleConfirmedCount = visibleParticipants.filter(p => p.registration_status === 'confirmed').length
+  const visibleCheckedInCount = visibleSessions.filter(s => s.check_in_time && !s.check_out_time).length
+  const visibleCompletedCount = visibleSessions.filter(s => s.check_in_time && s.check_out_time).length
+  const visibleEarlyOutCount  = visibleSessions.filter(s => s.check_out_method === 'early_out').length
+  const visibleTotalAttended  = visibleSessions.length
+  const visibleNoShowCount    = Math.max(0, visibleConfirmedCount - visibleTotalAttended)
+
+  const recentCheckIns = [...visibleSessions]
     .sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime())
     .slice(0, 6)
 
@@ -452,7 +498,7 @@ export default function EventDetail() {
 
 
   // ── Filtered & sorted registrants ──
-  const filteredRegistrants = participants
+  const filteredRegistrants = visibleParticipants
     .filter(p => {
       if (!registrantsSearch.trim()) return true
       const q = registrantsSearch.toLowerCase()
@@ -464,7 +510,7 @@ export default function EventDetail() {
     })
 
   // ── Filtered & sorted attendance ──
-  const filteredAttendanceSorted = sessions
+  const filteredAttendanceSorted = visibleSessions
     .filter(s => {
       const matchSearch = !attendanceSearch.trim() ||
         s.full_name?.toLowerCase().includes(attendanceSearch.toLowerCase()) ||
@@ -529,10 +575,11 @@ export default function EventDetail() {
   const isOpen  = event.status === 'open'
 
   const tabs: { key: TabType; label: string }[] = [
-    { key: 'registrants', label: `Registrants (${confirmedCount})` },
-    { key: 'attendance',  label: `Attendance (${sessions.length})` },
+    { key: 'registrants', label: `Registrants (${visibleConfirmedCount})` },
+    { key: 'attendance',  label: `Attendance (${visibleSessions.length})` },
     { key: 'scanlogs',   label: `Scan Logs (${scanLogs.length})` },
     { key: 'reports',    label: 'Reports' },
+    ...(isAdmin ? [{ key: 'staff' as TabType, label: `Assigned Staff (${assignedStaff.length})` }] : []),
   ]
 
   return (
@@ -617,35 +664,43 @@ export default function EventDetail() {
           {/* ── STATS ── */}
           <div className="flex gap-5 flex-shrink-0">
             <div className="flex-1 flex flex-col gap-3">
+              {!isAdmin && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#DC143C]/10 border border-[#DC143C]/30 text-[#DC143C]">
+                    Viewing: {user.branch_name}
+                  </span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">Data filtered to your branch</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
-                <StatCard num={confirmedCount} label="Registered" accent={false} barWidth={100} icon={<UsersIcon />} />
+                <StatCard num={visibleConfirmedCount} label="Registered" accent={false} barWidth={100} icon={<UsersIcon />} />
                 {/* FIX #1: Currently Inside */}
-                <StatCard num={checkedInCount} label="Currently Inside" accent={true}
-                  barWidth={confirmedCount ? Math.round((checkedInCount / confirmedCount) * 100) : 0}
+                <StatCard num={visibleCheckedInCount} label="Currently Inside" accent={true}
+                  barWidth={visibleConfirmedCount ? Math.round((visibleCheckedInCount / visibleConfirmedCount) * 100) : 0}
                   icon={<CheckIcon />} iconRed />
               </div>
               <div className="grid grid-cols-4 gap-3">
                 {/* Checked Out — gray */}
-                <StatCard num={completedCount} label="Checked Out" accent={false}
-                  barWidth={confirmedCount ? Math.round((completedCount / confirmedCount) * 100) : 0}
+                <StatCard num={visibleCompletedCount} label="Checked Out" accent={false}
+                  barWidth={visibleConfirmedCount ? Math.round((visibleCompletedCount / visibleConfirmedCount) * 100) : 0}
                   icon={<LogoutIcon />} />
                 {/* Early Out — gray, no yellow */}
-                <StatCard num={earlyOutCount} label="Early Out" accent={false}
-                  barWidth={confirmedCount ? Math.round((earlyOutCount / confirmedCount) * 100) : 0}
+                <StatCard num={visibleEarlyOutCount} label="Early Out" accent={false}
+                  barWidth={visibleConfirmedCount ? Math.round((visibleEarlyOutCount / visibleConfirmedCount) * 100) : 0}
                   icon={<AlertIcon />} />
                 {/* No-Shows — red (critical after event ends, 0 before) */}
-                <StatCard num={ended ? noShowCount : 0} label="No-Shows" accent={ended && noShowCount > 0} barWidth={0} icon={<AlertIcon />} iconRed={ended && noShowCount > 0} />
+                <StatCard num={ended ? visibleNoShowCount : 0} label="No-Shows" accent={ended && visibleNoShowCount > 0} barWidth={0} icon={<AlertIcon />} iconRed={ended && visibleNoShowCount > 0} />
                 {/* Attendance Rate — gray */}
                 <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm p-6 relative overflow-hidden hover:-translate-y-0.5 hover:shadow-md transition-all">
                   <div className="absolute top-5 right-5 w-8 h-8 rounded-lg bg-gray-100 dark:bg-[#2a2a2a] flex items-center justify-center text-gray-400">
                     <CheckIcon />
                   </div>
                   <div className="text-[48px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none mb-1.5">
-                    {confirmedCount > 0 ? `${Math.round((totalAttended / confirmedCount) * 100)}%` : '—'}
+                    {visibleConfirmedCount > 0 ? `${Math.round((visibleTotalAttended / visibleConfirmedCount) * 100)}%` : '—'}
                   </div>
                   <div className="text-sm font-medium text-gray-500 dark:text-gray-400">Attendance Rate</div>
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-100">
-                    <div className="h-full bg-gray-300 dark:bg-gray-600" style={{ width: `${confirmedCount ? Math.round((totalAttended / confirmedCount) * 100) : 0}%` }} />
+                    <div className="h-full bg-gray-300 dark:bg-gray-600" style={{ width: `${visibleConfirmedCount ? Math.round((visibleTotalAttended / visibleConfirmedCount) * 100) : 0}%` }} />
                   </div>
                 </div>
               </div>
@@ -787,13 +842,17 @@ export default function EventDetail() {
                         <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">
                           {new Date(p.registered_at).toLocaleString('en-PH')}
                         </td>
-                        {/* FIX #5: Triple dots dropdown */}
+                        {/* FIX #5: Triple dots dropdown — admin only */}
                         <td className="px-5 py-3.5">
-                          <RegistrantDropdown
-                            participant={p}
-                            onLabel={() => openLabelView(p, true)}
-                            onRemove={() => setRemoveModal({ open: true, participant: p })}
-                          />
+                          {isAdmin ? (
+                            <RegistrantDropdown
+                              participant={p}
+                              onLabel={() => openLabelView(p, true)}
+                              onRemove={() => setRemoveModal({ open: true, participant: p })}
+                            />
+                          ) : (
+                            <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -974,12 +1033,12 @@ export default function EventDetail() {
                     <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-3">Event Summary</h3>
                     <div className="grid grid-cols-3 gap-3">
                       {[
-                        { label: 'Total Registered', value: confirmedCount },
-                        { label: 'Total Attended', value: totalAttended },
-                        { label: 'Attendance Rate', value: confirmedCount > 0 ? `${Math.round((totalAttended / confirmedCount) * 100)}%` : '—' },
-                        { label: 'Currently Inside', value: checkedInCount },
-                        { label: 'Early Outs', value: earlyOutCount },
-                        { label: 'No-Shows', value: ended ? noShowCount : '—' },
+                        { label: 'Total Registered', value: visibleConfirmedCount },
+                        { label: 'Total Attended', value: visibleTotalAttended },
+                        { label: 'Attendance Rate', value: visibleConfirmedCount > 0 ? `${Math.round((visibleTotalAttended / visibleConfirmedCount) * 100)}%` : '—' },
+                        { label: 'Currently Inside', value: visibleCheckedInCount },
+                        { label: 'Early Outs', value: visibleEarlyOutCount },
+                        { label: 'No-Shows', value: ended ? visibleNoShowCount : '—' },
                       ].map(({ label, value }) => (
                         <div key={label} className="bg-gray-50 dark:bg-[#171717] rounded-xl px-4 py-3 border border-gray-100 dark:border-[#2a2a2a]">
                           <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-0.5">{label}</p>
@@ -994,8 +1053,8 @@ export default function EventDetail() {
                     <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-3">Export Data</h3>
                     <div className="flex flex-col gap-2.5">
                       {([
-                        { key: 'registrants' as TabType, label: 'Registrants Report', desc: `${confirmedCount} registrants`, color: '023E8A' },
-                        { key: 'attendance'  as TabType, label: 'Attendance Report',  desc: `${sessions.length} sessions`,   color: '276221' },
+                        { key: 'registrants' as TabType, label: 'Registrants Report', desc: `${visibleConfirmedCount} registrants`, color: '023E8A' },
+                        { key: 'attendance'  as TabType, label: 'Attendance Report',  desc: `${visibleSessions.length} sessions`,   color: '276221' },
                         { key: 'scanlogs'   as TabType, label: 'Scan Logs Report',   desc: `${scanLogs.length} scan logs`,  color: '01796F' },
                       ]).map(({ key, label, desc, color }) => (
                         <div key={key} className="flex items-center justify-between px-4 py-3.5 bg-gray-50 dark:bg-[#171717] rounded-xl border border-gray-100 dark:border-[#2a2a2a]">
@@ -1018,14 +1077,69 @@ export default function EventDetail() {
                   </div>
                 </div>
               )}
+              {/* ── ASSIGNED STAFF TAB (admin only) ── */}
+              {activeTab === 'staff' && isAdmin && (
+                <>
+                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Staff members listed below can access this event's data filtered to their branch.
+                    </p>
+                  </div>
+                  {assignedStaff.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-2">
+                      <span className="text-gray-300 dark:text-gray-600">
+                        <UsersIcon />
+                      </span>
+                      <p className="text-gray-400 dark:text-gray-500 text-sm">No staff assigned to this event yet.</p>
+                      <p className="text-gray-400 dark:text-gray-600 text-xs">Assign staff when creating or editing an event.</p>
+                    </div>
+                  ) : (
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
+                        <tr>
+                          {['Agent Code', 'Full Name', 'Branch', 'Assigned At', 'Actions'].map(h => (
+                            <th key={h} className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
+                        {assignedStaff.map(s => (
+                          <tr key={s.user_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                            <td className="px-5 py-3.5">
+                              <span className="font-bold text-[#DC143C] text-xs tracking-wide font-mono">{s.agent_code}</span>
+                            </td>
+                            <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{s.full_name}</td>
+                            <td className="px-5 py-3.5">
+                              <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{s.branch_name}</span>
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">
+                              {new Date(s.assigned_at).toLocaleString('en-PH')}
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <button
+                                onClick={() => setRemoveStaffModal({ open: true, staff: s })}
+                                disabled={removingStaffId === s.user_id}
+                                className="flex items-center gap-1.5 text-xs font-semibold text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all disabled:opacity-50">
+                                <TrashIcon />
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Table footer */}
             <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#171717] flex-shrink-0">
               <span className="text-xs text-gray-400 dark:text-gray-500">
-                {activeTab === 'registrants' && `${filteredRegistrants.length} of ${participants.length} registrant${participants.length !== 1 ? 's' : ''}`}
-                {activeTab === 'attendance'  && `${filteredAttendanceSorted.length} of ${sessions.length} session${sessions.length !== 1 ? 's' : ''}`}
+                {activeTab === 'registrants' && `${filteredRegistrants.length} of ${visibleParticipants.length} registrant${visibleParticipants.length !== 1 ? 's' : ''}`}
+                {activeTab === 'attendance'  && `${filteredAttendanceSorted.length} of ${visibleSessions.length} session${visibleSessions.length !== 1 ? 's' : ''}`}
                 {activeTab === 'scanlogs'    && `${filteredScanLogs.length} of ${scanLogs.length} scan log${scanLogs.length !== 1 ? 's' : ''}`}
+                {activeTab === 'staff'       && `${assignedStaff.length} staff member${assignedStaff.length !== 1 ? 's' : ''} assigned`}
               </span>
             </div>
           </div>
@@ -1222,6 +1336,37 @@ export default function EventDetail() {
               <button onClick={handleRemoveConfirm} disabled={removeLoading}
                 className="flex-1 h-[44px] rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-60">
                 {removeLoading ? 'Removing...' : 'Remove Registrant'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── REMOVE STAFF CONFIRMATION MODAL ── */}
+      {removeStaffModal.open && removeStaffModal.staff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <span className="text-[#DC143C] mt-[1px] [&>svg]:w-6 [&>svg]:h-6"><TrashIcon /></span>
+                Remove Staff Access
+              </h2>
+              <button onClick={() => setRemoveStaffModal({ open: false, staff: null })}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+                <XIcon />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              Remove <strong className="text-gray-700 dark:text-gray-200">{removeStaffModal.staff.full_name}</strong> from this event? They will no longer be able to view event data.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setRemoveStaffModal({ open: false, staff: null })}
+                className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleRemoveStaff} disabled={removingStaffId === removeStaffModal.staff.user_id}
+                className="flex-1 h-[44px] rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-60">
+                {removingStaffId === removeStaffModal.staff.user_id ? 'Removing...' : 'Remove Access'}
               </button>
             </div>
           </div>

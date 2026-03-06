@@ -5,7 +5,8 @@ import validate from '../../middlewares/validate.js'
 import { createEventSchema, updateEventSchema } from '../../schemas/events.schema.js'
 import {
   createEvent, getAllEvents, getEventById, updateEvent, deleteEvent, assignPermission,
-  getTrashedEvents, restoreEvent, permanentDeleteEvent
+  getTrashedEvents, restoreEvent, permanentDeleteEvent,
+  getEventStaff, removeEventStaff
 } from './events.controller.js'
 import { getEventAdminGrants } from '../users/admin-grant.controller.js'
 
@@ -26,5 +27,9 @@ router.put('/:event_id', roleGuard('admin'), validate(updateEventSchema), update
 router.delete('/:event_id', roleGuard('admin'), deleteEvent)
 router.post('/:event_id/permissions', roleGuard('admin'), assignPermission)
 router.get('/:event_id/admin-grants', roleGuard('admin'), getEventAdminGrants)
+
+// ── Staff management (admin only) ────────────────────────────
+router.get('/:event_id/staff', roleGuard('admin'), getEventStaff)
+router.delete('/:event_id/staff/:user_id', roleGuard('admin'), removeEventStaff)
 
 export default router

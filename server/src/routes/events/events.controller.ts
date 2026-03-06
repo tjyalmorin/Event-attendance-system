@@ -3,7 +3,8 @@ import asyncHandler from '../../middlewares/asyncHandler.js'
 import {
   createEventService, getAllEventsService, getEventByIdService,
   updateEventService, softDeleteEventService, assignPermissionService,
-  getTrashedEventsService, restoreEventService, permanentDeleteEventService
+  getTrashedEventsService, restoreEventService, permanentDeleteEventService,
+  getEventStaffService, removeEventStaffService
 } from './events.service.js'
 
 export const createEvent = asyncHandler(async (req: Request, res: Response) => {
@@ -51,4 +52,17 @@ export const restoreEvent = asyncHandler(async (req: Request, res: Response) => 
 export const permanentDeleteEvent = asyncHandler(async (req: Request, res: Response) => {
   await permanentDeleteEventService(Number(req.params.event_id))
   res.json({ message: 'Event permanently deleted' })
+})
+
+export const getEventStaff = asyncHandler(async (req: Request, res: Response) => {
+  const event_id = Number(req.params.event_id)
+  const data = await getEventStaffService(event_id)
+  res.json(data)
+})
+
+export const removeEventStaff = asyncHandler(async (req: Request, res: Response) => {
+  const event_id = Number(req.params.event_id)
+  const { user_id } = req.params
+  await removeEventStaffService(event_id, user_id)
+  res.json({ message: 'Staff removed from event' })
 })

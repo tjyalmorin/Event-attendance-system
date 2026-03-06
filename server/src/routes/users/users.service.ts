@@ -6,14 +6,13 @@ import { CreateUserPayload } from '../../types/user.types.js'
 const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 
 export const createUserService = async (payload: CreateUserPayload) => {
-  const { agent_code, full_name, email, password, branch_name, team_name, role } = payload
+  const { agent_code, full_name, email, password, branch_name, role } = payload
   if (!agent_code?.trim()) throw new Error('Agent code is required')
   if (!full_name?.trim()) throw new Error('Full name is required')
   if (!email?.trim()) throw new Error('Email is required')
   if (!validateEmail(email)) throw new Error('Invalid email format')
   if (!password || password.length < 6) throw new Error('Password must be at least 6 characters')
   if (!branch_name?.trim()) throw new Error('Branch name is required')
-  if (!team_name?.trim()) throw new Error('Team name is required')
   if (!['admin', 'staff'].includes(role)) throw new Error('Role must be admin or staff')
 
   const existing = await pool.query('SELECT user_id FROM users WHERE email = $1 AND deleted_at IS NULL', [email.trim().toLowerCase()])
@@ -24,10 +23,10 @@ export const createUserService = async (payload: CreateUserPayload) => {
   const password_hash = await bcrypt.hash(password, 10)
   const user_id = uuidv4()
   const result = await pool.query(
-    `INSERT INTO users (user_id, agent_code, full_name, email, password_hash, branch_name, team_name, role)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO users (user_id, agent_code, full_name, email, password_hash, branch_name, role)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
      RETURNING user_id, agent_code, full_name, email, branch_name, team_name, role, is_active, created_at`,
-    [user_id, agent_code.trim(), full_name.trim(), email.trim().toLowerCase(), password_hash, branch_name.trim(), team_name.trim(), role]
+    [user_id, agent_code.trim(), full_name.trim(), email.trim().toLowerCase(), password_hash, branch_name.trim(), role]
   )
   return result.rows[0]
 }
@@ -105,7 +104,7 @@ export const updateUserService = async (user_id: string, payload: {
   branch_name?: string; team_name?: string; role?: 'admin' | 'staff'
 }) => {
   if (!user_id?.trim()) throw new Error('User ID is required')
-  const { agent_code, full_name, email, password, branch_name, team_name, role } = payload
+  const { agent_code, full_name, email, password, branch_name, role } = payload
 
   if (email) {
     const existing = await pool.query('SELECT user_id FROM users WHERE email = $1 AND user_id != $2 AND deleted_at IS NULL', [email.trim().toLowerCase(), user_id])
@@ -124,7 +123,6 @@ export const updateUserService = async (user_id: string, payload: {
   if (email)       { fields.push(`email = $${idx++}`);       values.push(email.trim().toLowerCase()) }
   if (agent_code)  { fields.push(`agent_code = $${idx++}`);  values.push(agent_code.trim()) }
   if (branch_name) { fields.push(`branch_name = $${idx++}`); values.push(branch_name.trim()) }
-  if (team_name)   { fields.push(`team_name = $${idx++}`);   values.push(team_name.trim()) }
   if (role)        { fields.push(`role = $${idx++}`);        values.push(role) }
   if (password)    { const h = await bcrypt.hash(password, 10); fields.push(`password_hash = $${idx++}`); values.push(h) }
 

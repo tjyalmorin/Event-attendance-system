@@ -5,11 +5,21 @@ import 'react-datepicker/dist/react-datepicker.css';
 import api from '../../api/axios';
 import Sidebar from '../../components/Sidebar';
 import { useBranches } from '../../hooks/useBranches';
+import { getStaffByBranchesApi } from '../../api/events.api';
 
 // ── Branch/Team checklist types ──
 interface BranchSelection {
   branch_name: string
   teams: string[]
+}
+
+// ── Staff assignment types ──
+interface StaffUser {
+  user_id: string
+  full_name: string
+  agent_code: string
+  branch_name: string
+  email: string
 }
 
 // ── Icons ──
@@ -74,6 +84,11 @@ const CreateEvent: React.FC = () => {
   const [selectedBranches, setSelectedBranches] = useState<BranchSelection[]>([])
   const [branchesError, setBranchesError] = useState('')
 
+  // ── Staff assignment state ─────────────────────────────
+  const [allStaff, setAllStaff] = useState<StaffUser[]>([])
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
+  const [staffLoading, setStaffLoading] = useState(false)
+
   // Auto-init staff — their branch is pre-selected, no other choice
   useEffect(() => {
     if (userRole === 'staff' && userBranch && branches.length > 0) {
@@ -83,6 +98,26 @@ const CreateEvent: React.FC = () => {
       }
     }
   }, [branches])
+
+  // Fetch staff whenever selected branches change (admin only)
+  useEffect(() => {
+    if (userRole !== 'admin') return
+    const branchNames = selectedBranches.map(b => b.branch_name)
+    if (branchNames.length === 0) {
+      setAllStaff([])
+      setSelectedStaffIds([])
+      return
+    }
+    setStaffLoading(true)
+    getStaffByBranchesApi(branchNames)
+      .then((data: StaffUser[]) => {
+        setAllStaff(data)
+        // Drop any previously selected staff whose branch is no longer selected
+        setSelectedStaffIds(prev => prev.filter(id => data.some((s: StaffUser) => s.user_id === id)))
+      })
+      .catch(console.error)
+      .finally(() => setStaffLoading(false))
+  }, [selectedBranches])
 
   const isBranchChecked = (branchName: string) =>
     selectedBranches.some(b => b.branch_name === branchName)
@@ -146,6 +181,21 @@ const CreateEvent: React.FC = () => {
       setSelectedBranches([{ branch_name: userBranch, teams: [] }])
     } else {
       setSelectedBranches([])
+    }
+  }
+
+  // ── Staff assignment helpers ───────────────────────────
+  const toggleStaff = (uid: string) => {
+    setSelectedStaffIds(prev =>
+      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
+    )
+  }
+
+  const toggleAllStaff = () => {
+    if (selectedStaffIds.length === allStaff.length) {
+      setSelectedStaffIds([])
+    } else {
+      setSelectedStaffIds(allStaff.map(s => s.user_id))
     }
   }
 
@@ -254,6 +304,7 @@ const CreateEvent: React.FC = () => {
         checkin_cutoff: checkinCutoff ? formatTime(checkinCutoff) : null,
         registration_start: registrationStart ? registrationStart.toISOString() : null,
         registration_end: registrationEnd ? registrationEnd.toISOString() : null,
+        staff_ids: selectedStaffIds.length > 0 ? selectedStaffIds : [],
       });
       navigate('/admin/events', { state: { created: true } });
     } catch (err: any) {
@@ -271,6 +322,7 @@ const CreateEvent: React.FC = () => {
       setSelectedBranches([]);
     }
     setBranchesError('');
+    setSelectedStaffIds([]);
     setEventDate(null);
     setStartTime(null);
     setEndTime(null);
@@ -615,6 +667,67 @@ const CreateEvent: React.FC = () => {
                     : 'Select the teams from your branch that are included in this event.'}
                 </p>
               </div>
+
+              {/* ── Assign Staff (admin only, shown when branches are selected) ── */}
+              {userRole === 'admin' && selectedBranches.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      Assign Staff <span className="text-gray-400 font-normal">(Optional)</span>
+                    </label>
+                    {allStaff.length > 0 && (
+                      <button type="button" onClick={toggleAllStaff}
+                        className="text-xs font-bold text-[#DC143C] hover:text-[#b01030] transition-colors px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10">
+                        {selectedStaffIds.length === allStaff.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                    Selected staff will be able to access this event's registrants, attendance, and reports for their branch.
+                  </p>
+
+                  {staffLoading ? (
+                    <div className="px-4 py-4 text-center text-sm text-gray-400 rounded-xl border border-gray-200 dark:border-[#2a2a2a]">
+                      Loading staff...
+                    </div>
+                  ) : allStaff.length === 0 ? (
+                    <div className="px-4 py-4 text-center text-sm text-gray-400 italic rounded-xl border border-gray-200 dark:border-[#2a2a2a]">
+                      No staff accounts found for the selected branches.
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] overflow-hidden">
+                      {allStaff.map((staff, si) => {
+                        const checked = selectedStaffIds.includes(staff.user_id)
+                        return (
+                          <div key={staff.user_id}
+                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${si > 0 ? 'border-t border-gray-100 dark:border-[#2a2a2a]' : ''} ${checked ? 'bg-red-50/60 dark:bg-[#DC143C]/5' : 'bg-white dark:bg-[#1c1c1c] hover:bg-gray-50 dark:hover:bg-[#1a1a1a]'}`}
+                            onClick={() => toggleStaff(staff.user_id)}>
+                            {/* Checkbox */}
+                            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${checked ? 'border-[#DC143C] bg-[#DC143C]' : 'border-gray-300 dark:border-[#444] bg-white dark:bg-[#0f0f0f]'}`}>
+                              {checked && (
+                                <svg viewBox="0 0 12 9" fill="none" className="w-3 h-3">
+                                  <path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                            </div>
+                            {/* Name + code */}
+                            <span className={`font-semibold text-sm flex-1 ${checked ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
+                              {staff.full_name}
+                            </span>
+                            <span className="text-xs text-gray-400 dark:text-gray-500 font-mono mr-2">
+                              #{staff.agent_code}
+                            </span>
+                            {/* Branch badge */}
+                            <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${checked ? 'bg-[#DC143C]/10 border-[#DC143C]/30 text-[#DC143C]' : 'bg-gray-100 dark:bg-[#2a2a2a] border-gray-200 dark:border-[#333] text-gray-500 dark:text-gray-400'}`}>
+                              {staff.branch_name}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Check-in Cutoff */}
               <div>
