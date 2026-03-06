@@ -29,6 +29,13 @@ const LABEL_COLORS: Record<string, { bg: string; text: string; border: string; d
 }
 const getLabelColor = (label: string) => LABEL_COLORS[label] ?? { bg: 'bg-red-100', text: 'text-[#DC143C]', border: 'border-red-300', darkBg: 'dark:bg-red-900/30', darkText: 'dark:text-red-300' }
 
+const fmt12h = (t: string) => {
+  if (!t) return ''
+  const [h, m] = t.split(':').map(Number)
+  const ampm = h < 12 ? 'AM' : 'PM'
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
 // ── Icons ──
 const ScannerIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -105,7 +112,6 @@ const TrashIcon = () => (
   </svg>
 )
 
-// ── Helper: is event currently happening? ──
 function isEventOngoing(event: Event): boolean {
   const now = new Date()
   const eventDateStr = event.event_date.slice(0, 10)
@@ -120,7 +126,6 @@ function isEventOngoing(event: Event): boolean {
   return nowMinutes >= startMinutes && nowMinutes <= endMinutes
 }
 
-// ── Helper: has event ended? ──
 function isEventEnded(event: Event): boolean {
   const now = new Date()
   const eventDateStr = event.event_date.slice(0, 10)
@@ -134,7 +139,6 @@ function isEventEnded(event: Event): boolean {
   return nowMinutes > endMinutes
 }
 
-// ── Registrant Action Dropdown ──
 function RegistrantDropdown({ participant, onLabel, onRemove }: {
   participant: Participant
   onLabel: () => void
@@ -172,7 +176,7 @@ function RegistrantDropdown({ participant, onLabel, onRemove }: {
   return (
     <div data-dropdown>
       <button ref={btnRef} onClick={handleOpen}
-        className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors rounded">
+        className="p-1.5 ml-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors rounded">
         <DotsIcon />
       </button>
       {open && (
@@ -211,11 +215,10 @@ export default function EventDetail() {
   const [scanLogs, setScanLogs] = useState<ScanLog[]>([])
   const [activeTab, setActiveTab] = useState<TabType>('registrants')
   const [loading, setLoading] = useState(true)
-  const [filterStatus, setFilterStatus] = useState<'all' | 'checked_in' | 'checked_out' | 'flagged'>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'checked_in' | 'checked_out' | 'flagged' | 'no_show'>('all')
   const [copied, setCopied] = useState(false)
   const [statusToggling, setStatusToggling] = useState(false)
 
-  // Label modal
   const [labelModal, setLabelModal] = useState<{ open: boolean; participant: Participant | null }>({ open: false, participant: null })
   const [labelType, setLabelType] = useState('Awardee')
   const [labelCustom, setLabelCustom] = useState('')
@@ -223,16 +226,15 @@ export default function EventDetail() {
   const [labelViewModal, setLabelViewModal] = useState<{ open: boolean; participant: Participant | null; editMode: boolean }>({ open: false, participant: null, editMode: false })
   const [labelNote, setLabelNote] = useState('')
 
-  // Remove registrant confirmation modal
   const [removeModal, setRemoveModal] = useState<{ open: boolean; participant: Participant | null }>({ open: false, participant: null })
   const [removeLoading, setRemoveLoading] = useState(false)
 
-  // Assigned staff state (admin only)
+  const [earlyOutModal, setEarlyOutModal] = useState<{ open: boolean; session: AttendanceSession | null }>({ open: false, session: null })
+
   const [assignedStaff, setAssignedStaff] = useState<AssignedStaff[]>([])
   const [removingStaffId, setRemovingStaffId] = useState<string | null>(null)
   const [removeStaffModal, setRemoveStaffModal] = useState<{ open: boolean; staff: AssignedStaff | null }>({ open: false, staff: null })
 
-  // ── Per-tab search, sort, filter states ──
   const [registrantsSearch, setRegistrantsSearch] = useState('')
   const [registrantsSort, setRegistrantsSort] = useState<'name' | 'date'>('date')
   const [registrantsSortOpen, setRegistrantsSortOpen] = useState(false)
@@ -248,6 +250,11 @@ export default function EventDetail() {
   const [scanlogsSortOpen, setScanlogsSortOpen] = useState(false)
   const [scanlogsType, setScanlogsType] = useState<'all' | 'check_in' | 'check_out' | 'denied'>('all')
   const scanlogsSortRef = useRef<HTMLDivElement>(null)
+
+  const [registrantsPage, setRegistrantsPage] = useState(1)
+  const [attendancePage, setAttendancePage]   = useState(1)
+  const [scanlogsPage, setScanlogsPage]       = useState(1)
+  const [staffPage, setStaffPage]             = useState(1)
 
   const fetchData = useCallback(async () => {
     const id = Number(eventId)
@@ -273,7 +280,6 @@ export default function EventDetail() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Close sort dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (registrantsSortRef.current && !registrantsSortRef.current.contains(e.target as Node)) setRegistrantsSortOpen(false)
@@ -284,7 +290,10 @@ export default function EventDetail() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // ── Label handlers ──
+  useEffect(() => { setRegistrantsPage(1) }, [registrantsSearch, registrantsSort])
+  useEffect(() => { setAttendancePage(1) },  [attendanceSearch, attendanceSort, filterStatus])
+  useEffect(() => { setScanlogsPage(1) },    [scanlogsSearch, scanlogsSort, scanlogsType])
+
   const openLabelView = (p: Participant, editMode = false) => {
     setLabelViewModal({ open: true, participant: p, editMode })
     const existingLabel = (typeof p.label === 'string' ? p.label : null) || 'Awardee'
@@ -312,7 +321,6 @@ export default function EventDetail() {
     } finally { setLabelLoading(false) }
   }
 
-  // ── Remove registrant ──
   const handleRemoveConfirm = async () => {
     if (!removeModal.participant) return
     setRemoveLoading(true)
@@ -325,7 +333,6 @@ export default function EventDetail() {
     } finally { setRemoveLoading(false) }
   }
 
-  // ── Remove staff access ──
   const handleRemoveStaff = async () => {
     if (!removeStaffModal.staff) return
     setRemovingStaffId(removeStaffModal.staff.user_id)
@@ -338,7 +345,6 @@ export default function EventDetail() {
     } finally { setRemovingStaffId(null) }
   }
 
-  // ── Registration open/close toggle ──
   const handleStatusToggle = async () => {
     if (!event || !isAdmin) return
     setStatusToggling(true)
@@ -357,7 +363,6 @@ export default function EventDetail() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // ── Export to XLSX (ExcelJS) ──
   const handleExport = async (docType: TabType) => {
     if (!event) return
     const colorMap: Partial<Record<TabType, string>> = {
@@ -366,7 +371,6 @@ export default function EventDetail() {
       scanlogs:    '01796F',
     }
     const headerColor = colorMap[docType]
-
     const wb = new ExcelJS.Workbook()
 
     const applyHeader = (ws: ExcelJS.Worksheet, headers: string[]) => {
@@ -403,75 +407,53 @@ export default function EventDetail() {
       })
     }
 
-    if (docType === 'registrants') {
-      const ws = wb.addWorksheet('Registrants')
-      const headers = ['Participant ID', 'Agent Code', 'Full Name', 'Branch', 'Team', 'Status', 'Registered At']
-      applyHeader(ws, headers)
-      visibleParticipants.forEach(p => {
-        ws.addRow([
-          p.participant_id, p.agent_code, p.full_name, p.branch_name, p.team_name,
-          p.registration_status, new Date(p.registered_at).toLocaleString('en-PH')
-        ])
-      })
-      styleDataRows(ws)
+    const download = async (filename: string) => {
       const buf = await wb.xlsx.writeBuffer()
       const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a'); a.href = url; a.download = `${event?.title?.replace(/\s+/g, '_') ?? eventId}_RegistrationReport.xlsx`; a.click()
+      const a = document.createElement('a'); a.href = url; a.download = filename; a.click()
       URL.revokeObjectURL(url)
+    }
+
+    if (docType === 'registrants') {
+      const ws = wb.addWorksheet('Registrants')
+      applyHeader(ws, ['Agent Code', 'Full Name', 'Branch', 'Team', 'Registered At'])
+      visibleParticipants.forEach(p => {
+        ws.addRow([p.agent_code, p.full_name, p.branch_name, p.team_name, new Date(p.registered_at).toLocaleString('en-PH')])
+      })
+      styleDataRows(ws)
+      await download(`${event?.title?.replace(/\s+/g, '_') ?? eventId}_RegistrationReport.xlsx`)
     }
 
     if (docType === 'attendance') {
       const ws = wb.addWorksheet('Attendance')
-      const headers = ['Session ID', 'Agent Code', 'Full Name', 'Branch', 'Team', 'Check In', 'Check Out', 'Status']
-      applyHeader(ws, headers)
+      applyHeader(ws, ['Agent Code', 'Full Name', 'Branch', 'Team', 'Check In', 'Check Out'])
       visibleSessions.forEach(s => {
         ws.addRow([
-          s.session_id, s.agent_code, s.full_name, s.branch_name, s.team_name,
+          s.agent_code, s.full_name, s.branch_name, s.team_name,
           new Date(s.check_in_time).toLocaleString('en-PH'),
           s.check_out_time ? new Date(s.check_out_time).toLocaleString('en-PH') : 'Not yet checked out',
-          s.check_out_method === 'early_out' ? 'Early Out' : s.check_out_time ? 'Completed' : 'Inside'
         ])
       })
       styleDataRows(ws)
-      const buf = await wb.xlsx.writeBuffer()
-      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a'); a.href = url; a.download = `${event?.title?.replace(/\s+/g, '_') ?? eventId}_AttendanceReport.xlsx`; a.click()
-      URL.revokeObjectURL(url)
+      await download(`${event?.title?.replace(/\s+/g, '_') ?? eventId}_AttendanceReport.xlsx`)
     }
 
     if (docType === 'scanlogs') {
       const ws = wb.addWorksheet('Scan Logs')
-      const headers = ['Scan ID', 'Agent Code', 'Full Name', 'Scan Type', 'Denial Reason', 'Scanned At']
-      applyHeader(ws, headers)
+      applyHeader(ws, ['Agent Code', 'Full Name', 'Scan Type', 'Denial Reason', 'Scanned At'])
       scanLogs.forEach(s => {
         ws.addRow([
-          s.scan_id, s.agent_code || 'Unknown', s.full_name || 'Unknown',
+          s.agent_code || 'Unknown', s.full_name || 'Unknown',
           s.scan_type, s.denial_reason || '', new Date(s.scanned_at).toLocaleString('en-PH')
         ])
       })
       styleDataRows(ws)
-      const buf = await wb.xlsx.writeBuffer()
-      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a'); a.href = url; a.download = `${event?.title?.replace(/\s+/g, '_') ?? eventId}_ScanLogsReport.xlsx`; a.click()
-      URL.revokeObjectURL(url)
+      await download(`${event?.title?.replace(/\s+/g, '_') ?? eventId}_ScanLogsReport.xlsx`)
     }
-
   }
 
-  // ── Computed stats ──
-  const confirmedCount  = participants.filter(p => p.registration_status === 'confirmed').length
-  // FIX #1: currently inside = checked in but NOT yet checked out
-  const checkedInCount  = sessions.filter(s => s.check_in_time && !s.check_out_time).length
-  const completedCount  = sessions.filter(s => s.check_in_time && s.check_out_time).length
-  const earlyOutCount   = sessions.filter(s => s.check_out_method === 'early_out').length
-  const totalAttended   = sessions.length
-  // FIX #2: no-shows only shown after event ends
-  const noShowCount     = Math.max(0, confirmedCount - totalAttended)
-
-  // ── Branch-filtered data (staff sees only their branch) ──
+  // ── Branch-filtered data ──
   const visibleParticipants = isAdmin
     ? participants
     : participants.filter(p => p.branch_name === user.branch_name)
@@ -480,7 +462,7 @@ export default function EventDetail() {
     ? sessions
     : sessions.filter(s => s.branch_name === user.branch_name)
 
-  // Visible stats (used in stat cards and reports for staff)
+  // ── Stats ──
   const visibleConfirmedCount = visibleParticipants.filter(p => p.registration_status === 'confirmed').length
   const visibleCheckedInCount = visibleSessions.filter(s => s.check_in_time && !s.check_out_time).length
   const visibleCompletedCount = visibleSessions.filter(s => s.check_in_time && s.check_out_time).length
@@ -488,16 +470,15 @@ export default function EventDetail() {
   const visibleTotalAttended  = visibleSessions.length
   const visibleNoShowCount    = Math.max(0, visibleConfirmedCount - visibleTotalAttended)
 
+  // ── CHANGE: max 5 recent check-ins (was 6) ──
   const recentCheckIns = [...visibleSessions]
     .sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime())
-    .slice(0, 6)
+    .slice(0, 5)
 
   const getInitials = (name: string) =>
     name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
 
-
-
-  // ── Filtered & sorted registrants ──
+  // ── Filtered registrants ──
   const filteredRegistrants = visibleParticipants
     .filter(p => {
       if (!registrantsSearch.trim()) return true
@@ -509,26 +490,37 @@ export default function EventDetail() {
       return new Date(b.registered_at).getTime() - new Date(a.registered_at).getTime()
     })
 
-  // ── Filtered & sorted attendance ──
-  const filteredAttendanceSorted = visibleSessions
-    .filter(s => {
-      const matchSearch = !attendanceSearch.trim() ||
-        s.full_name?.toLowerCase().includes(attendanceSearch.toLowerCase()) ||
-        s.agent_code?.toLowerCase().includes(attendanceSearch.toLowerCase()) ||
-        s.branch_name?.toLowerCase().includes(attendanceSearch.toLowerCase())
-      const matchFilter =
-        filterStatus === 'all' ? true :
-        filterStatus === 'checked_in'  ? (s.check_in_time && !s.check_out_time) :
-        filterStatus === 'checked_out' ? !!s.check_out_time :
-        filterStatus === 'flagged'     ? s.check_out_method === 'early_out' : true
-      return matchSearch && matchFilter
-    })
-    .sort((a, b) => {
-      if (attendanceSort === 'name') return (a.full_name || '').localeCompare(b.full_name || '')
-      return new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()
-    })
+  // ── Attendance merged rows: sessions + pending (Waiting/No-Show) ──
+  const buildAttendanceRows = (ended: boolean) => {
+    const sessionAgentCodes = new Set(visibleSessions.map(s => s.agent_code))
+    const pendingRows = visibleParticipants
+      .filter(p => p.registration_status === 'confirmed' && !sessionAgentCodes.has(p.agent_code))
+      .map(p => ({
+        session_id: null as any,
+        participant_id: p.participant_id,
+        full_name: p.full_name,
+        agent_code: p.agent_code,
+        branch_name: p.branch_name,
+        team_name: p.team_name,
+        check_in_time: null as any,
+        check_out_time: null as any,
+        check_in_method: null,
+        check_out_method: null,
+        early_out_reason: null,
+        _isPending: true,
+        _isNoShow: ended,
+      }))
 
-  // ── Filtered & sorted scan logs ──
+    const sessionRows = visibleSessions.map(s => ({
+      ...s,
+      _isPending: false,
+      _isNoShow: false,
+    }))
+
+    return [...sessionRows, ...pendingRows]
+  }
+
+  // ── Scan logs ──
   const filteredScanLogs = scanLogs
     .filter(s => {
       const matchSearch = !scanlogsSearch.trim() ||
@@ -574,6 +566,32 @@ export default function EventDetail() {
   const ended   = isEventEnded(event)
   const isOpen  = event.status === 'open'
 
+  const allAttendanceRows = buildAttendanceRows(ended)
+
+  const filteredAttendanceSorted = allAttendanceRows
+    .filter(s => {
+      const matchSearch = !attendanceSearch.trim() ||
+        s.full_name?.toLowerCase().includes(attendanceSearch.toLowerCase()) ||
+        s.agent_code?.toLowerCase().includes(attendanceSearch.toLowerCase()) ||
+        s.branch_name?.toLowerCase().includes(attendanceSearch.toLowerCase())
+
+      const matchFilter =
+        filterStatus === 'all'         ? true :
+        filterStatus === 'checked_in'  ? (s.check_in_time && !s.check_out_time) :
+        filterStatus === 'checked_out' ? !!s.check_out_time :
+        filterStatus === 'flagged'     ? s.check_out_method === 'early_out' :
+        filterStatus === 'no_show'     ? s._isPending : true
+
+      return matchSearch && matchFilter
+    })
+    .sort((a, b) => {
+      if (attendanceSort === 'name') return (a.full_name || '').localeCompare(b.full_name || '')
+      if (!a.check_in_time && !b.check_in_time) return 0
+      if (!a.check_in_time) return 1
+      if (!b.check_in_time) return -1
+      return new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()
+    })
+
   const tabs: { key: TabType; label: string }[] = [
     { key: 'registrants', label: `Registrants (${visibleConfirmedCount})` },
     { key: 'attendance',  label: `Attendance (${visibleSessions.length})` },
@@ -581,6 +599,25 @@ export default function EventDetail() {
     { key: 'reports',    label: 'Reports' },
     ...(isAdmin ? [{ key: 'staff' as TabType, label: `Assigned Staff (${assignedStaff.length})` }] : []),
   ]
+
+  const totalAttendanceEntries = allAttendanceRows.length
+
+  // ── Pagination ──
+  const PAGE_SIZE = 10
+  const registrantsTotalPages = Math.max(1, Math.ceil(filteredRegistrants.length / PAGE_SIZE))
+  const attendanceTotalPages  = Math.max(1, Math.ceil(filteredAttendanceSorted.length / PAGE_SIZE))
+  const scanlogsTotalPages    = Math.max(1, Math.ceil(filteredScanLogs.length / PAGE_SIZE))
+  const staffTotalPages       = Math.max(1, Math.ceil(assignedStaff.length / PAGE_SIZE))
+
+  const safeRegPage   = Math.min(registrantsPage, registrantsTotalPages)
+  const safeAttPage   = Math.min(attendancePage,  attendanceTotalPages)
+  const safeScanPage  = Math.min(scanlogsPage,    scanlogsTotalPages)
+  const safeStaffPage = Math.min(staffPage,        staffTotalPages)
+
+  const pagedRegistrants = filteredRegistrants.slice((safeRegPage - 1) * PAGE_SIZE, safeRegPage * PAGE_SIZE)
+  const pagedAttendance  = filteredAttendanceSorted.slice((safeAttPage - 1) * PAGE_SIZE, safeAttPage * PAGE_SIZE)
+  const pagedScanLogs    = filteredScanLogs.slice((safeScanPage - 1) * PAGE_SIZE, safeScanPage * PAGE_SIZE)
+  const pagedStaff       = assignedStaff.slice((safeStaffPage - 1) * PAGE_SIZE, safeStaffPage * PAGE_SIZE)
 
   return (
     <div className="min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f] flex">
@@ -598,11 +635,7 @@ export default function EventDetail() {
             </button>
 
             <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
-              {event.title.split(' ').map((word, i) =>
-                i === 0
-                  ? <span key={i}>{word}<span className="text-[#DC143C]">.</span></span>
-                  : <span key={i}> {word}</span>
-              )}
+              {event.title}
             </h1>
 
             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getStatusBadge(event.status)}`}>
@@ -618,7 +651,6 @@ export default function EventDetail() {
 
             <div className="flex-1" />
 
-            {/* #7 Check-in Station button */}
             <button
               onClick={() => navigate(`/admin/events/${eventId}/scanner`)}
               className="flex items-center gap-2 bg-[#DC143C] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#b01030] transition-all shadow-[0_4px_16px_rgba(220,20,60,0.22)]">
@@ -630,7 +662,6 @@ export default function EventDetail() {
 
         {/* ── EVENT INFO BAR ── */}
         <div className="bg-[#fafafa] dark:bg-[#161616] border-b border-gray-200 dark:border-[#2a2a2a] px-12 py-2.5 flex items-center gap-5 flex-shrink-0">
-          {/* Date */}
           <div className="flex items-center gap-2">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -638,17 +669,15 @@ export default function EventDetail() {
             <span className="text-sm text-gray-500 dark:text-gray-400">{new Date(event.event_date).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
           </div>
           <span className="text-gray-300 dark:text-gray-700">·</span>
-          {/* Time */}
           <div className="flex items-center gap-2">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
               <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
             </svg>
-            <span className="text-sm text-gray-500 dark:text-gray-400">{event.start_time} – {event.end_time}</span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">{fmt12h(event.start_time)} – {fmt12h(event.end_time)}</span>
           </div>
           {event.venue && (
             <>
               <span className="text-gray-300 dark:text-gray-700">·</span>
-              {/* Venue */}
               <div className="flex items-center gap-2">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
@@ -659,10 +688,13 @@ export default function EventDetail() {
           )}
         </div>
 
-        <div className="flex-1 flex flex-col px-12 py-7 gap-5 overflow-hidden">
+        {/* ── MAIN CONTENT ── */}
+        <div className="flex-1 flex flex-col px-12 pt-5 pb-5 gap-3 overflow-hidden">
 
-          {/* ── STATS ── */}
-          <div className="flex gap-5 flex-shrink-0">
+          {/* ── TOP ROW: Stats + Recent Check-In ── */}
+          <div className="flex gap-3 flex-shrink-0">
+
+            {/* Left: stat cards + registration link stacked */}
             <div className="flex-1 flex flex-col gap-3">
               {!isAdmin && (
                 <div className="flex items-center gap-2">
@@ -672,25 +704,31 @@ export default function EventDetail() {
                   <span className="text-xs text-gray-400 dark:text-gray-500">Data filtered to your branch</span>
                 </div>
               )}
+
+              {/* Row 1: 2 big cards */}
               <div className="grid grid-cols-2 gap-3">
                 <StatCard num={visibleConfirmedCount} label="Registered" accent={false} barWidth={100} icon={<UsersIcon />} />
-                {/* FIX #1: Currently Inside */}
                 <StatCard num={visibleCheckedInCount} label="Currently Inside" accent={true}
                   barWidth={visibleConfirmedCount ? Math.round((visibleCheckedInCount / visibleConfirmedCount) * 100) : 0}
                   icon={<CheckIcon />} iconRed />
               </div>
+
+              {/* Row 2: 4 small cards */}
               <div className="grid grid-cols-4 gap-3">
-                {/* Checked Out — gray */}
                 <StatCard num={visibleCompletedCount} label="Checked Out" accent={false}
                   barWidth={visibleConfirmedCount ? Math.round((visibleCompletedCount / visibleConfirmedCount) * 100) : 0}
                   icon={<LogoutIcon />} />
-                {/* Early Out — gray, no yellow */}
                 <StatCard num={visibleEarlyOutCount} label="Early Out" accent={false}
                   barWidth={visibleConfirmedCount ? Math.round((visibleEarlyOutCount / visibleConfirmedCount) * 100) : 0}
                   icon={<AlertIcon />} />
-                {/* No-Shows — red (critical after event ends, 0 before) */}
-                <StatCard num={ended ? visibleNoShowCount : 0} label="No-Shows" accent={ended && visibleNoShowCount > 0} barWidth={0} icon={<AlertIcon />} iconRed={ended && visibleNoShowCount > 0} />
-                {/* Attendance Rate — gray */}
+                <StatCard
+                  num={ended ? visibleNoShowCount : visibleNoShowCount}
+                  label={ended ? 'No-Shows' : 'Waiting'}
+                  accent={ended && visibleNoShowCount > 0}
+                  barWidth={0}
+                  icon={<AlertIcon />}
+                  iconRed={ended && visibleNoShowCount > 0}
+                />
                 <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm p-6 relative overflow-hidden hover:-translate-y-0.5 hover:shadow-md transition-all">
                   <div className="absolute top-5 right-5 w-8 h-8 rounded-lg bg-gray-100 dark:bg-[#2a2a2a] flex items-center justify-center text-gray-400">
                     <CheckIcon />
@@ -704,19 +742,55 @@ export default function EventDetail() {
                   </div>
                 </div>
               </div>
+
+              {/* Registration Link */}
+              <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm px-5 py-3.5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Registration Link</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-gray-400 dark:text-white flex-shrink-0"><GlobeIcon /></span>
+                      <p className="text-sm text-[#DC143C] dark:text-white font-mono truncate">{window.location.origin}/register/{event.event_id}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <button onClick={handleCopy}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-[#2a2a2a] px-3 py-2 rounded-xl hover:border-[#DC143C] hover:text-[#DC143C] transition-all">
+                      <CopyIcon />
+                      {copied ? 'Copied!' : 'Copy Link'}
+                    </button>
+                    {isAdmin && event.status !== 'draft' && (
+                      <div className="flex items-center gap-2.5">
+                        <span className={`text-xs font-semibold ${isOpen ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                          {statusToggling ? 'Updating...' : isOpen ? 'Registration Open' : 'Registration Closed'}
+                        </span>
+                        <button
+                          onClick={handleStatusToggle}
+                          disabled={statusToggling}
+                          className="relative flex-shrink-0 disabled:opacity-60"
+                          aria-label="Toggle registration"
+                        >
+                          <div className={`w-11 h-6 rounded-full transition-colors duration-200 ${isOpen ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                          <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all duration-200 ${isOpen ? 'left-6' : 'left-1'}`} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Recent Check-In */}
-            <div className="w-[340px] flex-shrink-0 bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm flex flex-col overflow-hidden">
-              <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100 dark:border-[#2a2a2a]">
+            {/* Right: Recent Check-In */}
+            <div className="w-[300px] flex-shrink-0 bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm flex flex-col overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-gray-100 dark:border-[#2a2a2a] flex-shrink-0">
                 <span className="text-sm font-bold text-gray-800 dark:text-white">Recent Check-In</span>
               </div>
               <div className="flex-1 overflow-hidden divide-y divide-gray-50 dark:divide-[#2a2a2a]">
                 {recentCheckIns.length === 0 ? (
                   <p className="text-center text-gray-400 text-sm py-8">No check-ins yet</p>
                 ) : recentCheckIns.map(s => (
-                  <div key={s.session_id} className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors">
-                    <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#333] flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400 flex-shrink-0">
+                  <div key={s.session_id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors">
+                    <div className="w-7 h-7 rounded-full bg-gray-100 dark:bg-[#333] flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400 flex-shrink-0">
                       {getInitials(s.full_name || '')}
                     </div>
                     <span className="flex-1 text-sm font-medium text-gray-800 dark:text-white truncate">{s.full_name}</span>
@@ -729,46 +803,9 @@ export default function EventDetail() {
             </div>
           </div>
 
-          {/* ── REGISTRATION LINK ── */}
-          <div className="flex-shrink-0 bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm px-5 py-4 max-w-2xl">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5">Registration Link</p>
-                <div className="flex items-center gap-2 min-w-0">
-                  <GlobeIcon />
-                  <p className="text-sm text-[#DC143C] font-mono truncate">{window.location.origin}/register/{event.event_id}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 flex-shrink-0">
-                <button onClick={handleCopy}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-[#2a2a2a] px-3 py-2 rounded-xl hover:border-[#DC143C] hover:text-[#DC143C] transition-all">
-                  <CopyIcon />
-                  {copied ? 'Copied!' : 'Copy Link'}
-                </button>
-                {isAdmin && event.status !== 'draft' && (
-                  <div className="flex items-center gap-2.5">
-                    <span className={`text-xs font-semibold ${isOpen ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                      {statusToggling ? 'Updating...' : isOpen ? 'Registration Open' : 'Registration Closed'}
-                    </span>
-                    <button
-                      onClick={handleStatusToggle}
-                      disabled={statusToggling}
-                      className="relative flex-shrink-0 disabled:opacity-60"
-                      aria-label="Toggle registration"
-                    >
-                      <div className={`w-11 h-6 rounded-full transition-colors duration-200 ${isOpen ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
-                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all duration-200 ${isOpen ? 'left-6' : 'left-1'}`} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
           {/* ── TABS + TABLE ── */}
           <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm overflow-hidden">
 
-            {/* Tab bar */}
             <div className="flex items-center gap-1 px-6 pt-4 pb-0 border-b border-gray-100 dark:border-[#2a2a2a] flex-shrink-0">
               {tabs.map(tab => (
                 <button key={tab.key} onClick={() => setActiveTab(tab.key)}
@@ -781,14 +818,12 @@ export default function EventDetail() {
               ))}
             </div>
 
-            {/* Table content */}
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
 
               {/* ── REGISTRANTS ── */}
               {activeTab === 'registrants' && (
                 <>
-                  {/* Registrants toolbar */}
-                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50">
+                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-shrink-0">
                     <div className="relative flex-1">
                       <input value={registrantsSearch} onChange={e => setRegistrantsSearch(e.target.value)}
                         placeholder="Search name, agent code, branch…"
@@ -805,76 +840,89 @@ export default function EventDetail() {
                       setOpen={setRegistrantsSortOpen}
                     />
                   </div>
-                  <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
-                    <tr>
-                      {['Agent Code', 'Full Name', 'Branch', 'Team', 'Registered At', 'Actions'].map(h => (
-                        <th key={h} className={`px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap ${h === 'Actions' ? 'text-left pl-2' : 'text-left'}`}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
-                    {filteredRegistrants.length === 0 ? (
-                      <tr><td colSpan={6} className="text-center py-16 text-gray-400 dark:text-gray-500">No registrants found.</td></tr>
-                    ) : filteredRegistrants.map(p => (
-                      <tr key={p.participant_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
-                        <td className="px-5 py-3.5">
-                          <span className="font-bold text-[#DC143C] text-xs tracking-wide font-mono">{p.agent_code}</span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-800 dark:text-white">{p.full_name}</span>
-                            {p.label && (() => {
-                              const c = getLabelColor(String(p.label))
-                              return (
-                                <button onClick={() => openLabelView(p)}
-                                  className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText} hover:opacity-80 transition-opacity`}>
-                                  {p.label}
-                                </button>
-                              )
-                            })()}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span>
-                        </td>
-                        <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-sm">{p.team_name}</td>
-                        <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">
-                          {new Date(p.registered_at).toLocaleString('en-PH')}
-                        </td>
-                        {/* FIX #5: Triple dots dropdown — admin only */}
-                        <td className="px-5 py-3.5">
-                          {isAdmin ? (
-                            <RegistrantDropdown
-                              participant={p}
-                              onLabel={() => openLabelView(p, true)}
-                              onRemove={() => setRemoveModal({ open: true, participant: p })}
-                            />
-                          ) : (
-                            <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
-                          )}
-                        </td>
+                  <div className="flex-1 overflow-auto">
+                  <table className="w-full text-sm table-fixed">
+                    <colgroup>
+                      <col className="w-[130px]" />
+                      <col className="w-[220px]" />
+                      <col className="w-[150px]" />
+                      <col className="w-[150px]" />
+                      <col className="w-[180px]" />
+                      <col className="w-[80px]" />
+                    </colgroup>
+                    <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
+                      <tr>
+                        {['Agent Code', 'Full Name', 'Branch', 'Team', 'Registered At', 'Actions'].map(h => (
+                          <th key={h} className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap text-left">{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
+                      {filteredRegistrants.length === 0 ? (
+                        <tr><td colSpan={6} className="text-center py-16 text-gray-400 dark:text-gray-500">No registrants found.</td></tr>
+                      ) : pagedRegistrants.map(p => (
+                        <tr key={p.participant_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                          <td className="px-5 py-3.5">
+                            <span className="font-medium text-[#DC143C] text-sm">{p.agent_code}</span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-800 dark:text-white">{p.full_name}</span>
+                              {p.label && (() => {
+                                const c = getLabelColor(String(p.label))
+                                return (
+                                  <button onClick={() => openLabelView(p)}
+                                    className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText} hover:opacity-80 transition-opacity`}>
+                                    {p.label}
+                                  </button>
+                                )
+                              })()}
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span>
+                          </td>
+                          <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-sm">{p.team_name}</td>
+                          <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">
+                            {new Date(p.registered_at).toLocaleString('en-PH')}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {isAdmin ? (
+                              <RegistrantDropdown
+                                participant={p}
+                                onLabel={() => openLabelView(p, true)}
+                                onRemove={() => setRemoveModal({ open: true, participant: p })}
+                              />
+                            ) : (
+                              <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  </div>
                 </>
               )}
 
               {/* ── ATTENDANCE ── */}
               {activeTab === 'attendance' && (
                 <>
-                  {/* Attendance toolbar */}
-                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-wrap">
-                    {/* Status filters */}
+                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-wrap flex-shrink-0">
                     <div className="flex items-center gap-1.5">
-                      {(['all', 'checked_in', 'checked_out', 'flagged'] as const).map(f => (
-                        <button key={f} onClick={() => setFilterStatus(f)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${filterStatus === f
+                      {([
+                        { value: 'all',         label: 'All' },
+                        { value: 'checked_in',  label: 'Checked In' },
+                        { value: 'checked_out', label: 'Checked Out' },
+                        { value: 'flagged',     label: 'Early Out' },
+                        { value: 'no_show',     label: ended ? 'No-Show' : 'Waiting' },
+                      ] as const).map(f => (
+                        <button key={f.value} onClick={() => setFilterStatus(f.value)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${filterStatus === f.value
                             ? 'bg-[#DC143C] border-[#DC143C] text-white'
                             : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
                           }`}>
-                          {f === 'all' ? 'All' : f === 'checked_in' ? 'Checked In' : f === 'checked_out' ? 'Checked Out' : 'Early Out'}
+                          {f.label}
                         </button>
                       ))}
                     </div>
@@ -894,70 +942,98 @@ export default function EventDetail() {
                       setOpen={setAttendanceSortOpen}
                     />
                   </div>
-                  <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
-                    <tr>
-                      {['Agent Code', 'Full Name', 'Branch', 'Team', 'Check In', 'Check Out', 'Status'].map(h => (
-                        <th key={h} className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
-                    {filteredAttendanceSorted.length === 0 ? (
-                      <tr><td colSpan={7} className="text-center py-16 text-gray-400 dark:text-gray-500">No attendance sessions found.</td></tr>
-                    ) : filteredAttendanceSorted.map(s => (
-                      <tr key={s.session_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
-                        <td className="px-5 py-3.5">
-                          <span className="font-bold text-[#DC143C] text-xs tracking-wide font-mono">{s.agent_code}</span>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-800 dark:text-white">{s.full_name}</span>
-                            {(() => {
-                              const p = participants.find(p => p.agent_code === s.agent_code)
-                              if (!p?.label) return null
-                              const c = getLabelColor(String(p.label))
-                              return (
-                                <button onClick={() => openLabelView(p)}
-                                  className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText} hover:opacity-80 transition-opacity`}>
-                                  {p.label}
-                                </button>
-                              )
-                            })()}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{s.branch_name}</span>
-                        </td>
-                        <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-sm">{s.team_name}</td>
-                        <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">{new Date(s.check_in_time).toLocaleString('en-PH')}</td>
-                        <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">{s.check_out_time ? new Date(s.check_out_time).toLocaleString('en-PH') : '—'}</td>
-                        <td className="px-5 py-3.5">
-                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                            s.check_out_method === 'early_out' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' :
-                            s.check_out_time ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                          }`}>
-                            {s.check_out_method === 'early_out' ? 'Early Out' : s.check_out_time ? 'Completed' : 'Inside'}
-                          </span>
-                          {s.check_out_method === 'early_out' && s.early_out_reason && (
-                            <div className="text-xs text-yellow-600 mt-1 max-w-[140px] truncate" title={s.early_out_reason}>
-                              {s.early_out_reason}
-                            </div>
-                          )}
-                        </td>
+                  <div className="flex-1 overflow-auto">
+                  <table className="w-full text-sm table-fixed">
+                    <colgroup>
+                      <col className="w-[120px]" />
+                      <col className="w-[200px]" />
+                      <col className="w-[140px]" />
+                      <col className="w-[130px]" />
+                      <col className="w-[170px]" />
+                      <col className="w-[170px]" />
+                      <col className="w-[110px]" />
+                    </colgroup>
+                    <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
+                      <tr>
+                        {['Agent Code', 'Full Name', 'Branch', 'Team', 'Check In', 'Check Out', 'Status'].map(h => (
+                          <th key={h} className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
+                      {filteredAttendanceSorted.length === 0 ? (
+                        <tr><td colSpan={7} className="text-center py-16 text-gray-400 dark:text-gray-500">No attendance records found.</td></tr>
+                      ) : pagedAttendance.map(s => (
+                        <tr key={s.session_id ?? s.agent_code} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                          <td className="px-5 py-3.5">
+                            <span className="font-medium text-[#DC143C] text-sm">{s.agent_code}</span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-800 dark:text-white">{s.full_name}</span>
+                              {(() => {
+                                const p = participants.find(p => p.agent_code === s.agent_code)
+                                if (!p?.label) return null
+                                const c = getLabelColor(String(p.label))
+                                return (
+                                  <button onClick={() => openLabelView(p)}
+                                    className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText} hover:opacity-80 transition-opacity`}>
+                                    {p.label}
+                                  </button>
+                                )
+                              })()}
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{s.branch_name}</span>
+                          </td>
+                          <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-sm">{s.team_name}</td>
+                          <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">
+                            {s.check_in_time ? new Date(s.check_in_time).toLocaleString('en-PH') : '—'}
+                          </td>
+                          <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">
+                            {s.check_out_time ? new Date(s.check_out_time).toLocaleString('en-PH') : '—'}
+                          </td>
+                          <td className="pl-2 pr-5 py-3.5">
+                            {s._isPending ? (
+                              ended ? (
+                                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">
+                                  No-Show
+                                </span>
+                              ) : (
+                                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                                  Waiting
+                                </span>
+                              )
+                            ) : s.check_out_method === 'early_out' ? (
+                              <button
+                                onClick={() => setEarlyOutModal({ open: true, session: s as any })}
+                                className="text-xs font-semibold px-2.5 py-1 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 hover:opacity-80 transition-opacity"
+                              >
+                                Early Out
+                              </button>
+                            ) : (
+                              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                                s.check_out_time
+                                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                                  : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                              }`}>
+                                {s.check_out_time ? 'Completed' : 'Inside'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  </div>
                 </>
               )}
 
               {/* ── SCAN LOGS ── */}
               {activeTab === 'scanlogs' && (
                 <>
-                  {/* Scan Logs toolbar */}
-                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50">
-                    {/* Type filters */}
+                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-shrink-0">
                     <div className="flex items-center gap-1.5">
                       {([
                         { value: 'all', label: 'All' },
@@ -990,45 +1066,54 @@ export default function EventDetail() {
                       setOpen={setScanlogsSortOpen}
                     />
                   </div>
-                  <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
-                    <tr>
-                      {['Agent Code', 'Full Name', 'Type', 'Denial Reason', 'Scanned At'].map(h => (
-                        <th key={h} className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
-                    {filteredScanLogs.length === 0 ? (
-                      <tr><td colSpan={5} className="text-center py-16 text-gray-400 dark:text-gray-500">No scan logs found.</td></tr>
-                    ) : filteredScanLogs.map(s => (
-                      <tr key={s.scan_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
-                        <td className="px-5 py-3.5">
-                          <span className="font-bold text-[#DC143C] text-xs tracking-wide font-mono">{s.agent_code || s.qr_token}</span>
-                        </td>
-                        <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{s.full_name || '—'}</td>
-                        <td className="px-5 py-3.5">
-                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                            s.scan_type === 'check_in'  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
-                            s.scan_type === 'check_out' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
-                            'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
-                          }`}>
-                            {s.scan_type}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{s.denial_reason || '—'}</td>
-                        <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">{new Date(s.scanned_at).toLocaleString('en-PH')}</td>
+                  <div className="flex-1 overflow-auto">
+                  <table className="w-full text-sm table-fixed">
+                    <colgroup>
+                      <col className="w-[130px]" />
+                      <col className="w-[200px]" />
+                      <col className="w-[120px]" />
+                      <col className="w-[200px]" />
+                      <col className="w-[180px]" />
+                    </colgroup>
+                    <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
+                      <tr>
+                        {['Agent Code', 'Full Name', 'Type', 'Denial Reason', 'Scanned At'].map(h => (
+                          <th key={h} className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
+                      {filteredScanLogs.length === 0 ? (
+                        <tr><td colSpan={5} className="text-center py-16 text-gray-400 dark:text-gray-500">No scan logs found.</td></tr>
+                      ) : pagedScanLogs.map(s => (
+                        <tr key={s.scan_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                          <td className="px-5 py-3.5">
+                            <span className="font-medium text-[#DC143C] text-sm">{s.agent_code || s.qr_token}</span>
+                          </td>
+                          <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{s.full_name || '—'}</td>
+                          <td className="px-5 py-3.5">
+                            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                              s.scan_type === 'check_in'  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                              s.scan_type === 'check_out' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                              'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                            }`}>
+                              {s.scan_type}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{s.denial_reason || '—'}</td>
+                          <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">{new Date(s.scanned_at).toLocaleString('en-PH')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  </div>
                 </>
               )}
 
               {/* ── REPORTS TAB ── */}
               {activeTab === 'reports' && (
+                <div className="flex-1 overflow-auto">
                 <div className="p-6 flex flex-col gap-5">
-                  {/* Summary */}
                   <div>
                     <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-3">Event Summary</h3>
                     <div className="grid grid-cols-3 gap-3">
@@ -1047,8 +1132,6 @@ export default function EventDetail() {
                       ))}
                     </div>
                   </div>
-
-                  {/* Export options */}
                   <div>
                     <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-3">Export Data</h3>
                     <div className="flex flex-col gap-2.5">
@@ -1076,25 +1159,33 @@ export default function EventDetail() {
                     </div>
                   </div>
                 </div>
+                </div>
               )}
-              {/* ── ASSIGNED STAFF TAB (admin only) ── */}
+
+              {/* ── ASSIGNED STAFF TAB ── */}
               {activeTab === 'staff' && isAdmin && (
                 <>
-                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50">
+                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-shrink-0">
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       Staff members listed below can access this event's data filtered to their branch.
                     </p>
                   </div>
                   {assignedStaff.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 gap-2">
-                      <span className="text-gray-300 dark:text-gray-600">
-                        <UsersIcon />
-                      </span>
+                      <span className="text-gray-300 dark:text-gray-600"><UsersIcon /></span>
                       <p className="text-gray-400 dark:text-gray-500 text-sm">No staff assigned to this event yet.</p>
                       <p className="text-gray-400 dark:text-gray-600 text-xs">Assign staff when creating or editing an event.</p>
                     </div>
                   ) : (
-                    <table className="w-full text-sm">
+                    <div className="flex-1 overflow-auto">
+                    <table className="w-full text-sm table-fixed">
+                      <colgroup>
+                        <col className="w-[130px]" />
+                        <col className="w-[200px]" />
+                        <col className="w-[160px]" />
+                        <col className="w-[180px]" />
+                        <col className="w-[120px]" />
+                      </colgroup>
                       <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
                         <tr>
                           {['Agent Code', 'Full Name', 'Branch', 'Assigned At', 'Actions'].map(h => (
@@ -1103,10 +1194,10 @@ export default function EventDetail() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
-                        {assignedStaff.map(s => (
+                        {pagedStaff.map(s => (
                           <tr key={s.user_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
                             <td className="px-5 py-3.5">
-                              <span className="font-bold text-[#DC143C] text-xs tracking-wide font-mono">{s.agent_code}</span>
+                              <span className="font-medium text-[#DC143C] text-sm">{s.agent_code}</span>
                             </td>
                             <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{s.full_name}</td>
                             <td className="px-5 py-3.5">
@@ -1128,19 +1219,34 @@ export default function EventDetail() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )}
                 </>
               )}
             </div>
 
-            {/* Table footer */}
+            {/* Table footer with pagination */}
             <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#171717] flex-shrink-0">
               <span className="text-xs text-gray-400 dark:text-gray-500">
-                {activeTab === 'registrants' && `${filteredRegistrants.length} of ${visibleParticipants.length} registrant${visibleParticipants.length !== 1 ? 's' : ''}`}
-                {activeTab === 'attendance'  && `${filteredAttendanceSorted.length} of ${visibleSessions.length} session${visibleSessions.length !== 1 ? 's' : ''}`}
-                {activeTab === 'scanlogs'    && `${filteredScanLogs.length} of ${scanLogs.length} scan log${scanLogs.length !== 1 ? 's' : ''}`}
+                {activeTab === 'registrants' && `${filteredRegistrants.length} registrant${filteredRegistrants.length !== 1 ? 's' : ''}`}
+                {activeTab === 'attendance'  && `${filteredAttendanceSorted.length} of ${totalAttendanceEntries} entries`}
+                {activeTab === 'scanlogs'    && `${filteredScanLogs.length} scan log${filteredScanLogs.length !== 1 ? 's' : ''}`}
                 {activeTab === 'staff'       && `${assignedStaff.length} staff member${assignedStaff.length !== 1 ? 's' : ''} assigned`}
               </span>
+
+              {/* Pagination controls */}
+              {activeTab === 'registrants' && registrantsTotalPages > 1 && (
+                <PaginationBar page={safeRegPage} totalPages={registrantsTotalPages} onChange={setRegistrantsPage} />
+              )}
+              {activeTab === 'attendance' && attendanceTotalPages > 1 && (
+                <PaginationBar page={safeAttPage} totalPages={attendanceTotalPages} onChange={setAttendancePage} />
+              )}
+              {activeTab === 'scanlogs' && scanlogsTotalPages > 1 && (
+                <PaginationBar page={safeScanPage} totalPages={scanlogsTotalPages} onChange={setScanlogsPage} />
+              )}
+              {activeTab === 'staff' && staffTotalPages > 1 && (
+                <PaginationBar page={safeStaffPage} totalPages={staffTotalPages} onChange={setStaffPage} />
+              )}
             </div>
           </div>
         </div>
@@ -1154,8 +1260,6 @@ export default function EventDetail() {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setLabelViewModal({ open: false, participant: null, editMode: false })}>
             <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-8" onClick={e => e.stopPropagation()}>
-
-              {/* Header */}
               <div className="flex items-start justify-between mb-5">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">
@@ -1169,8 +1273,6 @@ export default function EventDetail() {
                   </span>
                 )}
               </div>
-
-              {/* VIEW MODE */}
               {!isEdit && p.label && (
                 <>
                   <div className="bg-gray-50 dark:bg-[#141414] rounded-2xl p-5 mb-6 space-y-3">
@@ -1178,13 +1280,12 @@ export default function EventDetail() {
                       <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Label</p>
                       <p className="text-sm font-semibold text-gray-800 dark:text-white">{p.label}</p>
                     </div>
-                    {p.label_description && (
+                    {p.label_description ? (
                       <div>
                         <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Note</p>
                         <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{p.label_description}</p>
                       </div>
-                    )}
-                    {!p.label_description && (
+                    ) : (
                       <p className="text-sm text-gray-400 dark:text-gray-600 italic">No note added.</p>
                     )}
                   </div>
@@ -1200,8 +1301,6 @@ export default function EventDetail() {
                   </div>
                 </>
               )}
-
-              {/* EDIT MODE */}
               {isEdit && (
                 <>
                   <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Label Type</label>
@@ -1257,7 +1356,7 @@ export default function EventDetail() {
         )
       })()}
 
-      {/* ── LEGACY LABEL MODAL (kept for triple-dots flow) ── */}
+      {/* ── LEGACY LABEL MODAL ── */}
       {labelModal.open && labelModal.participant && !labelViewModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-8">
@@ -1311,7 +1410,7 @@ export default function EventDetail() {
         </div>
       )}
 
-      {/* ── REMOVE REGISTRANT CONFIRMATION MODAL ── */}
+      {/* ── REMOVE REGISTRANT MODAL ── */}
       {removeModal.open && removeModal.participant && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-6">
@@ -1342,7 +1441,7 @@ export default function EventDetail() {
         </div>
       )}
 
-      {/* ── REMOVE STAFF CONFIRMATION MODAL ── */}
+      {/* ── REMOVE STAFF MODAL ── */}
       {removeStaffModal.open && removeStaffModal.staff && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-6">
@@ -1372,6 +1471,104 @@ export default function EventDetail() {
           </div>
         </div>
       )}
+
+      {/* ── EARLY OUT REASON MODAL ── */}
+      {earlyOutModal.open && earlyOutModal.session && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setEarlyOutModal({ open: false, session: null })}>
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-sm mx-4 p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-yellow-100 dark:bg-yellow-900/30">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                </span>
+                Early Out Details
+              </h2>
+              <button onClick={() => setEarlyOutModal({ open: false, session: null })}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+                <XIcon />
+              </button>
+            </div>
+            <div className="bg-gray-50 dark:bg-[#141414] rounded-xl p-4 space-y-3">
+              <div>
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Participant</p>
+                <p className="text-sm font-semibold text-gray-800 dark:text-white">{earlyOutModal.session.full_name}</p>
+                <p className="text-xs text-[#DC143C] font-mono mt-0.5">{earlyOutModal.session.agent_code}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Checked Out At</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  {earlyOutModal.session.check_out_time ? new Date(earlyOutModal.session.check_out_time).toLocaleString('en-PH') : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Reason</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                  {earlyOutModal.session.early_out_reason || <span className="italic text-gray-400">No reason provided.</span>}
+                </p>
+              </div>
+            </div>
+            <button onClick={() => setEarlyOutModal({ open: false, session: null })}
+              className="w-full mt-4 h-[42px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── PaginationBar ──
+function PaginationBar({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => onChange(page - 1)}
+        disabled={page === 1}
+        className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+
+      {Array.from({ length: totalPages }, (_, i) => i + 1)
+        .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+        .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+          if (idx > 0 && typeof arr[idx - 1] === 'number' && (p as number) - (arr[idx - 1] as number) > 1) acc.push('...')
+          acc.push(p)
+          return acc
+        }, [])
+        .map((p, i) =>
+          p === '...' ? (
+            <span key={`ellipsis-${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-gray-400">…</span>
+          ) : (
+            <button
+              key={p}
+              onClick={() => onChange(p as number)}
+              className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-semibold border transition-all ${
+                page === p
+                  ? 'bg-[#DC143C] border-[#DC143C] text-white'
+                  : 'border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+              }`}
+            >
+              {p}
+            </button>
+          )
+        )
+      }
+
+      <button
+        onClick={() => onChange(page + 1)}
+        disabled={page === totalPages}
+        className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
     </div>
   )
 }
@@ -1431,7 +1628,7 @@ interface StatCardProps {
 function StatCard({ num, label, accent, barWidth, icon, iconRed }: StatCardProps) {
   return (
     <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm p-6 relative overflow-hidden hover:-translate-y-0.5 hover:shadow-md transition-all">
-      <div className={`absolute top-5 right-5 w-8 h-8 rounded-lg flex items-center justify-center ${iconRed ? 'bg-red-50 text-[#DC143C]' : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-400'}`}>
+      <div className={`absolute top-5 right-5 w-8 h-8 rounded-lg flex items-center justify-center ${iconRed ? 'bg-red-50 dark:bg-red-900/30 text-[#DC143C] dark:text-red-400' : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-400'}`}>
         {icon}
       </div>
       <div className={`text-[48px] font-extrabold tracking-tight leading-none mb-1.5 ${accent ? 'text-[#DC143C]' : 'text-gray-800 dark:text-white'}`}>{num}</div>
