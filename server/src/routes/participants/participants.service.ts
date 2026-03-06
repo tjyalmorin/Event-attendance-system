@@ -88,6 +88,33 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
 
   // Filter in memory for staff — no extra DB round-trip
   return branch_name ? all.filter(p => p.branch_name === branch_name) : all
+  const result = branch_name
+    ? await pool.query(
+        `SELECT
+           participant_id, event_id, agent_code, full_name,
+           branch_name, team_name, registration_status,
+           registered_at, updated_at, photo_url,
+           label, label_description
+         FROM participants
+         WHERE event_id = $1 AND deleted_at IS NULL AND branch_name = $2
+           AND registration_status != 'cancelled'
+         ORDER BY registered_at DESC`,
+        [event_id, branch_name]
+      )
+    : await pool.query(
+        `SELECT
+           participant_id, event_id, agent_code, full_name,
+           branch_name, team_name, registration_status,
+           registered_at, updated_at, photo_url,
+           label, label_description
+         FROM participants
+         WHERE event_id = $1 AND deleted_at IS NULL
+           AND registration_status != 'cancelled'
+         ORDER BY registered_at DESC`,
+        [event_id]
+      )
+
+  return result.rows
 }
 
 export const cancelParticipantService = async (participant_id: number) => {
@@ -125,4 +152,50 @@ export const setLabelService = async (
 
   await invalidateParticipantCache(result.rows[0].event_id)
   return result.rows[0]
+}
+
+// ── Trash Bin ─────────────────────────────────────────────────────────────────
+
+export const restoreParticipantService = async (participant_id: number) => {
+  if (!participant_id || isNaN(participant_id)) throw new Error('Valid participant ID is required')
+
+  const result = await pool.query(
+    `UPDATE participants
+     SET registration_status = 'confirmed', deleted_at = NULL, updated_at = NOW()
+     WHERE participant_id = $1 AND registration_status = 'cancelled' AND deleted_at IS NOT NULL
+     RETURNING participant_id`,
+    [participant_id]
+  )
+  if (!result.rows[0]) throw new Error('Participant not found in trash')
+}
+
+export const permanentDeleteParticipantService = async (participant_id: number) => {
+  if (!participant_id || isNaN(participant_id)) throw new Error('Valid participant ID is required')
+
+  const check = await pool.query(
+    `SELECT participant_id FROM participants WHERE participant_id = $1 AND registration_status = 'cancelled' AND deleted_at IS NOT NULL`,
+    [participant_id]
+  )
+  if (!check.rows[0]) throw new Error('Participant not found in trash')
+
+  await pool.query('DELETE FROM scan_logs WHERE participant_id = $1', [participant_id])
+  await pool.query('DELETE FROM attendance_sessions WHERE participant_id = $1', [participant_id])
+  await pool.query('DELETE FROM participants WHERE participant_id = $1', [participant_id])
+}
+
+export const getCancelledParticipantsByEventService = async (event_id: number) => {
+  if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
+
+  const result = await pool.query(
+    `SELECT
+       participant_id, event_id, agent_code, full_name,
+       branch_name, team_name, registration_status,
+       registered_at, updated_at, photo_url,
+       label, label_description
+     FROM participants
+     WHERE event_id = $1 AND registration_status = 'cancelled' AND deleted_at IS NOT NULL
+     ORDER BY updated_at DESC`,
+    [event_id]
+  )
+  return result.rows
 }

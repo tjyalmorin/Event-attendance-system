@@ -30,3 +30,18 @@ export const setLabelApi = async (
   const res = await api.patch(`/participants/${participant_id}/label`, payload)
   return res.data
 }
+
+// ── Trash Bin ─────────────────────────────────────────────────────────────────
+
+export const restoreParticipantApi = async (participantId: number): Promise<void> => {
+  await api.patch(`/participants/${participantId}/restore`)
+}
+
+export const deleteParticipantApi = async (participantId: number): Promise<void> => {
+  await api.delete(`/participants/${participantId}/permanent`)
+}
+
+export const getCancelledParticipantsByEventApi = async (eventId: number): Promise<Participant[]> => {
+  const res = await api.get(`/events/${eventId}/participants/cancelled`)
+  return res.data
+}
