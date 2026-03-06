@@ -10,6 +10,9 @@
     "start": "node dist/server.js",
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed": "tsx src/database/seed.ts",
+    "db:seed:demo": "tsx src/database/seed.demo.ts",   
+    "db:seed:mini": "tsx src/database/seed.mini.ts",
+    "db:seed:staff": "tsx src/database/seed.staff.ts",
     "db:migrate:branches": "tsx src/database/migrate_branches.ts"
   },
   "keywords": [
