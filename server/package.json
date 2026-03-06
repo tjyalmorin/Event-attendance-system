@@ -13,6 +13,7 @@
     "db:seed:demo": "tsx src/database/seed.demo.ts",   
     "db:seed:mini": "tsx src/database/seed.mini.ts",
     "db:seed:staff": "tsx src/database/seed.staff.ts",
+    "db:seed:prime": "tsx src/database/seed.prime.ts",
     "db:migrate:branches": "tsx src/database/migrate_branches.ts"
   },
   "keywords": [
