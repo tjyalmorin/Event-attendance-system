@@ -1,12 +1,7 @@
 import pool from '../../config/database.js'
 import { v4 as uuidv4 } from 'uuid'
-import { CreateEventPayload, UpdateEventPayload } from '../../types/event.types.js'
-import {
-  cacheGet, cacheSet, cacheDel,
-  CK, TTL, invalidateEventCache
-} from '../../utils/cache.js'
+import { CreateEventPayload, UpdateEventPayload } from '../../types/event.types'
 
-// ── Create ────────────────────────────────────────────────────────────────────
 export const createEventService = async (created_by: string, payload: CreateEventPayload) => {
   const registration_link = `${uuidv4().split('-')[0]}-${Date.now()}`
 
@@ -27,7 +22,19 @@ export const createEventService = async (created_by: string, payload: CreateEven
 
   const event = result.rows[0]
 
-  // Assign staff via event_permissions
+  // ── Insert event_branches ──────────────────────────────
+  if (payload.event_branches && payload.event_branches.length > 0) {
+    for (const b of payload.event_branches) {
+      await pool.query(
+        `INSERT INTO event_branches (event_id, branch_name, team_names)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (event_id, branch_name) DO UPDATE SET team_names = EXCLUDED.team_names`,
+        [event.event_id, b.branch_name, b.teams]
+      )
+    }
+  }
+
+  // ── Assign staff ───────────────────────────────────────
   if (payload.staff_ids && payload.staff_ids.length > 0) {
     for (const uid of payload.staff_ids) {
       await pool.query(
@@ -39,18 +46,12 @@ export const createEventService = async (created_by: string, payload: CreateEven
     }
   }
 
-  // Invalidate event list caches
-  await invalidateEventCache()
-
   return event
 }
 
-// ── Get All ───────────────────────────────────────────────────────────────────
-export const getAllEventsService = async (
-  userId?: string,
-  userRole?: string,
-  _userBranch?: string
-) => {
+export const getAllEventsService = async (userId?: string, userRole?: string, _userBranch?: string) => {
+
+  // Single aggregation JOIN — runs once, not once per event row
   const countJoin = `
     LEFT JOIN (
       SELECT event_id, COUNT(*)::int AS registered_count
@@ -61,12 +62,7 @@ export const getAllEventsService = async (
     ) pc ON pc.event_id = e.event_id
   `
 
-  // ── Admin: cache the full list ───────────────────────────────────────────
   if (userRole === 'admin') {
-    const cacheKey = CK.EVENTS_LIST_ADMIN
-    const cached = await cacheGet<any[]>(cacheKey)
-    if (cached) return cached
-
     const result = await pool.query(
       `SELECT e.*,
               TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
@@ -76,16 +72,10 @@ export const getAllEventsService = async (
        WHERE e.deleted_at IS NULL
        ORDER BY e.event_date DESC`
     )
-    await cacheSet(cacheKey, result.rows, TTL.SHORT)
     return result.rows
   }
 
-  // ── Staff: cache per-user filtered list ─────────────────────────────────
   if (userRole === 'staff' && userId) {
-    const cacheKey = CK.EVENTS_LIST_STAFF(userId)
-    const cached = await cacheGet<any[]>(cacheKey)
-    if (cached) return cached
-
     const result = await pool.query(
       `SELECT DISTINCT e.*,
               TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
@@ -99,7 +89,6 @@ export const getAllEventsService = async (
        ORDER BY e.event_date DESC`,
       [userId]
     )
-    await cacheSet(cacheKey, result.rows, TTL.SHORT)
     return result.rows
   }
 
@@ -116,12 +105,7 @@ export const getAllEventsService = async (
   return result.rows
 }
 
-// ── Get By ID ─────────────────────────────────────────────────────────────────
 export const getEventByIdService = async (event_id: number) => {
-  const cacheKey = CK.EVENT_DETAIL(event_id)
-  const cached = await cacheGet<any>(cacheKey)
-  if (cached) return cached
-
   const result = await pool.query(
     `SELECT e.*,
             TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
@@ -141,11 +125,18 @@ export const getEventByIdService = async (event_id: number) => {
   )
   if (!result.rows[0]) throw new Error('Event not found')
 
-  await cacheSet(cacheKey, result.rows[0], TTL.MEDIUM)
-  return result.rows[0]
+  const event = result.rows[0]
+
+  // ── Attach event_branches ──────────────────────────────
+  const branchesResult = await pool.query(
+    `SELECT branch_name, team_names FROM event_branches WHERE event_id = $1 ORDER BY branch_name`,
+    [event_id]
+  )
+  event.event_branches = branchesResult.rows
+
+  return event
 }
 
-// ── Update ────────────────────────────────────────────────────────────────────
 export const updateEventService = async (event_id: number, payload: UpdateEventPayload) => {
   const current = await getEventByIdService(event_id)
   const merged = { ...current, ...payload }
@@ -166,22 +157,48 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
     ]
   )
 
-  await invalidateEventCache(event_id)
+  // ── Update event_branches if provided ──────────────────
+  if (payload.event_branches && payload.event_branches.length > 0) {
+    // Delete old branches for this event
+    await pool.query(`DELETE FROM event_branches WHERE event_id = $1`, [event_id])
+    // Insert new ones
+    for (const branch of payload.event_branches) {
+      await pool.query(
+        `INSERT INTO event_branches (event_id, branch_name, team_names)
+         VALUES ($1, $2, $3)`,
+        [event_id, branch.branch_name, branch.teams]
+      )
+    }
+  }
+
+  // ── Update staff permissions if provided ───────────────
+  if (payload.staff_ids !== undefined) {
+    // Remove old permissions
+    await pool.query(`DELETE FROM event_permissions WHERE event_id = $1`, [event_id])
+    // Insert new ones
+    if (payload.staff_ids && payload.staff_ids.length > 0) {
+      for (const uid of payload.staff_ids) {
+        await pool.query(
+          `INSERT INTO event_permissions (event_id, user_id)
+           VALUES ($1, $2)
+           ON CONFLICT (event_id, user_id) DO NOTHING`,
+          [event_id, uid]
+        )
+      }
+    }
+  }
+
   return result.rows[0]
 }
 
-// ── Soft Delete ───────────────────────────────────────────────────────────────
 export const softDeleteEventService = async (event_id: number) => {
   const result = await pool.query(
     'UPDATE events SET deleted_at = NOW() WHERE event_id = $1 AND deleted_at IS NULL RETURNING event_id',
     [event_id]
   )
   if (!result.rows[0]) throw new Error('Event not found')
-
-  await invalidateEventCache(event_id)
 }
 
-// ── Assign Permission ─────────────────────────────────────────────────────────
 export const assignPermissionService = async (event_id: number, user_id: string) => {
   const result = await pool.query(
     `INSERT INTO event_permissions (user_id, event_id, created_at)
@@ -190,11 +207,38 @@ export const assignPermissionService = async (event_id: number, user_id: string)
      RETURNING *`,
     [user_id, event_id]
   )
-  await cacheDel(CK.EVENTS_LIST_STAFF(user_id))
   return result.rows[0]
 }
 
-// ── Trash Bin ─────────────────────────────────────────────────────────────────
+// ── Staff management ──────────────────────────────────────────────────────────
+
+export const getEventStaffService = async (event_id: number) => {
+  const result = await pool.query(
+    `SELECT u.user_id, u.full_name, u.agent_code, u.branch_name, u.email,
+            ep.created_at as assigned_at
+     FROM event_permissions ep
+     INNER JOIN users u ON u.user_id = ep.user_id
+     WHERE ep.event_id = $1
+       AND u.deleted_at IS NULL
+     ORDER BY ep.created_at ASC`,
+    [event_id]
+  )
+  return result.rows
+}
+
+export const removeEventStaffService = async (event_id: number, user_id: string) => {
+  const result = await pool.query(
+    `DELETE FROM event_permissions
+     WHERE event_id = $1 AND user_id = $2
+     RETURNING permission_id`,
+    [event_id, user_id]
+  )
+  if (!result.rows[0]) throw new Error('Permission not found')
+  return result.rows[0]
+}
+
+// ── Feature 3: Trash Bin ──────────────────────────────────────────────────────
+
 export const getTrashedEventsService = async () => {
   const result = await pool.query(
     `SELECT e.*,
@@ -222,60 +266,23 @@ export const restoreEventService = async (event_id: number) => {
     [event_id]
   )
   if (!result.rows[0]) throw new Error('Event not found in trash')
-
-  await invalidateEventCache(event_id)
   return result.rows[0]
 }
 
 export const permanentDeleteEventService = async (event_id: number) => {
+  // Only allow permanent delete of already-soft-deleted events
   const check = await pool.query(
     `SELECT event_id FROM events WHERE event_id = $1 AND deleted_at IS NOT NULL`,
     [event_id]
   )
   if (!check.rows[0]) throw new Error('Event not found in trash')
 
+  // Cascade delete in order (respect foreign key constraints)
   await pool.query('DELETE FROM scan_logs WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM attendance_sessions WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM participants WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM event_permissions WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM admin_grants WHERE event_id = $1', [event_id])
+  await pool.query('DELETE FROM event_branches WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM events WHERE event_id = $1', [event_id])
-
-  await invalidateEventCache(event_id)
-}
-
-// ── Assigned Staff ────────────────────────────────────────────────────────────
-export const getEventStaffService = async (event_id: number) => {
-  const cacheKey = CK.EVENT_STAFF(event_id)
-  const cached = await cacheGet<any[]>(cacheKey)
-  if (cached) return cached
-
-  const result = await pool.query(
-    `SELECT u.user_id, u.full_name, u.agent_code, u.branch_name, u.email,
-            ep.created_at as assigned_at
-     FROM event_permissions ep
-     INNER JOIN users u ON u.user_id = ep.user_id
-     WHERE ep.event_id = $1
-       AND u.deleted_at IS NULL
-     ORDER BY ep.created_at ASC`,
-    [event_id]
-  )
-  await cacheSet(cacheKey, result.rows, TTL.MEDIUM)
-  return result.rows
-}
-
-export const removeEventStaffService = async (event_id: number, user_id: string) => {
-  const result = await pool.query(
-    `DELETE FROM event_permissions
-     WHERE event_id = $1 AND user_id = $2
-     RETURNING permission_id`,
-    [event_id, user_id]
-  )
-  if (!result.rows[0]) throw new Error('Permission not found')
-
-  await Promise.all([
-    cacheDel(CK.EVENT_STAFF(event_id)),
-    cacheDel(CK.EVENTS_LIST_STAFF(user_id)),
-  ])
-  return result.rows[0]
 }

@@ -182,6 +182,20 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
+    // ── event_branches ─────────────────────────────────────
+    // Stores which branches (and teams) are included in each event.
+    // Used by the registration form to show only the correct branches/teams.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS event_branches (
+        id          SERIAL        PRIMARY KEY,
+        event_id    INT           NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+        branch_name VARCHAR(255)  NOT NULL,
+        team_names  TEXT[]        NOT NULL DEFAULT '{}',
+        created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        UNIQUE(event_id, branch_name)
+      );
+    `);
+
     // ── Safe column additions for existing tables ──────────
     await pool.query(`
       ALTER TABLE participants
@@ -248,6 +262,7 @@ const migrate = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_scan_logs_event_id            ON scan_logs(event_id);
       CREATE INDEX IF NOT EXISTS idx_scan_logs_scanned_at          ON scan_logs(scanned_at);
       CREATE INDEX IF NOT EXISTS idx_teams_branch_id               ON teams(branch_id);
+      CREATE INDEX IF NOT EXISTS idx_event_branches_event_id       ON event_branches(event_id);
     `);
 
     // ── New Performance Indexes ────────────────────────────
@@ -377,6 +392,7 @@ const migrate = async (): Promise<void> => {
     console.log('     • scan_logs');
     console.log('     • branches');
     console.log('     • teams');
+    console.log('     • event_branches  ← NEW');
     console.log('');
     console.log('  🔧 Also applied: indexes, triggers, column additions, performance indexes');
     console.log('');
@@ -389,9 +405,10 @@ const migrate = async (): Promise<void> => {
     console.log('     • idx_admin_grants_valid         (partial — grant checks)');
     console.log('     • idx_users_email_active         (partial — login)');
     console.log('     • idx_participants_fullname_gin  (GIN — name search)');
+    console.log('     • idx_event_branches_event_id    (event branches lookup)');
     console.log('');
-    console.log('  💡 Next: npm run db:seed   (optional — creates test accounts)');
-    console.log('          npm run dev         (start the server)');
+    console.log('  💡 Next: npm run db:migrate   (re-run safe — all idempotent)');
+    console.log('          npm run dev            (start the server)');
     console.log('');
     process.exit(0);
   } catch (error) {

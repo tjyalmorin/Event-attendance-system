@@ -139,8 +139,17 @@ const IconDollarSign = ({ size = 16, color = 'currentColor' }) => (
   </svg>
 )
 
-// PRU LIFE UK Logo
+// ── Types ─────────────────────────────────────────────────────────
+interface EventBranchEntry {
+  branch_name: string
+  team_names: string[]
+}
 
+interface EventWithBranches extends Event {
+  event_branches?: EventBranchEntry[]
+}
+
+// ── Slideshow data ────────────────────────────────────────────────
 const slides = [
   {
     tag: 'Life Insurance',
@@ -202,7 +211,7 @@ const slides = [
 export default function RegistrationPage() {
   const { eventId } = useParams()
   const navigate = useNavigate()
-  const [event, setEvent] = useState<Event | null>(null)
+  const [event, setEvent] = useState<EventWithBranches | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -217,7 +226,7 @@ export default function RegistrationPage() {
 
   useEffect(() => {
     getEventByIdApi(Number(eventId))
-      .then(setEvent)
+      .then(data => setEvent(data as EventWithBranches))
       .catch(() => setError('Event not found'))
       .finally(() => setLoading(false))
   }, [eventId])
@@ -237,8 +246,40 @@ export default function RegistrationPage() {
     }, 4500)
   }
 
-  const { branches: allBranches, getTeamsForBranch } = useBranches()
+  const { branches: allBranches } = useBranches()
   const [agentCodeError, setAgentCodeError] = useState('')
+
+  // ── Build filtered branches from event_branches config ──────────
+  // event_branches tells us which branches AND which teams are included.
+  // If no event_branches config, fall back to showing everything.
+  const availableBranches = (() => {
+    const eventBranchConfig = event?.event_branches
+
+    // No config saved (old events or no branches set) — show all
+    if (!eventBranchConfig || eventBranchConfig.length === 0) {
+      return allBranches
+    }
+
+    return allBranches
+      // Keep only branches that are in the event config
+      .filter(b => eventBranchConfig.some(eb => eb.branch_name === b.name))
+      // Filter teams within each branch to only those selected
+      .map(b => {
+        const eb = eventBranchConfig.find(eb => eb.branch_name === b.name)
+        if (!eb) return b
+        const allowedTeams = eb.team_names
+        return {
+          ...b,
+          teams: (b.teams ?? []).filter(t => allowedTeams.includes(t.name)),
+        }
+      })
+  })()
+
+  // Get teams for the currently selected branch (respects event filtering)
+  const getTeamsForSelectedBranch = (branchName: string): string[] => {
+    const branch = availableBranches.find(b => b.name === branchName)
+    return branch?.teams?.map(t => t.name) ?? []
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -282,12 +323,6 @@ export default function RegistrationPage() {
     }
   }
 
-  // Filter branches: if event has a branch_name, only show that one
-  const availableBranches = event
-    ? (event as any).branch_name
-      ? allBranches.filter(b => b.name === (event as any).branch_name)
-      : allBranches
-    : allBranches
   if (loading) return (
     <div style={s.fullPage}>
       <Styles />
@@ -443,7 +478,7 @@ export default function RegistrationPage() {
                   <option value="">
                     {form.branch_name ? '— Select team —' : '— Select branch first —'}
                   </option>
-                  {getTeamsForBranch(form.branch_name).map(t => (
+                  {getTeamsForSelectedBranch(form.branch_name).map(t => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
