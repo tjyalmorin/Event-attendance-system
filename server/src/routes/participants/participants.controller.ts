@@ -8,7 +8,10 @@ import {
   registerParticipantService,
   getParticipantsByEventService,
   cancelParticipantService,
-  setLabelService
+  setLabelService,
+  restoreParticipantService,
+  permanentDeleteParticipantService,
+  getCancelledParticipantsByEventService,
 } from './participants.service.js'
 
 export const registerParticipant = asyncHandler(async (req: Request, res: Response) => {
@@ -64,4 +67,21 @@ export const setLabel = asyncHandler(async (req: Request, res: Response) => {
   const { label, label_description } = req.body
   const updated = await setLabelService(Number(participant_id), label ?? null, label_description ?? null)
   res.json(updated)
+})
+
+// ── Trash Bin ─────────────────────────────────────────────────────────────────
+
+export const restoreParticipant = asyncHandler(async (req: Request, res: Response) => {
+  await restoreParticipantService(Number(req.params.participant_id))
+  res.json({ message: 'Participant restored successfully' })
+})
+
+export const permanentDeleteParticipant = asyncHandler(async (req: Request, res: Response) => {
+  await permanentDeleteParticipantService(Number(req.params.participant_id))
+  res.json({ message: 'Participant permanently deleted' })
+})
+
+export const getCancelledParticipantsByEvent = asyncHandler(async (req: Request, res: Response) => {
+  const participants = await getCancelledParticipantsByEventService(Number(req.params.event_id))
+  res.json(participants)
 })

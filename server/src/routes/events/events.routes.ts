@@ -9,6 +9,7 @@ import {
   getEventStaff, removeEventStaff
 } from './events.controller.js'
 import { getEventAdminGrants } from '../users/admin-grant.controller.js'
+import { getCancelledParticipantsByEvent } from '../participants/participants.controller.js'
 
 const router = Router()
 
@@ -31,5 +32,8 @@ router.get('/:event_id/admin-grants', roleGuard('admin'), getEventAdminGrants)
 // ── Staff management (admin only) ────────────────────────────
 router.get('/:event_id/staff', roleGuard('admin'), getEventStaff)
 router.delete('/:event_id/staff/:user_id', roleGuard('admin'), removeEventStaff)
+
+// ── Trash Bin — cancelled participants (admin only) ───────────
+router.get('/:event_id/participants/cancelled', roleGuard('admin'), getCancelledParticipantsByEvent)
 
 export default router

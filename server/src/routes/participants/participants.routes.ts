@@ -8,7 +8,9 @@ import {
   getParticipantsByEvent,
   cancelParticipant,
   uploadParticipantPhoto,
-  setLabel
+  setLabel,
+  restoreParticipant,
+  permanentDeleteParticipant,
 } from './participants.controller.js'
 
 const router = Router()
@@ -25,5 +27,10 @@ router.post('/:participant_id/photo', authenticate, roleGuard('admin'), uploadPa
 
 // LABEL — admin and staff
 router.patch('/:participant_id/label', authenticate, roleGuard('admin', 'staff'), validate(setLabelSchema), setLabel)
+
+// ── Trash Bin (admin only) ────────────────────────────────────────────────────
+// NOTE: specific routes (/restore, /permanent) must come BEFORE /:participant_id
+router.patch('/:participant_id/restore', authenticate, roleGuard('admin'), restoreParticipant)
+router.delete('/:participant_id/permanent', authenticate, roleGuard('admin'), permanentDeleteParticipant)
 
 export default router

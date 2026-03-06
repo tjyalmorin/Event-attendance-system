@@ -2,12 +2,19 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ExcelJS from 'exceljs'
 import { getEventByIdApi, updateEventStatusApi, getEventStaffApi, removeEventStaffApi } from '../../api/events.api'
-import { getParticipantsByEventApi, cancelParticipantApi, setLabelApi } from '../../api/participants.api'
+import {
+  getParticipantsByEventApi,
+  cancelParticipantApi,
+  setLabelApi,
+  restoreParticipantApi,
+  deleteParticipantApi,
+  getCancelledParticipantsByEventApi,
+} from '../../api/participants.api'
 import { getSessionsByEventApi, getScanLogsByEventApi } from '../../api/scan.api'
 import { Event, Participant, AttendanceSession, ScanLog } from '../../types'
 import Sidebar from '../../components/Sidebar'
 
-type TabType = 'registrants' | 'attendance' | 'scanlogs' | 'reports' | 'staff'
+type TabType = 'registrants' | 'attendance' | 'scanlogs' | 'reports' | 'staff' | 'trash'
 
 interface AssignedStaff {
   user_id: string
@@ -33,25 +40,25 @@ const fmt12h = (t: string) => {
   if (!t) return ''
   const [h, m] = t.split(':').map(Number)
   const ampm = h < 12 ? 'AM' : 'PM'
-  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`
+  const h12 = h % 12 || 12
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
 }
 
 // ── Icons ──
-const ScannerIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" />
-    <rect x="8" y="8" width="8" height="8" rx="1" />
-  </svg>
-)
 const ArrowLeftIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
   </svg>
 )
+const ScannerIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <polyline points="3 7 3 3 7 3" /><polyline points="17 3 21 3 21 7" /><polyline points="21 17 21 21 17 21" /><polyline points="7 21 3 21 3 17" />
+    <rect x="7" y="7" width="10" height="10" />
+  </svg>
+)
 const UsersIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" />
-    <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" />
   </svg>
 )
 const CheckIcon = () => (
@@ -61,7 +68,7 @@ const CheckIcon = () => (
 )
 const LogoutIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
   </svg>
 )
 const AlertIcon = () => (
@@ -94,9 +101,14 @@ const DownloadIcon = () => (
     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
   </svg>
 )
+const TrashIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+  </svg>
+)
 const DotsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <circle cx="12" cy="5" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /><circle cx="12" cy="19" r="1" fill="currentColor" />
+    <circle cx="12" cy="5" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="12" cy="19" r="1" />
   </svg>
 )
 const GlobeIcon = () => (
@@ -105,10 +117,9 @@ const GlobeIcon = () => (
     <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
   </svg>
 )
-const TrashIcon = () => (
+const RestoreIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
-    <path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4h6v2" />
+    <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8" /><path d="M3 3v5h5" />
   </svg>
 )
 
@@ -117,7 +128,7 @@ function isEventOngoing(event: Event): boolean {
   const eventDateStr = event.event_date.slice(0, 10)
   const todayStr = now.toLocaleDateString('en-CA')
   if (eventDateStr !== todayStr) return false
-  if (!event.start_time || !event.end_time) return true
+  if (!event.start_time || !event.end_time) return false
   const [sh, sm] = event.start_time.split(':').map(Number)
   const [eh, em] = event.end_time.split(':').map(Number)
   const startMinutes = sh * 60 + sm
@@ -203,6 +214,126 @@ function RegistrantDropdown({ participant, onLabel, onRemove }: {
   )
 }
 
+// ── PaginationBar ──
+function PaginationBar({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => onChange(page - 1)}
+        disabled={page === 1}
+        className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+
+      {Array.from({ length: totalPages }, (_, i) => i + 1)
+        .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+        .reduce<(number | '...')[]>((acc, p, idx, arr) => {
+          if (idx > 0 && typeof arr[idx - 1] === 'number' && (p as number) - (arr[idx - 1] as number) > 1) acc.push('...')
+          acc.push(p)
+          return acc
+        }, [])
+        .map((p, i) =>
+          p === '...' ? (
+            <span key={`ellipsis-${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-gray-400">…</span>
+          ) : (
+            <button
+              key={p}
+              onClick={() => onChange(p as number)}
+              className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-semibold border transition-all ${
+                page === p
+                  ? 'bg-[#DC143C] border-[#DC143C] text-white'
+                  : 'border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+              }`}
+            >
+              {p}
+            </button>
+          )
+        )
+      }
+
+      <button
+        onClick={() => onChange(page + 1)}
+        disabled={page === totalPages}
+        className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
+// ── Sort Dropdown ──
+function SortDropdown({ options, value, onChange, dropdownRef, open, setOpen }: {
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (v: string) => void
+  dropdownRef: React.RefObject<HTMLDivElement>
+  open: boolean
+  setOpen: (v: boolean) => void
+}) {
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 h-9 px-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-sm text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C] transition-all">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/>
+        </svg>
+        <span className="text-xs font-semibold">{options.find(o => o.value === value)?.label}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
+          <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sort by</span>
+          </div>
+          {options.map(opt => (
+            <button key={opt.value} onClick={() => { onChange(opt.value); setOpen(false) }}
+              className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
+                value === opt.value
+                  ? 'text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10 font-semibold'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+              }`}>
+              {opt.label}
+              {value === opt.value && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── StatCard ──
+interface StatCardProps {
+  num: number; label: string; accent: boolean
+  barWidth: number; icon: React.ReactNode; iconRed?: boolean
+}
+function StatCard({ num, label, accent, barWidth, icon, iconRed }: StatCardProps) {
+  return (
+    <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm p-6 relative overflow-hidden hover:-translate-y-0.5 hover:shadow-md transition-all">
+      <div className={`absolute top-5 right-5 w-8 h-8 rounded-lg flex items-center justify-center ${iconRed ? 'bg-red-50 dark:bg-red-900/30 text-[#DC143C] dark:text-red-400' : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-400'}`}>
+        {icon}
+      </div>
+      <div className={`text-[48px] font-extrabold tracking-tight leading-none mb-1.5 ${accent ? 'text-[#DC143C]' : 'text-gray-800 dark:text-white'}`}>{num}</div>
+      <div className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</div>
+      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-100">
+        <div className="h-full bg-[#DC143C] transition-all" style={{ width: `${barWidth}%` }} />
+      </div>
+    </div>
+  )
+}
+
 export default function EventDetail() {
   const { eventId } = useParams()
   const navigate = useNavigate()
@@ -211,6 +342,7 @@ export default function EventDetail() {
 
   const [event, setEvent] = useState<Event | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
+  const [cancelledParticipants, setCancelledParticipants] = useState<Participant[]>([])
   const [sessions, setSessions] = useState<AttendanceSession[]>([])
   const [scanLogs, setScanLogs] = useState<ScanLog[]>([])
   const [activeTab, setActiveTab] = useState<TabType>('registrants')
@@ -228,6 +360,10 @@ export default function EventDetail() {
 
   const [removeModal, setRemoveModal] = useState<{ open: boolean; participant: Participant | null }>({ open: false, participant: null })
   const [removeLoading, setRemoveLoading] = useState(false)
+
+  // ── Trash Bin state ──
+  const [permDeleteModal, setPermDeleteModal] = useState<{ open: boolean; participant: Participant | null }>({ open: false, participant: null })
+  const [permDeleteLoading, setPermDeleteLoading] = useState(false)
 
   const [earlyOutModal, setEarlyOutModal] = useState<{ open: boolean; session: AttendanceSession | null }>({ open: false, session: null })
 
@@ -251,23 +387,28 @@ export default function EventDetail() {
   const [scanlogsType, setScanlogsType] = useState<'all' | 'check_in' | 'check_out' | 'denied'>('all')
   const scanlogsSortRef = useRef<HTMLDivElement>(null)
 
+  const [trashSearch, setTrashSearch] = useState('')
+
   const [registrantsPage, setRegistrantsPage] = useState(1)
   const [attendancePage, setAttendancePage]   = useState(1)
   const [scanlogsPage, setScanlogsPage]       = useState(1)
   const [staffPage, setStaffPage]             = useState(1)
+  const [trashPage, setTrashPage]             = useState(1)
 
   const fetchData = useCallback(async () => {
     const id = Number(eventId)
     try {
-      const [eventData, participantsData, sessionsData, logsData, staffData] = await Promise.all([
+      const [eventData, participantsData, cancelledData, sessionsData, logsData, staffData] = await Promise.all([
         getEventByIdApi(id),
         getParticipantsByEventApi(id),
+        isAdmin ? getCancelledParticipantsByEventApi(id) : Promise.resolve([]),
         getSessionsByEventApi(id),
         getScanLogsByEventApi(id),
         isAdmin ? getEventStaffApi(id) : Promise.resolve([])
       ])
       setEvent(eventData)
       setParticipants(participantsData)
+      setCancelledParticipants(cancelledData)
       setSessions(sessionsData)
       setScanLogs(logsData)
       setAssignedStaff(staffData)
@@ -293,6 +434,7 @@ export default function EventDetail() {
   useEffect(() => { setRegistrantsPage(1) }, [registrantsSearch, registrantsSort])
   useEffect(() => { setAttendancePage(1) },  [attendanceSearch, attendanceSort, filterStatus])
   useEffect(() => { setScanlogsPage(1) },    [scanlogsSearch, scanlogsSort, scanlogsType])
+  useEffect(() => { setTrashPage(1) },       [trashSearch])
 
   const openLabelView = (p: Participant, editMode = false) => {
     setLabelViewModal({ open: true, participant: p, editMode })
@@ -324,13 +466,38 @@ export default function EventDetail() {
   const handleRemoveConfirm = async () => {
     if (!removeModal.participant) return
     setRemoveLoading(true)
+    const removed = removeModal.participant
     try {
-      await cancelParticipantApi(removeModal.participant.participant_id)
-      setParticipants(prev => prev.filter(p => p.participant_id !== removeModal.participant!.participant_id))
+      await cancelParticipantApi(removed.participant_id)
+      setParticipants(prev => prev.filter(p => p.participant_id !== removed.participant_id))
+      setCancelledParticipants(prev => [...prev, { ...removed, registration_status: 'cancelled' }])
       setRemoveModal({ open: false, participant: null })
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to remove registrant')
     } finally { setRemoveLoading(false) }
+  }
+
+  // ── Trash Bin handlers ──
+  const handleRestoreParticipant = async (participant: Participant) => {
+    try {
+      await restoreParticipantApi(participant.participant_id)
+      setCancelledParticipants(prev => prev.filter(p => p.participant_id !== participant.participant_id))
+      setParticipants(prev => [...prev, { ...participant, registration_status: 'confirmed' }])
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to restore participant')
+    }
+  }
+
+  const handlePermDeleteConfirm = async () => {
+    if (!permDeleteModal.participant) return
+    setPermDeleteLoading(true)
+    try {
+      await deleteParticipantApi(permDeleteModal.participant.participant_id)
+      setCancelledParticipants(prev => prev.filter(p => p.participant_id !== permDeleteModal.participant!.participant_id))
+      setPermDeleteModal({ open: false, participant: null })
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to permanently delete participant')
+    } finally { setPermDeleteLoading(false) }
   }
 
   const handleRemoveStaff = async () => {
@@ -470,7 +637,6 @@ export default function EventDetail() {
   const visibleTotalAttended  = visibleSessions.length
   const visibleNoShowCount    = Math.max(0, visibleConfirmedCount - visibleTotalAttended)
 
-  // ── CHANGE: max 5 recent check-ins (was 6) ──
   const recentCheckIns = [...visibleSessions]
     .sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime())
     .slice(0, 5)
@@ -537,6 +703,14 @@ export default function EventDetail() {
       return scanlogsSort === 'latest' ? diff : -diff
     })
 
+  // ── Filtered trash ──
+  const filteredTrash = cancelledParticipants
+    .filter(p => {
+      if (!trashSearch.trim()) return true
+      const q = trashSearch.toLowerCase()
+      return p.full_name?.toLowerCase().includes(q) || p.agent_code?.toLowerCase().includes(q) || p.branch_name?.toLowerCase().includes(q)
+    })
+
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
       upcoming:  'bg-blue-100 text-blue-700',
@@ -597,7 +771,10 @@ export default function EventDetail() {
     { key: 'attendance',  label: `Attendance (${visibleSessions.length})` },
     { key: 'scanlogs',   label: `Scan Logs (${scanLogs.length})` },
     { key: 'reports',    label: 'Reports' },
-    ...(isAdmin ? [{ key: 'staff' as TabType, label: `Assigned Staff (${assignedStaff.length})` }] : []),
+    ...(isAdmin ? [
+      { key: 'staff' as TabType, label: `Assigned Staff (${assignedStaff.length})` },
+      { key: 'trash' as TabType, label: `Trash (${cancelledParticipants.length})` },
+    ] : []),
   ]
 
   const totalAttendanceEntries = allAttendanceRows.length
@@ -608,16 +785,19 @@ export default function EventDetail() {
   const attendanceTotalPages  = Math.max(1, Math.ceil(filteredAttendanceSorted.length / PAGE_SIZE))
   const scanlogsTotalPages    = Math.max(1, Math.ceil(filteredScanLogs.length / PAGE_SIZE))
   const staffTotalPages       = Math.max(1, Math.ceil(assignedStaff.length / PAGE_SIZE))
+  const trashTotalPages       = Math.max(1, Math.ceil(filteredTrash.length / PAGE_SIZE))
 
   const safeRegPage   = Math.min(registrantsPage, registrantsTotalPages)
   const safeAttPage   = Math.min(attendancePage,  attendanceTotalPages)
   const safeScanPage  = Math.min(scanlogsPage,    scanlogsTotalPages)
   const safeStaffPage = Math.min(staffPage,        staffTotalPages)
+  const safeTrashPage = Math.min(trashPage,        trashTotalPages)
 
   const pagedRegistrants = filteredRegistrants.slice((safeRegPage - 1) * PAGE_SIZE, safeRegPage * PAGE_SIZE)
   const pagedAttendance  = filteredAttendanceSorted.slice((safeAttPage - 1) * PAGE_SIZE, safeAttPage * PAGE_SIZE)
   const pagedScanLogs    = filteredScanLogs.slice((safeScanPage - 1) * PAGE_SIZE, safeScanPage * PAGE_SIZE)
   const pagedStaff       = assignedStaff.slice((safeStaffPage - 1) * PAGE_SIZE, safeStaffPage * PAGE_SIZE)
+  const pagedTrash       = filteredTrash.slice((safeTrashPage - 1) * PAGE_SIZE, safeTrashPage * PAGE_SIZE)
 
   return (
     <div className="min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f] flex">
@@ -872,7 +1052,7 @@ export default function EventDetail() {
                                 const c = getLabelColor(String(p.label))
                                 return (
                                   <button onClick={() => openLabelView(p)}
-                                    className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText} hover:opacity-80 transition-opacity`}>
+                                    className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer hover:opacity-80 transition-opacity ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
                                     {p.label}
                                   </button>
                                 )
@@ -882,7 +1062,7 @@ export default function EventDetail() {
                           <td className="px-5 py-3.5">
                             <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span>
                           </td>
-                          <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-sm">{p.team_name}</td>
+                          <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{p.team_name}</td>
                           <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">
                             {new Date(p.registered_at).toLocaleString('en-PH')}
                           </td>
@@ -963,8 +1143,8 @@ export default function EventDetail() {
                     <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
                       {filteredAttendanceSorted.length === 0 ? (
                         <tr><td colSpan={7} className="text-center py-16 text-gray-400 dark:text-gray-500">No attendance records found.</td></tr>
-                      ) : pagedAttendance.map(s => (
-                        <tr key={s.session_id ?? s.agent_code} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                      ) : pagedAttendance.map((s, idx) => (
+                        <tr key={s.session_id ?? `pending-${idx}`} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
                           <td className="px-5 py-3.5">
                             <span className="font-medium text-[#DC143C] text-sm">{s.agent_code}</span>
                           </td>
@@ -977,7 +1157,7 @@ export default function EventDetail() {
                                 const c = getLabelColor(String(p.label))
                                 return (
                                   <button onClick={() => openLabelView(p)}
-                                    className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText} hover:opacity-80 transition-opacity`}>
+                                    className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer hover:opacity-80 transition-opacity ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
                                     {p.label}
                                   </button>
                                 )
@@ -987,7 +1167,7 @@ export default function EventDetail() {
                           <td className="px-5 py-3.5">
                             <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{s.branch_name}</span>
                           </td>
-                          <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-sm">{s.team_name}</td>
+                          <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{s.team_name}</td>
                           <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">
                             {s.check_in_time ? new Date(s.check_in_time).toLocaleString('en-PH') : '—'}
                           </td>
@@ -1018,7 +1198,7 @@ export default function EventDetail() {
                                   ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
                                   : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                               }`}>
-                                {s.check_out_time ? 'Completed' : 'Inside'}
+                                {s.check_out_time ? 'Checked Out' : 'Checked In'}
                               </span>
                             )}
                           </td>
@@ -1033,13 +1213,13 @@ export default function EventDetail() {
               {/* ── SCAN LOGS ── */}
               {activeTab === 'scanlogs' && (
                 <>
-                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-shrink-0">
+                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-wrap flex-shrink-0">
                     <div className="flex items-center gap-1.5">
                       {([
-                        { value: 'all', label: 'All' },
-                        { value: 'check_in', label: 'Check In' },
+                        { value: 'all',       label: 'All' },
+                        { value: 'check_in',  label: 'Check In' },
                         { value: 'check_out', label: 'Check Out' },
-                        { value: 'denied', label: 'Denied' },
+                        { value: 'denied',    label: 'Denied' },
                       ] as const).map(f => (
                         <button key={f.value} onClick={() => setScanlogsType(f.value)}
                           className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${scanlogsType === f.value
@@ -1223,6 +1403,80 @@ export default function EventDetail() {
                   )}
                 </>
               )}
+
+              {/* ── TRASH TAB ── */}
+              {activeTab === 'trash' && isAdmin && (
+                <>
+                  <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-shrink-0">
+                    <div className="relative flex-1">
+                      <input value={trashSearch} onChange={e => setTrashSearch(e.target.value)}
+                        placeholder="Search name, agent code, branch…"
+                        className="w-full h-9 pl-9 pr-4 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#DC143C] transition-colors"
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><SearchIcon /></span>
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 ml-2">
+                      Removed registrants. Restore to reinstate or permanently delete.
+                    </p>
+                  </div>
+                  {filteredTrash.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-2">
+                      <span className="text-gray-300 dark:text-gray-600"><TrashIcon /></span>
+                      <p className="text-gray-400 dark:text-gray-500 text-sm">Trash is empty.</p>
+                      <p className="text-gray-400 dark:text-gray-600 text-xs">Removed registrants will appear here.</p>
+                    </div>
+                  ) : (
+                    <div className="flex-1 overflow-auto">
+                    <table className="w-full text-sm table-fixed">
+                      <colgroup>
+                        <col className="w-[130px]" />
+                        <col className="w-[220px]" />
+                        <col className="w-[150px]" />
+                        <col className="w-[150px]" />
+                        <col className="w-[200px]" />
+                      </colgroup>
+                      <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
+                        <tr>
+                          {['Agent Code', 'Full Name', 'Branch', 'Team', 'Actions'].map(h => (
+                            <th key={h} className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
+                        {pagedTrash.map(p => (
+                          <tr key={p.participant_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                            <td className="px-5 py-3.5">
+                              <span className="font-medium text-[#DC143C] text-sm">{p.agent_code}</span>
+                            </td>
+                            <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{p.full_name}</td>
+                            <td className="px-5 py-3.5">
+                              <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span>
+                            </td>
+                            <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{p.team_name}</td>
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleRestoreParticipant(p)}
+                                  className="flex items-center gap-1.5 text-xs font-semibold text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 px-3 py-1.5 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 transition-all">
+                                  <RestoreIcon />
+                                  Restore
+                                </button>
+                                <button
+                                  onClick={() => setPermDeleteModal({ open: true, participant: p })}
+                                  className="flex items-center gap-1.5 text-xs font-semibold text-red-500 dark:text-red-400 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">
+                                  <TrashIcon />
+                                  Delete
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Table footer with pagination */}
@@ -1232,6 +1486,7 @@ export default function EventDetail() {
                 {activeTab === 'attendance'  && `${filteredAttendanceSorted.length} of ${totalAttendanceEntries} entries`}
                 {activeTab === 'scanlogs'    && `${filteredScanLogs.length} scan log${filteredScanLogs.length !== 1 ? 's' : ''}`}
                 {activeTab === 'staff'       && `${assignedStaff.length} staff member${assignedStaff.length !== 1 ? 's' : ''} assigned`}
+                {activeTab === 'trash'       && `${filteredTrash.length} removed registrant${filteredTrash.length !== 1 ? 's' : ''}`}
               </span>
 
               {/* Pagination controls */}
@@ -1246,6 +1501,9 @@ export default function EventDetail() {
               )}
               {activeTab === 'staff' && staffTotalPages > 1 && (
                 <PaginationBar page={safeStaffPage} totalPages={staffTotalPages} onChange={setStaffPage} />
+              )}
+              {activeTab === 'trash' && trashTotalPages > 1 && (
+                <PaginationBar page={safeTrashPage} totalPages={trashTotalPages} onChange={setTrashPage} />
               )}
             </div>
           </div>
@@ -1311,8 +1569,8 @@ export default function EventDetail() {
                         <button key={opt} onClick={() => setLabelType(opt)}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                             labelType === opt
-                              ? `${oc.bg} ${oc.text} ${oc.border} ${oc.darkBg} ${oc.darkText}`
-                              : 'border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-300 hover:border-gray-400'
+                              ? `${oc.bg} ${oc.text} ${oc.border} ${oc.darkBg} ${oc.darkText} ring-2 ring-offset-1 ring-current`
+                              : 'bg-gray-50 dark:bg-[#1a1a1a] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#2a2a2a] hover:border-gray-400'
                           }`}>
                           {opt}
                         </button>
@@ -1320,12 +1578,15 @@ export default function EventDetail() {
                     })}
                   </div>
                   {labelType === 'Custom…' && (
-                    <input type="text" value={labelCustom} onChange={e => setLabelCustom(e.target.value)}
-                      placeholder="e.g. Best Agent, Million Club…"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C] mb-4"
-                    />
+                    <div className="mb-4">
+                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Custom Label</label>
+                      <input value={labelCustom} onChange={e => setLabelCustom(e.target.value)}
+                        placeholder="e.g. Best Agent, Million Club…"
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C]"
+                      />
+                    </div>
                   )}
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-1">Note <span className="font-normal normal-case text-gray-400">(optional)</span></label>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 mt-1">Note <span className="font-normal normal-case">optional</span></label>
                   <textarea value={labelNote} onChange={e => setLabelNote(e.target.value)}
                     placeholder="e.g. Seated at Table 2, Row 5 · Perform after opening remarks"
                     rows={3}
@@ -1363,22 +1624,27 @@ export default function EventDetail() {
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
               {labelModal.participant.label ? 'Edit Label' : 'Add Label'}
             </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              {labelModal.participant.full_name} · {labelModal.participant.agent_code}
-            </p>
-            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Label Type</label>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{labelModal.participant.full_name} · <span className="font-mono text-[#DC143C]">{labelModal.participant.agent_code}</span></p>
+            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Label Type</label>
             <div className="flex flex-wrap gap-2 mb-4">
-              {LABEL_OPTIONS.map(opt => (
-                <button key={opt} onClick={() => setLabelType(opt)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${labelType === opt ? 'bg-[#DC143C] border-[#DC143C] text-white' : 'border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-300 hover:border-[#DC143C] hover:text-[#DC143C]'}`}>
-                  {opt}
-                </button>
-              ))}
+              {LABEL_OPTIONS.map(opt => {
+                const oc = getLabelColor(opt === 'Custom…' ? 'Custom…' : opt)
+                return (
+                  <button key={opt} onClick={() => setLabelType(opt)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                      labelType === opt
+                        ? `${oc.bg} ${oc.text} ${oc.border} ${oc.darkBg} ${oc.darkText} ring-2 ring-offset-1 ring-current`
+                        : 'bg-gray-50 dark:bg-[#1a1a1a] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#2a2a2a] hover:border-gray-400'
+                    }`}>
+                    {opt}
+                  </button>
+                )
+              })}
             </div>
             {labelType === 'Custom…' && (
               <div className="mb-4">
-                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Custom Label</label>
-                <input type="text" value={labelCustom} onChange={e => setLabelCustom(e.target.value)}
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Custom Label</label>
+                <input value={labelCustom} onChange={e => setLabelCustom(e.target.value)}
                   placeholder="e.g. Best Agent, Million Club…"
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C]"
                 />
@@ -1425,7 +1691,7 @@ export default function EventDetail() {
               </button>
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Are you sure you want to remove <strong className="text-gray-700 dark:text-gray-200">{removeModal.participant.full_name}</strong> from this event? This action cannot be undone.
+              Are you sure you want to remove <strong className="text-gray-700 dark:text-gray-200">{removeModal.participant.full_name}</strong> from this event? They will be moved to Trash and can be restored later.
             </p>
             <div className="flex gap-3">
               <button onClick={() => setRemoveModal({ open: false, participant: null })}
@@ -1434,7 +1700,38 @@ export default function EventDetail() {
               </button>
               <button onClick={handleRemoveConfirm} disabled={removeLoading}
                 className="flex-1 h-[44px] rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-60">
-                {removeLoading ? 'Removing...' : 'Remove Registrant'}
+                {removeLoading ? 'Removing...' : 'Move to Trash'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PERMANENT DELETE MODAL ── */}
+      {permDeleteModal.open && permDeleteModal.participant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <span className="text-[#DC143C] mt-[1px] [&>svg]:w-6 [&>svg]:h-6"><TrashIcon /></span>
+                Permanently Delete
+              </h2>
+              <button onClick={() => setPermDeleteModal({ open: false, participant: null })}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+                <XIcon />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              Permanently delete <strong className="text-gray-700 dark:text-gray-200">{permDeleteModal.participant.full_name}</strong>? This will remove all their scan logs and attendance records. <span className="text-red-500 font-semibold">This cannot be undone.</span>
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setPermDeleteModal({ open: false, participant: null })}
+                className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+                Cancel
+              </button>
+              <button onClick={handlePermDeleteConfirm} disabled={permDeleteLoading}
+                className="flex-1 h-[44px] rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-60">
+                {permDeleteLoading ? 'Deleting...' : 'Delete Forever'}
               </button>
             </div>
           </div>
@@ -1446,58 +1743,48 @@ export default function EventDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <span className="text-[#DC143C] mt-[1px] [&>svg]:w-6 [&>svg]:h-6"><TrashIcon /></span>
-                Remove Staff Access
-              </h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Remove Staff Access</h2>
               <button onClick={() => setRemoveStaffModal({ open: false, staff: null })}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
                 <XIcon />
               </button>
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Remove <strong className="text-gray-700 dark:text-gray-200">{removeStaffModal.staff.full_name}</strong> from this event? They will no longer be able to view event data.
+              Remove <strong className="text-gray-700 dark:text-gray-200">{removeStaffModal.staff.full_name}</strong> from this event? They will lose access to this event's data.
             </p>
             <div className="flex gap-3">
               <button onClick={() => setRemoveStaffModal({ open: false, staff: null })}
                 className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
                 Cancel
               </button>
-              <button onClick={handleRemoveStaff} disabled={removingStaffId === removeStaffModal.staff.user_id}
+              <button onClick={handleRemoveStaff} disabled={!!removingStaffId}
                 className="flex-1 h-[44px] rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-60">
-                {removingStaffId === removeStaffModal.staff.user_id ? 'Removing...' : 'Remove Access'}
+                {removingStaffId ? 'Removing...' : 'Remove Access'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── EARLY OUT REASON MODAL ── */}
+      {/* ── EARLY OUT MODAL ── */}
       {earlyOutModal.open && earlyOutModal.session && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setEarlyOutModal({ open: false, session: null })}>
           <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-sm mx-4 p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-yellow-100 dark:bg-yellow-900/30">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                  </svg>
-                </span>
-                Early Out Details
-              </h2>
+              <h2 className="text-base font-bold text-gray-900 dark:text-white">Early Out Details</h2>
               <button onClick={() => setEarlyOutModal({ open: false, session: null })}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
                 <XIcon />
               </button>
             </div>
-            <div className="bg-gray-50 dark:bg-[#141414] rounded-xl p-4 space-y-3">
+            <div className="space-y-3">
               <div>
                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Participant</p>
                 <p className="text-sm font-semibold text-gray-800 dark:text-white">{earlyOutModal.session.full_name}</p>
-                <p className="text-xs text-[#DC143C] font-mono mt-0.5">{earlyOutModal.session.agent_code}</p>
+                <p className="text-xs text-[#DC143C] font-mono">{earlyOutModal.session.agent_code}</p>
               </div>
               <div>
-                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Checked Out At</p>
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Check-out Time</p>
                 <p className="text-sm text-gray-700 dark:text-gray-300">
                   {earlyOutModal.session.check_out_time ? new Date(earlyOutModal.session.check_out_time).toLocaleString('en-PH') : '—'}
                 </p>
@@ -1516,126 +1803,6 @@ export default function EventDetail() {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-// ── PaginationBar ──
-function PaginationBar({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (p: number) => void }) {
-  return (
-    <div className="flex items-center gap-1">
-      <button
-        onClick={() => onChange(page - 1)}
-        disabled={page === 1}
-        className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-          <polyline points="15 18 9 12 15 6" />
-        </svg>
-      </button>
-
-      {Array.from({ length: totalPages }, (_, i) => i + 1)
-        .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
-        .reduce<(number | '...')[]>((acc, p, idx, arr) => {
-          if (idx > 0 && typeof arr[idx - 1] === 'number' && (p as number) - (arr[idx - 1] as number) > 1) acc.push('...')
-          acc.push(p)
-          return acc
-        }, [])
-        .map((p, i) =>
-          p === '...' ? (
-            <span key={`ellipsis-${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-gray-400">…</span>
-          ) : (
-            <button
-              key={p}
-              onClick={() => onChange(p as number)}
-              className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-semibold border transition-all ${
-                page === p
-                  ? 'bg-[#DC143C] border-[#DC143C] text-white'
-                  : 'border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
-              }`}
-            >
-              {p}
-            </button>
-          )
-        )
-      }
-
-      <button
-        onClick={() => onChange(page + 1)}
-        disabled={page === totalPages}
-        className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-          <polyline points="9 18 15 12 9 6" />
-        </svg>
-      </button>
-    </div>
-  )
-}
-
-// ── Sort Dropdown ──
-function SortDropdown({ options, value, onChange, dropdownRef, open, setOpen }: {
-  options: { value: string; label: string }[]
-  value: string
-  onChange: (v: string) => void
-  dropdownRef: React.RefObject<HTMLDivElement>
-  open: boolean
-  setOpen: (v: boolean) => void
-}) {
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 h-9 px-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-sm text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C] transition-all">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-          <line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/>
-        </svg>
-        <span className="text-xs font-semibold">{options.find(o => o.value === value)?.label}</span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`}>
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </button>
-      {open && (
-        <div className="absolute right-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
-          <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sort by</span>
-          </div>
-          {options.map(opt => (
-            <button key={opt.value} onClick={() => { onChange(opt.value); setOpen(false) }}
-              className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
-                value === opt.value
-                  ? 'text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10 font-semibold'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
-              }`}>
-              {opt.label}
-              {value === opt.value && (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── StatCard ──
-interface StatCardProps {
-  num: number; label: string; accent: boolean
-  barWidth: number; icon: React.ReactNode; iconRed?: boolean
-}
-function StatCard({ num, label, accent, barWidth, icon, iconRed }: StatCardProps) {
-  return (
-    <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm p-6 relative overflow-hidden hover:-translate-y-0.5 hover:shadow-md transition-all">
-      <div className={`absolute top-5 right-5 w-8 h-8 rounded-lg flex items-center justify-center ${iconRed ? 'bg-red-50 dark:bg-red-900/30 text-[#DC143C] dark:text-red-400' : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-400'}`}>
-        {icon}
-      </div>
-      <div className={`text-[48px] font-extrabold tracking-tight leading-none mb-1.5 ${accent ? 'text-[#DC143C]' : 'text-gray-800 dark:text-white'}`}>{num}</div>
-      <div className="text-sm font-medium text-gray-500 dark:text-gray-400">{label}</div>
-      <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-100">
-        <div className="h-full bg-[#DC143C] transition-all" style={{ width: `${barWidth}%` }} />
-      </div>
     </div>
   )
 }
