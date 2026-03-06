@@ -5,6 +5,7 @@ import { lookupParticipantApi, resolveParticipantApi, scanAgentCodeApi, logDenia
 import { Event, ScanResponse } from '../../types'
 import Sidebar from '../../components/Sidebar'
 import { useDarkMode } from '../../contexts/DarkModeContext'
+import { useStaffProtection } from '../../hooks/useStaffProtection'
 
 // ── Types ────────────────────────────────────────────────
 type PageState = 'input' | 'pick' | 'verify' | 'result' | 'error'
@@ -108,6 +109,7 @@ export default function ScannerPage() {
   const { eventId } = useParams()
   const navigate = useNavigate()
   const { isDarkMode } = useDarkMode()
+  useStaffProtection()
 
   const [event, setEvent]           = useState<Event | null>(null)
   const [query, setQuery]           = useState('')

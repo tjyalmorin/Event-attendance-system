@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { loginApi } from '../../api/auth.api'
 import { useDarkMode } from '../../contexts/DarkModeContext'
+import { useStaffProtection } from '../../hooks/useStaffProtection'
 import pruLogo from '../../assets/pru.webp'
 
 // ── SVG Icons ──────────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ const SunIcon = () => (
 export default function LoginPage() {
   const navigate = useNavigate()
   const { isDarkMode, toggleDarkMode } = useDarkMode()
+  useStaffProtection()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -95,7 +97,8 @@ export default function LoginPage() {
         navigate('/staff/events')
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Something went wrong. Please try again.')
+      // Always show a generic message — never reveal whether email or password was wrong
+      setError('Invalid email or password. Please try again.')
     } finally {
       setLoading(false)
     }

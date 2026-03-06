@@ -13,6 +13,7 @@ import {
 import { getSessionsByEventApi, getScanLogsByEventApi } from '../../api/scan.api'
 import { Event, Participant, AttendanceSession, ScanLog } from '../../types'
 import Sidebar from '../../components/Sidebar'
+import { useStaffProtection } from '../../hooks/useStaffProtection'
 
 type TabType = 'registrants' | 'attendance' | 'scanlogs' | 'reports' | 'staff' | 'trash'
 
@@ -339,6 +340,7 @@ export default function EventDetail() {
   const navigate = useNavigate()
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   const isAdmin = user.role === 'admin'
+  useStaffProtection()
 
   const [event, setEvent] = useState<Event | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
