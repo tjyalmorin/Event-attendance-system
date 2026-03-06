@@ -1,8 +1,12 @@
 import pool from '../../config/database.js'
+import { cacheGet, cacheSet, cacheDel, CK, TTL } from '../../utils/cache.js'
 
-// ── Branches ───────────────────────────────────────────────────────────────
+// ── Branches ───────────────────────────────────────────────────────────────────
 
 export const getAllBranchesService = async () => {
+  const cached = await cacheGet<any[]>(CK.BRANCHES_ALL)
+  if (cached) return cached
+
   const branches = await pool.query(
     `SELECT b.branch_id, b.name, b.created_at, b.updated_at,
        json_agg(json_build_object('team_id', t.team_id, 'name', t.name) ORDER BY t.name)
@@ -12,7 +16,9 @@ export const getAllBranchesService = async () => {
      GROUP BY b.branch_id
      ORDER BY b.name`
   )
-  return branches.rows.map(r => ({ ...r, teams: r.teams ?? [] }))
+  const result = branches.rows.map(r => ({ ...r, teams: r.teams ?? [] }))
+  await cacheSet(CK.BRANCHES_ALL, result, TTL.LONG)
+  return result
 }
 
 export const createBranchService = async (name: string) => {
@@ -27,6 +33,7 @@ export const createBranchService = async (name: string) => {
   const res = await pool.query(
     `INSERT INTO branches (name) VALUES ($1) RETURNING *`, [name.trim()]
   )
+  await cacheDel(CK.BRANCHES_ALL)
   return { ...res.rows[0], teams: [] }
 }
 
@@ -44,20 +51,21 @@ export const updateBranchService = async (branch_id: number, name: string) => {
     [name.trim(), branch_id]
   )
   if (!res.rows[0]) throw new Error('Branch not found')
+  await cacheDel(CK.BRANCHES_ALL)
   return res.rows[0]
 }
 
 export const deleteBranchService = async (branch_id: number) => {
-  // Teams cascade-deleted via FK ON DELETE CASCADE
   const res = await pool.query(
     `DELETE FROM branches WHERE branch_id = $1 RETURNING branch_id, name`,
     [branch_id]
   )
   if (!res.rows[0]) throw new Error('Branch not found')
+  await cacheDel(CK.BRANCHES_ALL)
   return res.rows[0]
 }
 
-// ── Teams ──────────────────────────────────────────────────────────────────
+// ── Teams ──────────────────────────────────────────────────────────────────────
 
 export const getTeamsByBranchService = async (branch_id: number) => {
   const res = await pool.query(
@@ -86,6 +94,7 @@ export const createTeamService = async (branch_id: number, name: string) => {
     `INSERT INTO teams (branch_id, name) VALUES ($1, $2) RETURNING *`,
     [branch_id, name.trim()]
   )
+  await cacheDel(CK.BRANCHES_ALL)
   return res.rows[0]
 }
 
@@ -105,6 +114,7 @@ export const updateTeamService = async (team_id: number, name: string) => {
     `UPDATE teams SET name = $1, updated_at = NOW() WHERE team_id = $2 RETURNING *`,
     [name.trim(), team_id]
   )
+  await cacheDel(CK.BRANCHES_ALL)
   return res.rows[0]
 }
 
@@ -114,5 +124,6 @@ export const deleteTeamService = async (team_id: number) => {
     [team_id]
   )
   if (!res.rows[0]) throw new Error('Team not found')
+  await cacheDel(CK.BRANCHES_ALL)
   return res.rows[0]
 }

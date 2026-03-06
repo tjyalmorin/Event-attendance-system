@@ -1,5 +1,9 @@
 import pool from '../../config/database.js'
 import { RegisterPayload } from '../../types/participant.types.js'
+import {
+  cacheGet, cacheSet,
+  CK, TTL, invalidateParticipantCache
+} from '../../utils/cache.js'
 
 export const registerParticipantService = async (event_id: number, payload: RegisterPayload) => {
   const { agent_code, full_name, branch_name, team_name } = payload
@@ -21,8 +25,10 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (event.status !== 'open') throw new Error('Event registration is not open')
 
   const now = new Date()
-  if (event.registration_start && now < new Date(event.registration_start)) throw new Error('Registration has not started yet')
-  if (event.registration_end && now > new Date(event.registration_end)) throw new Error('Registration has already closed')
+  if (event.registration_start && now < new Date(event.registration_start))
+    throw new Error('Registration has not started yet')
+  if (event.registration_end && now > new Date(event.registration_end))
+    throw new Error('Registration has already closed')
 
   const duplicate = await pool.query(
     'SELECT participant_id FROM participants WHERE event_id = $1 AND agent_code = $2 AND deleted_at IS NULL',
@@ -45,37 +51,43 @@ export const registerParticipantService = async (event_id: number, payload: Regi
     [event_id, agent_code.trim(), full_name.trim(), branch_name.trim(), team_name.trim(), photo_url]
   )
 
+  // Invalidate participants cache and event detail (registered_count changes)
+  await Promise.all([
+    invalidateParticipantCache(event_id),
+    cacheGet(CK.EVENT_DETAIL(event_id)).then(() =>
+      import('../../utils/cache.js').then(m => m.cacheDel(CK.EVENT_DETAIL(event_id)))
+    ),
+  ])
+
   return { participant: result.rows[0] }
 }
 
 export const getParticipantsByEventService = async (event_id: number, branch_name?: string) => {
   if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
 
-  const result = branch_name
-    ? await pool.query(
-        `SELECT
-           participant_id, event_id, agent_code, full_name,
-           branch_name, team_name, registration_status,
-           registered_at, updated_at, photo_url,
-           label, label_description
-         FROM participants
-         WHERE event_id = $1 AND deleted_at IS NULL AND branch_name = $2
-         ORDER BY registered_at DESC`,
-        [event_id, branch_name]
-      )
-    : await pool.query(
-        `SELECT
-           participant_id, event_id, agent_code, full_name,
-           branch_name, team_name, registration_status,
-           registered_at, updated_at, photo_url,
-           label, label_description
-         FROM participants
-         WHERE event_id = $1 AND deleted_at IS NULL
-         ORDER BY registered_at DESC`,
-        [event_id]
-      )
+  // Only cache the unfiltered (admin) version
+  // Staff-filtered version is a subset computed in-memory from cache
+  const cacheKey = CK.PARTICIPANTS_EVENT(event_id)
+  let all = await cacheGet<any[]>(cacheKey)
 
-  return result.rows
+  if (!all) {
+    const result = await pool.query(
+      `SELECT
+         participant_id, event_id, agent_code, full_name,
+         branch_name, team_name, registration_status,
+         registered_at, updated_at, photo_url,
+         label, label_description
+       FROM participants
+       WHERE event_id = $1 AND deleted_at IS NULL
+       ORDER BY registered_at DESC`,
+      [event_id]
+    )
+    all = result.rows
+    await cacheSet(cacheKey, all, TTL.SHORT)
+  }
+
+  // Filter in memory for staff — no extra DB round-trip
+  return branch_name ? all.filter(p => p.branch_name === branch_name) : all
 }
 
 export const cancelParticipantService = async (participant_id: number) => {
@@ -85,13 +97,14 @@ export const cancelParticipantService = async (participant_id: number) => {
     `UPDATE participants
      SET registration_status = 'cancelled', deleted_at = NOW(), updated_at = NOW()
      WHERE participant_id = $1 AND deleted_at IS NULL
-     RETURNING participant_id`,
+     RETURNING participant_id, event_id`,
     [participant_id]
   )
   if (!result.rows[0]) throw new Error('Participant not found')
+
+  await invalidateParticipantCache(result.rows[0].event_id)
 }
 
-// ── Label ─────────────────────────────────────────────────────────────────────
 export const setLabelService = async (
   participant_id: number,
   label: string | null,
@@ -105,9 +118,11 @@ export const setLabelService = async (
          label_description = $2,
          updated_at = NOW()
      WHERE participant_id = $3 AND deleted_at IS NULL
-     RETURNING participant_id, full_name, label, label_description`,
+     RETURNING participant_id, event_id, full_name, label, label_description`,
     [label, label ? (label_description || null) : null, participant_id]
   )
   if (!result.rows[0]) throw new Error('Participant not found')
+
+  await invalidateParticipantCache(result.rows[0].event_id)
   return result.rows[0]
 }
