@@ -6,6 +6,9 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import router from './routes/index.js'
 import { globalLimiter } from './middlewares/rateLimiters.js'
+import errorHandler from './middlewares/errorHandler.js'
+import redis from './config/redis.js'
+import pool from './config/database.js'
 
 dotenv.config()
 
@@ -18,7 +21,7 @@ app.use(helmet())
 
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
 
@@ -28,18 +31,36 @@ app.use(globalLimiter)
 
 app.use('/api', router)
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+// Replace existing /health route with:
+app.get('/api/health', async (_req, res) => {
+  const dbOk = await pool.query('SELECT 1').then(() => true).catch(() => false)
+  const redisOk = redis.status === 'ready'
+
+  res.status(dbOk ? 200 : 503).json({
+    status:    dbOk ? 'ok' : 'degraded',
+    timestamp: new Date().toISOString(),
+    services: {
+      database: {
+        status:    dbOk ? 'connected' : 'disconnected',
+        pool: {
+          total:   pool.totalCount,
+          idle:    pool.idleCount,
+          waiting: pool.waitingCount,
+        }
+      },
+      cache: {
+        status: redisOk ? 'connected' : 'unavailable',
+        note:   redisOk ? undefined : 'System runs without cache — DB handles all reads',
+      }
+    }
+  })
 })
 
 app.use((_req, res) => {
   res.status(404).json({ error: 'Route not found' })
 })
 
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error('Unhandled error:', err)
-  res.status(500).json({ error: 'Internal server error' })
-})
+app.use(errorHandler)
 
 const PORT = process.env.PORT || 5000
 app.listen(PORT, () => {
