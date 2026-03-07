@@ -61,7 +61,7 @@ const seed = async (): Promise<void> => {
       INSERT INTO event_branches (event_id, branch_name, team_names)
       VALUES ($1, $2, $3)
       ON CONFLICT (event_id, branch_name) DO UPDATE SET team_names = EXCLUDED.team_names
-    `, [eventId, 'A1 Prime', ['Team Norj', 'Team Donel', 'Team Paulyn', 'Team ES']])
+    `, [eventId, 'A1 Prime', ['Team Norj', 'Team Donel', 'Team Paulyn', 'Team Esmael']])
     console.log(`     → A1 Prime linked to event`)
 
     // ── 4. Assign A1 Prime staff only ─────────────────────
