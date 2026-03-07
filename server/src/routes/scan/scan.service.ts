@@ -315,3 +315,64 @@ export const getScanLogsByEventService = async (event_id: number) => {
   )
   return result.rows
 }
+
+// ── Update session check-in / check-out times (admin only) ───────────────────
+export const updateSessionTimesService = async (
+  session_id: number,
+  check_in_time: string,
+  check_out_time: string | null
+) => {
+  const checkIn  = new Date(check_in_time)
+  const checkOut = check_out_time ? new Date(check_out_time) : null
+
+  if (isNaN(checkIn.getTime()))                    throw new Error('check_in_time is not a valid date')
+  if (checkOut && isNaN(checkOut.getTime()))        throw new Error('check_out_time is not a valid date')
+  if (checkOut && checkOut <= checkIn)              throw new Error('check_out_time must be after check_in_time')
+
+  const existing = await pool.query(
+    `SELECT session_id FROM attendance_sessions WHERE session_id = $1`,
+    [session_id]
+  )
+  if (!existing.rows[0]) throw new Error('Session not found')
+
+  const result = await pool.query(
+    `UPDATE attendance_sessions
+     SET check_in_time  = $1,
+         check_out_time = $2,
+         updated_at     = NOW()
+     WHERE session_id   = $3
+     RETURNING
+       session_id, participant_id, event_id,
+       check_in_time, check_out_time,
+       check_in_method, check_out_method, early_out_reason`,
+    [checkIn.toISOString(), checkOut ? checkOut.toISOString() : null, session_id]
+  )
+  return result.rows[0]
+}
+
+// ── Bulk check-out all currently checked-in attendees (admin only) ────────────
+export const bulkCheckOutService = async (event_id: number, session_ids: number[]) => {
+  if (!Array.isArray(session_ids) || session_ids.length === 0) {
+    throw new Error('session_ids must be a non-empty array')
+  }
+
+  // Scopes update to the given event_id to prevent cross-event tampering.
+  // Only touches sessions that are checked-in but not yet checked-out.
+  const result = await pool.query(
+    `UPDATE attendance_sessions
+     SET check_out_time   = NOW(),
+         check_out_method = 'bulk_admin',
+         updated_at       = NOW()
+     WHERE session_id     = ANY($1::int[])
+       AND event_id       = $2
+       AND check_in_time  IS NOT NULL
+       AND check_out_time IS NULL
+     RETURNING session_id`,
+    [session_ids, event_id]
+  )
+
+  return {
+    checked_out: result.rowCount ?? 0,
+    session_ids: result.rows.map((r: { session_id: number }) => r.session_id),
+  }
+}
