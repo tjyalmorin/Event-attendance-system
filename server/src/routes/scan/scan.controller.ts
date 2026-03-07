@@ -7,7 +7,9 @@ import {
   scanAgentCodeService,
   logDenialService,
   getSessionsByEventService,
-  getScanLogsByEventService
+  getScanLogsByEventService,
+  updateSessionTimesService,
+  bulkCheckOutService,
 } from './scan.service.js'
 
 export const lookupParticipant = asyncHandler(async (req: Request, res: Response) => {
@@ -52,4 +54,20 @@ export const getSessionsByEvent = asyncHandler(async (req: Request, res: Respons
 export const getScanLogsByEvent = asyncHandler(async (req: Request, res: Response) => {
   const logs = await getScanLogsByEventService(Number(req.params.event_id))
   res.json(logs)
+})
+
+export const updateSessionTimes = asyncHandler(async (req: Request, res: Response) => {
+  const session_id = Number(req.params.session_id)
+  if (!session_id || isNaN(session_id)) throw new AppError('Valid session_id is required', 400)
+  const { check_in_time, check_out_time } = req.body
+  const updated = await updateSessionTimesService(session_id, check_in_time, check_out_time ?? null)
+  res.json(updated)
+})
+
+export const bulkCheckOut = asyncHandler(async (req: Request, res: Response) => {
+  const event_id = Number(req.params.event_id)
+  if (!event_id || isNaN(event_id)) throw new AppError('Valid event_id is required', 400)
+  const { session_ids } = req.body
+  const result = await bulkCheckOutService(event_id, session_ids.map(Number))
+  res.json(result)
 })

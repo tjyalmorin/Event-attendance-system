@@ -10,7 +10,7 @@ import {
   deleteParticipantApi,
   getCancelledParticipantsByEventApi,
 } from '../../api/participants.api'
-import { getSessionsByEventApi, getScanLogsByEventApi } from '../../api/scan.api'
+import { getSessionsByEventApi, getScanLogsByEventApi, updateSessionTimesApi, bulkCheckOutApi } from '../../api/scan.api'
 import { Event, Participant, AttendanceSession, ScanLog } from '../../types'
 import Sidebar from '../../components/Sidebar'
 import { useStaffProtection } from '../../hooks/useStaffProtection'
@@ -121,6 +121,18 @@ const GlobeIcon = () => (
 const RestoreIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8" /><path d="M3 3v5h5" />
+  </svg>
+)
+const PencilIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </svg>
+)
+const BulkOutIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M17 16l4-4-4-4" /><path d="M21 12H9" />
+    <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
   </svg>
 )
 
@@ -369,6 +381,16 @@ export default function EventDetail() {
 
   const [earlyOutModal, setEarlyOutModal] = useState<{ open: boolean; session: AttendanceSession | null }>({ open: false, session: null })
 
+  // ── Attendance edit state ──
+  const [editingSessionId, setEditingSessionId] = useState<number | null>(null)
+  const [editCheckIn, setEditCheckIn]   = useState('')
+  const [editCheckOut, setEditCheckOut] = useState('')
+  const [editSaving, setEditSaving]     = useState(false)
+
+  // ── Bulk check-out state ──
+  const [bulkCheckOutLoading, setBulkCheckOutLoading] = useState(false)
+  const [bulkCheckOutModal, setBulkCheckOutModal]     = useState(false)
+
   const [assignedStaff, setAssignedStaff] = useState<AssignedStaff[]>([])
   const [removingStaffId, setRemovingStaffId] = useState<string | null>(null)
   const [removeStaffModal, setRemoveStaffModal] = useState<{ open: boolean; staff: AssignedStaff | null }>({ open: false, staff: null })
@@ -512,6 +534,57 @@ export default function EventDetail() {
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to remove staff access')
     } finally { setRemovingStaffId(null) }
+  }
+
+  // ── Start editing a session row ──
+  const handleStartEdit = (s: AttendanceSession) => {
+    setEditingSessionId(s.session_id)
+    // Convert ISO timestamps to datetime-local format (YYYY-MM-DDTHH:mm)
+    const toLocal = (iso: string | null) => {
+      if (!iso) return ''
+      const d = new Date(iso)
+      const pad = (n: number) => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    }
+    setEditCheckIn(toLocal(s.check_in_time))
+    setEditCheckOut(toLocal(s.check_out_time))
+  }
+
+  const handleCancelEdit = () => {
+    setEditingSessionId(null)
+    setEditCheckIn('')
+    setEditCheckOut('')
+  }
+
+  const handleSaveEdit = async (sessionId: number) => {
+    if (!editCheckIn) { alert('Check-in time is required.'); return }
+    setEditSaving(true)
+    try {
+      await updateSessionTimesApi(sessionId, {
+        check_in_time:  new Date(editCheckIn).toISOString(),
+        check_out_time: editCheckOut ? new Date(editCheckOut).toISOString() : null,
+      })
+      await fetchData()
+      setEditingSessionId(null)
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to update session times')
+    } finally { setEditSaving(false) }
+  }
+
+  // ── Bulk check-out all currently checked-in attendees ──
+  const handleBulkCheckOut = async () => {
+    setBulkCheckOutLoading(true)
+    try {
+      const checkedInIds = visibleSessions
+        .filter(s => s.check_in_time && !s.check_out_time)
+        .map(s => s.session_id)
+      if (checkedInIds.length === 0) { setBulkCheckOutModal(false); return }
+      await bulkCheckOutApi(Number(eventId), checkedInIds)
+      await fetchData()
+      setBulkCheckOutModal(false)
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to bulk check out')
+    } finally { setBulkCheckOutLoading(false) }
   }
 
   const handleStatusToggle = async () => {
@@ -1123,6 +1196,14 @@ export default function EventDetail() {
                       open={attendanceSortOpen}
                       setOpen={setAttendanceSortOpen}
                     />
+                    {isAdmin && visibleCheckedInCount > 0 && (
+                      <button
+                        onClick={() => setBulkCheckOutModal(true)}
+                        className="flex items-center gap-2 h-9 px-3 rounded-xl bg-[#DC143C] text-white text-xs font-bold hover:bg-[#b01030] transition-all shadow-[0_2px_8px_rgba(220,20,60,0.25)] ml-auto flex-shrink-0">
+                        <BulkOutIcon />
+                        Check Out All ({visibleCheckedInCount})
+                      </button>
+                    )}
                   </div>
                   <div className="flex-1 overflow-auto">
                   <table className="w-full text-sm table-fixed">
@@ -1134,18 +1215,21 @@ export default function EventDetail() {
                       <col className="w-[170px]" />
                       <col className="w-[170px]" />
                       <col className="w-[110px]" />
+                      {isAdmin && <col className="w-[90px]" />}
                     </colgroup>
                     <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
                       <tr>
-                        {['Agent Code', 'Full Name', 'Branch', 'Team', 'Check In', 'Check Out', 'Status'].map(h => (
+                        {['Agent Code', 'Full Name', 'Branch', 'Team', 'Check In', 'Check Out', 'Status', ...(isAdmin ? ['Actions'] : [])].map(h => (
                           <th key={h} className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
                       {filteredAttendanceSorted.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center py-16 text-gray-400 dark:text-gray-500">No attendance records found.</td></tr>
-                      ) : pagedAttendance.map((s, idx) => (
+                        <tr><td colSpan={isAdmin ? 8 : 7} className="text-center py-16 text-gray-400 dark:text-gray-500">No attendance records found.</td></tr>
+                      ) : pagedAttendance.map((s, idx) => {
+                        const isEditing = isAdmin && !s._isPending && editingSessionId === s.session_id
+                        return (
                         <tr key={s.session_id ?? `pending-${idx}`} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
                           <td className="px-5 py-3.5">
                             <span className="font-medium text-[#DC143C] text-sm">{s.agent_code}</span>
@@ -1170,12 +1254,36 @@ export default function EventDetail() {
                             <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{s.branch_name}</span>
                           </td>
                           <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{s.team_name}</td>
+
+                          {/* ── Check In cell ── */}
                           <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">
-                            {s.check_in_time ? new Date(s.check_in_time).toLocaleString('en-PH') : '—'}
+                            {isEditing ? (
+                              <input
+                                type="datetime-local"
+                                value={editCheckIn}
+                                onChange={e => setEditCheckIn(e.target.value)}
+                                className="w-full h-8 px-2 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#141414] text-gray-800 dark:text-white text-xs outline-none focus:border-[#DC143C] transition-colors"
+                              />
+                            ) : (
+                              s.check_in_time ? new Date(s.check_in_time).toLocaleString('en-PH') : '—'
+                            )}
                           </td>
+
+                          {/* ── Check Out cell ── */}
                           <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">
-                            {s.check_out_time ? new Date(s.check_out_time).toLocaleString('en-PH') : '—'}
+                            {isEditing ? (
+                              <input
+                                type="datetime-local"
+                                value={editCheckOut}
+                                onChange={e => setEditCheckOut(e.target.value)}
+                                className="w-full h-8 px-2 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#141414] text-gray-800 dark:text-white text-xs outline-none focus:border-[#DC143C] transition-colors"
+                              />
+                            ) : (
+                              s.check_out_time ? new Date(s.check_out_time).toLocaleString('en-PH') : '—'
+                            )}
                           </td>
+
+                          {/* ── Status cell ── */}
                           <td className="pl-2 pr-5 py-3.5">
                             {s._isPending ? (
                               ended ? (
@@ -1204,8 +1312,44 @@ export default function EventDetail() {
                               </span>
                             )}
                           </td>
+
+                          {/* ── Admin Actions cell ── */}
+                          {isAdmin && (
+                            <td className="px-3 py-3.5">
+                              {s._isPending ? (
+                                <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                              ) : isEditing ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleSaveEdit(s.session_id)}
+                                    disabled={editSaving}
+                                    title="Save"
+                                    className="flex items-center justify-center w-7 h-7 rounded-lg bg-[#DC143C] text-white hover:bg-[#b01030] disabled:opacity-50 transition-colors">
+                                    {editSaving
+                                      ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                      : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                    }
+                                  </button>
+                                  <button
+                                    onClick={handleCancelEdit}
+                                    title="Cancel"
+                                    className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-400 transition-colors">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => handleStartEdit(s as any)}
+                                  title="Edit times"
+                                  className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-400 hover:text-[#DC143C] hover:border-[#DC143C] transition-colors">
+                                  <PencilIcon />
+                                </button>
+                              )}
+                            </td>
+                          )}
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
                   </div>
@@ -1762,6 +1906,37 @@ export default function EventDetail() {
               <button onClick={handleRemoveStaff} disabled={!!removingStaffId}
                 className="flex-1 h-[44px] rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-60">
                 {removingStaffId ? 'Removing...' : 'Remove Access'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── BULK CHECK OUT MODAL ── */}
+      {bulkCheckOutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <span className="text-[#DC143C] mt-[1px] [&>svg]:w-6 [&>svg]:h-6"><BulkOutIcon /></span>
+                Check Out All
+              </h2>
+              <button onClick={() => setBulkCheckOutModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
+                <XIcon />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              This will check out all <strong className="text-gray-700 dark:text-gray-200">{visibleCheckedInCount} attendee{visibleCheckedInCount !== 1 ? 's' : ''}</strong> currently inside the event. This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setBulkCheckOutModal(false)}
+                className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleBulkCheckOut} disabled={bulkCheckOutLoading}
+                className="flex-1 h-[44px] rounded-xl bg-[#DC143C] text-sm font-bold text-white hover:bg-[#b01030] transition-colors disabled:opacity-60">
+                {bulkCheckOutLoading ? 'Checking out…' : `Check Out ${visibleCheckedInCount}`}
               </button>
             </div>
           </div>

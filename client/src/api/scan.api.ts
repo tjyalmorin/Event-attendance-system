@@ -35,3 +35,16 @@ export const getScanLogsByEventApi = async (event_id: number) => {
   const res = await api.get(`/attendance/logs/${event_id}`)
   return res.data
 }
+
+export const updateSessionTimesApi = async (
+  session_id: number,
+  body: { check_in_time: string; check_out_time: string | null }
+) => {
+  const res = await api.patch(`/attendance/sessions/${session_id}/times`, body)
+  return res.data
+}
+
+export const bulkCheckOutApi = async (event_id: number, session_ids: number[]) => {
+  const res = await api.post(`/attendance/sessions/${event_id}/bulk-checkout`, { session_ids })
+  return res.data
+}
