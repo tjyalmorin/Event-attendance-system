@@ -14,6 +14,7 @@ import CreateEvent from './pages/admin/CreateEvent'
 import EventDetail from './pages/admin/EventDetail'
 import ScannerPage from './pages/admin/ScannerPage'
 import TrashBin from './pages/admin/TrashBin'
+import EventArchive from './pages/admin/EventArchive'
 
 // Forgot Password pages
 import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
@@ -40,7 +41,7 @@ function App() {
             <Route path="/register/:eventId" element={<RegistrationPage />} />
             <Route path="/confirmation" element={<ConfirmationPage />} />
 
-            {/*Branch and Team Management (Admin-only)*/}
+            {/* Branch and Team Management (Admin-only) */}
             <Route path="/admin/settings/branches" element={<PrivateRoute><BranchManagement /></PrivateRoute>} />
 
             {/* Auth */}
@@ -52,8 +53,10 @@ function App() {
             <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
 
             {/* Protected Admin Routes */}
+            {/* NOTE: static routes (trash, archive, create) must come BEFORE /:eventId */}
             <Route path="/admin/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
             <Route path="/admin/events/trash" element={<PrivateRoute><TrashBin /></PrivateRoute>} />
+            <Route path="/admin/events/archive" element={<PrivateRoute><EventArchive /></PrivateRoute>} />
             <Route path="/admin/events/create" element={<PrivateRoute><CreateEvent /></PrivateRoute>} />
             <Route path="/admin/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
             <Route path="/admin/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />

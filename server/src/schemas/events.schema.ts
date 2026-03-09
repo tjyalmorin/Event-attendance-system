@@ -19,5 +19,5 @@ export const createEventSchema = z.object({
 })
 
 export const updateEventSchema = createEventSchema.partial().extend({
-  status: z.enum(['draft', 'open', 'closed', 'completed']).optional()
+  status: z.enum(['draft', 'open', 'closed', 'completed', 'archived']).optional()
 })

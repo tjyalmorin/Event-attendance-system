@@ -45,7 +45,136 @@ const fmt12h = (t: string) => {
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
 }
 
-// ── Icons ──
+const fmtAgentCode = (code: string) =>
+  code || '—'
+
+// ── Masked DateTime Input: MM/DD/YYYY HH:MM:SS AM ──
+// Slots: 0-1=MM, 3-4=DD, 6-9=YYYY, 11-12=HH, 14-15=MM, 17-18=SS, 20-21=AM/PM
+const MASK = 'MM/DD/YYYY HH:MM:SS AM'
+const MASK_FIXED = new Set([2, 5, 10, 13, 16, 19]) // positions of / : space
+const AMPM_POS = 20 // start of AM/PM slot
+
+function MaskedDateTimeInput({ value, onChange, className }: {
+  value: string
+  onChange: (v: string) => void
+  className?: string
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Initialize blank mask
+  const blank = () => '__/__/____ __:__:__ __'
+
+  const applyMask = (raw: string): string => {
+    // raw should already be in masked format; just ensure length
+    if (!raw) return blank()
+    return raw.padEnd(MASK.length, '_').slice(0, MASK.length)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const el = e.currentTarget
+    let pos = el.selectionStart ?? 0
+    const chars = value.split('')
+
+    if (e.key === 'Tab' || e.key === 'Enter') return
+
+    e.preventDefault()
+
+    // Skip over fixed characters to next editable slot
+    const nextEditable = (from: number, dir: 1 | -1 = 1): number => {
+      let p = from
+      while (p >= 0 && p < MASK.length) {
+        if (!MASK_FIXED.has(p)) return p
+        p += dir
+      }
+      return from
+    }
+
+    if (e.key === 'ArrowRight') {
+      if (pos >= AMPM_POS) return // already at end, do nothing
+      const next = nextEditable(pos + 1)
+      el.setSelectionRange(next, next + 1)
+      return
+    }
+    if (e.key === 'ArrowLeft') {
+      const prev = nextEditable(pos - 1, -1)
+      el.setSelectionRange(prev, prev + 1)
+      return
+    }
+
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      if (pos >= AMPM_POS) return // don't allow erasing AM/PM
+      const p = nextEditable(pos, -1)
+      if (p >= 0 && !MASK_FIXED.has(p)) {
+        chars[p] = '_'
+        onChange(chars.join(''))
+        setTimeout(() => el.setSelectionRange(p, p + 1), 0)
+      }
+      return
+    }
+
+    // AM/PM slot — only A or P accepted, then blur (done editing)
+    if (pos >= AMPM_POS) {
+      if (e.key.toUpperCase() === 'A') {
+        chars[AMPM_POS] = 'A'; chars[AMPM_POS + 1] = 'M'
+        onChange(chars.join(''))
+        setTimeout(() => el.blur(), 0)
+      } else if (e.key.toUpperCase() === 'P') {
+        chars[AMPM_POS] = 'P'; chars[AMPM_POS + 1] = 'M'
+        onChange(chars.join(''))
+        setTimeout(() => el.blur(), 0)
+      }
+      return
+    }
+
+    // Numeric input
+    if (/^\d$/.test(e.key)) {
+      const p = nextEditable(pos)
+      if (p < AMPM_POS) {
+        chars[p] = e.key
+        onChange(chars.join(''))
+        // Advance — if next slot is AM/PM, move there; otherwise next editable
+        const next = nextEditable(p + 1)
+        setTimeout(() => el.setSelectionRange(next, next + 1), 0)
+      }
+    }
+  }
+
+  const handleFocus = () => {
+    setTimeout(() => {
+      if (inputRef.current) inputRef.current.setSelectionRange(0, 1)
+    }, 0)
+  }
+
+  const handleClick = (e: React.MouseEvent<HTMLInputElement>) => {
+    const el = e.currentTarget
+    const pos = el.selectionStart ?? 0
+    // Snap to nearest editable slot
+    let p = pos
+    if (MASK_FIXED.has(p)) {
+      // try right first, then left
+      let r = p + 1
+      while (r < MASK.length && MASK_FIXED.has(r)) r++
+      p = r < MASK.length ? r : p
+    }
+    setTimeout(() => el.setSelectionRange(p, p + 1), 0)
+  }
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      value={value || blank()}
+      onKeyDown={handleKeyDown}
+      onFocus={handleFocus}
+      onClick={handleClick}
+      onChange={() => {}} // controlled via keydown
+      className={className}
+      spellCheck={false}
+    />
+  )
+}
+
+
 const ArrowLeftIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
@@ -365,7 +494,6 @@ export default function EventDetail() {
   const [copied, setCopied] = useState(false)
   const [statusToggling, setStatusToggling] = useState(false)
 
-  const [labelModal, setLabelModal] = useState<{ open: boolean; participant: Participant | null }>({ open: false, participant: null })
   const [labelType, setLabelType] = useState('Awardee')
   const [labelCustom, setLabelCustom] = useState('')
   const [labelLoading, setLabelLoading] = useState(false)
@@ -472,7 +600,7 @@ export default function EventDetail() {
   }
 
   const handleSetLabel = async (enable: boolean) => {
-    const activeParticipant = labelModal.participant || labelViewModal.participant
+    const activeParticipant = labelViewModal.participant
     if (!activeParticipant) return
     setLabelLoading(true)
     const labelValue = enable ? (labelType === 'Custom…' ? labelCustom.trim() : labelType) : null
@@ -480,7 +608,6 @@ export default function EventDetail() {
     try {
       await setLabelApi(activeParticipant.participant_id, { label: labelValue, label_description: descValue })
       await fetchData()
-      setLabelModal({ open: false, participant: null })
       setLabelViewModal({ open: false, participant: null, editMode: false })
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to update label')
@@ -539,15 +666,16 @@ export default function EventDetail() {
   // ── Start editing a session row ──
   const handleStartEdit = (s: AttendanceSession) => {
     setEditingSessionId(s.session_id)
-    // Convert ISO timestamps to datetime-local format (YYYY-MM-DDTHH:mm)
-    const toLocal = (iso: string | null) => {
-      if (!iso) return ''
-      const d = new Date(iso)
-      const pad = (n: number) => String(n).padStart(2, '0')
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    const toMasked = (iso: string | null) => {
+      if (!iso) return '__/__/____ __:__:__ __'
+      return new Date(iso).toLocaleString('en-US', {
+        month: '2-digit', day: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: true,
+      }).replace(',', '')
     }
-    setEditCheckIn(toLocal(s.check_in_time))
-    setEditCheckOut(toLocal(s.check_out_time))
+    setEditCheckIn(toMasked(s.check_in_time))
+    setEditCheckOut(toMasked(s.check_out_time))
   }
 
   const handleCancelEdit = () => {
@@ -557,12 +685,23 @@ export default function EventDetail() {
   }
 
   const handleSaveEdit = async (sessionId: number) => {
-    if (!editCheckIn) { alert('Check-in time is required.'); return }
+    const parseMasked = (val: string) => {
+      if (!val || val.includes('_')) return null
+      const d = new Date(val.trim())
+      return isNaN(d.getTime()) ? null : d
+    }
+    if (!editCheckIn || editCheckIn.includes('_')) { alert('Check-in time is required and must be complete.'); return }
+    const checkIn = parseMasked(editCheckIn)
+    if (!checkIn) { alert('Invalid check-in time.'); return }
+    const hasCheckOut = editCheckOut && !editCheckOut.includes('_') && editCheckOut !== '__/__/____ __:__:__ __'
+    const checkOut = hasCheckOut ? parseMasked(editCheckOut) : null
+    if (hasCheckOut && !checkOut) { alert('Invalid check-out time.'); return }
+    if (checkOut && checkOut <= checkIn) { alert('Check-out time must be after check-in time.'); return }
     setEditSaving(true)
     try {
       await updateSessionTimesApi(sessionId, {
-        check_in_time:  new Date(editCheckIn).toISOString(),
-        check_out_time: editCheckOut ? new Date(editCheckOut).toISOString() : null,
+        check_in_time:  checkIn.toISOString(),
+        check_out_time: checkOut ? checkOut.toISOString() : null,
       })
       await fetchData()
       setEditingSessionId(null)
@@ -607,47 +746,15 @@ export default function EventDetail() {
 
   const handleExport = async (docType: TabType) => {
     if (!event) return
-    const colorMap: Partial<Record<TabType, string>> = {
-      registrants: '023E8A',
-      attendance:  '276221',
-      scanlogs:    '01796F',
-    }
-    const headerColor = colorMap[docType]
+
+    const COLORS = {
+      registrants: { header: 'FF023E8A', teamBg: 'FFE8F0FE', teamText: 'FF023E8A', totalBg: 'FFD0E4FF' },
+      attendance:  { header: 'FF276221', teamBg: 'FFE8F5E9', teamText: 'FF276221', totalBg: 'FFC8E6C9' },
+      scanlogs:    { header: 'FF01796F', teamBg: 'FFE0F2F1', teamText: 'FF01796F', totalBg: 'FFB2DFDB' },
+    } as const
+    const color = COLORS[docType as keyof typeof COLORS] ?? COLORS.registrants
+
     const wb = new ExcelJS.Workbook()
-
-    const applyHeader = (ws: ExcelJS.Worksheet, headers: string[]) => {
-      ws.addRow(headers)
-      const headerRow = ws.getRow(1)
-      headerRow.eachCell(cell => {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${headerColor}` } }
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 }
-        cell.alignment = { horizontal: 'center', vertical: 'middle' }
-        cell.border = {
-          top:    { style: 'thin', color: { argb: 'FFFFFFFF' } },
-          bottom: { style: 'thin', color: { argb: 'FFFFFFFF' } },
-          left:   { style: 'thin', color: { argb: 'FFFFFFFF' } },
-          right:  { style: 'thin', color: { argb: 'FFFFFFFF' } },
-        }
-      })
-      headerRow.height = 22
-      ws.columns = headers.map(() => ({ width: 26 }))
-    }
-
-    const styleDataRows = (ws: ExcelJS.Worksheet) => {
-      ws.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return
-        row.eachCell(cell => {
-          cell.alignment = { vertical: 'middle', wrapText: false }
-          cell.border = {
-            top:    { style: 'hair', color: { argb: 'FFE5E7EB' } },
-            bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
-            left:   { style: 'hair', color: { argb: 'FFE5E7EB' } },
-            right:  { style: 'hair', color: { argb: 'FFE5E7EB' } },
-          }
-        })
-        row.height = 18
-      })
-    }
 
     const download = async (filename: string) => {
       const buf = await wb.xlsx.writeBuffer()
@@ -657,41 +764,489 @@ export default function EventDetail() {
       URL.revokeObjectURL(url)
     }
 
-    if (docType === 'registrants') {
-      const ws = wb.addWorksheet('Registrants')
-      applyHeader(ws, ['Agent Code', 'Full Name', 'Branch', 'Team', 'Registered At'])
-      visibleParticipants.forEach(p => {
-        ws.addRow([p.agent_code, p.full_name, p.branch_name, p.team_name, new Date(p.registered_at).toLocaleString('en-PH')])
+    const safeSheetName = (name: string) =>
+      name.replace(/[:\\/?*[\]]/g, '-').slice(0, 31)
+
+    // ── Write one team block; returns next cursor row ──
+    const writeTeamBlock = (
+      ws: ExcelJS.Worksheet,
+      teamName: string,
+      colHeaders: string[],
+      flatRows: (string | number | null)[],
+      startRow: number,
+      colCount: number,
+    ): number => {
+      let cursor = startRow
+
+      // Team heading
+      const teamHeadRow = ws.getRow(cursor)
+      teamHeadRow.getCell(1).value = teamName
+      teamHeadRow.getCell(1).font = { bold: true, size: 11, color: { argb: color.teamText } }
+      teamHeadRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.teamBg } }
+      teamHeadRow.getCell(1).alignment = { vertical: 'middle' }
+      ws.mergeCells(cursor, 1, cursor, colCount)
+      teamHeadRow.height = 20
+      cursor++
+
+      // Column headers
+      const colHeaderRow = ws.getRow(cursor)
+      colHeaders.forEach((h, i) => {
+        const cell = colHeaderRow.getCell(i + 1)
+        cell.value = h
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.header } }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFFFFFFF' } }, bottom: { style: 'thin', color: { argb: 'FFFFFFFF' } },
+          left: { style: 'thin', color: { argb: 'FFFFFFFF' } }, right: { style: 'thin', color: { argb: 'FFFFFFFF' } },
+        }
       })
-      styleDataRows(ws)
-      await download(`${event?.title?.replace(/\s+/g, '_') ?? eventId}_RegistrationReport.xlsx`)
+      colHeaderRow.height = 20
+      cursor++
+
+      // Data rows
+      const rowChunks: (string | number | null)[][] = []
+      for (let i = 0; i < flatRows.length; i += colCount) rowChunks.push(flatRows.slice(i, i + colCount))
+
+      if (rowChunks.length === 0) {
+        const emptyRow = ws.getRow(cursor)
+        emptyRow.getCell(1).value = 'No records'
+        emptyRow.getCell(1).font = { italic: true, color: { argb: 'FF9CA3AF' }, size: 10 }
+        emptyRow.height = 18
+        cursor++
+      } else {
+        rowChunks.forEach((chunk, ri) => {
+          const dataRow = ws.getRow(cursor)
+          chunk.forEach((val, ci) => {
+            const cell = dataRow.getCell(ci + 1)
+            cell.value = val
+            cell.font = { size: 10 }
+            cell.alignment = { vertical: 'middle' }
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ri % 2 === 0 ? 'FFFFFFFF' : 'FFF9FAFB' } }
+            cell.border = {
+              top: { style: 'hair', color: { argb: 'FFE5E7EB' } }, bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+              left: { style: 'hair', color: { argb: 'FFE5E7EB' } }, right: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+            }
+          })
+          dataRow.height = 18
+          cursor++
+        })
+
+        // Totals row
+        const totalRow = ws.getRow(cursor)
+        totalRow.getCell(1).value = `Total: ${rowChunks.length} member${rowChunks.length !== 1 ? 's' : ''}`
+        totalRow.getCell(1).font = { bold: true, size: 10, color: { argb: color.teamText } }
+        totalRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.totalBg } }
+        totalRow.getCell(1).alignment = { vertical: 'middle' }
+        for (let ci = 2; ci <= colCount; ci++) {
+          ws.getRow(cursor).getCell(ci).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.totalBg } }
+        }
+        ws.mergeCells(cursor, 1, cursor, colCount)
+        totalRow.height = 18
+        cursor++
+      }
+
+      cursor++ // spacer row
+      return cursor
+    }
+
+    // ── All unique branches ──
+    const allBranches = isAdmin
+      ? [...new Set([
+          ...participants.map(p => p.branch_name),
+          ...sessions.map(s => s.branch_name),
+        ])].filter(Boolean).sort()
+      : [user.branch_name]
+
+    // ── Summary sheet builder (registrants + attendance reports) ──
+    const writeSummarySheet = (sourceData: {
+      allBranches: string[]
+      participants: Participant[]
+      sessions: AttendanceSession[]
+      reportLabel: string
+    }) => {
+      const { allBranches, participants: pts, sessions: sess, reportLabel } = sourceData
+      const ws = wb.addWorksheet('📊 Summary')
+      const C = color
+      const colCount = 6
+      ws.columns = [{ width: 28 }, { width: 16 }, { width: 16 }, { width: 18 }, { width: 16 }, { width: 16 }]
+
+      let cursor = 1
+
+      const writeSectionTitle = (title: string) => {
+        const row = ws.getRow(cursor)
+        row.getCell(1).value = title
+        row.getCell(1).font = { bold: true, size: 13, color: { argb: C.header } }
+        row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.teamBg } }
+        row.getCell(1).alignment = { vertical: 'middle' }
+        ws.mergeCells(cursor, 1, cursor, colCount)
+        row.height = 24
+        return ++cursor
+      }
+
+      const writeTableHeader = (headers: string[]) => {
+        const row = ws.getRow(cursor)
+        headers.forEach((h, i) => {
+          const cell = row.getCell(i + 1)
+          cell.value = h
+          cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 }
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.header } }
+          cell.alignment = { horizontal: 'center', vertical: 'middle' }
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFFFFFFF' } }, bottom: { style: 'thin', color: { argb: 'FFFFFFFF' } },
+            left: { style: 'thin', color: { argb: 'FFFFFFFF' } }, right: { style: 'thin', color: { argb: 'FFFFFFFF' } },
+          }
+        })
+        row.height = 20
+        return ++cursor
+      }
+
+      const writeDataRow = (values: (string | number)[], rowIndex: number) => {
+        const row = ws.getRow(cursor)
+        values.forEach((v, i) => {
+          const cell = row.getCell(i + 1)
+          cell.value = v
+          cell.font = { size: 10 }
+          cell.alignment = { vertical: 'middle', horizontal: i === 0 ? 'left' : 'center' }
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowIndex % 2 === 0 ? 'FFFFFFFF' : 'FFF9FAFB' } }
+          cell.border = {
+            top: { style: 'hair', color: { argb: 'FFE5E7EB' } }, bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+            left: { style: 'hair', color: { argb: 'FFE5E7EB' } }, right: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+          }
+        })
+        row.height = 18
+        return ++cursor
+      }
+
+      // ── Event title header ──
+      const evtTitleRow = ws.getRow(cursor)
+      evtTitleRow.getCell(1).value = event.title
+      evtTitleRow.getCell(1).font = { bold: true, size: 20, color: { argb: C.header } }
+      evtTitleRow.getCell(1).alignment = { vertical: 'middle' }
+      ws.mergeCells(cursor, 1, cursor, colCount)
+      evtTitleRow.height = 32
+      cursor++
+
+      // ── Report label ──
+      const reportLabelRow = ws.getRow(cursor)
+      reportLabelRow.getCell(1).value = reportLabel
+      reportLabelRow.getCell(1).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } }
+      reportLabelRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.header } }
+      reportLabelRow.getCell(1).alignment = { vertical: 'middle' }
+      ws.mergeCells(cursor, 1, cursor, colCount)
+      reportLabelRow.height = 22
+      cursor++
+
+      const evtSubRow = ws.getRow(cursor)
+      evtSubRow.getCell(1).value = new Date(event.event_date).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        + (event.venue ? ` · ${event.venue}` : '')
+      evtSubRow.getCell(1).font = { size: 10, color: { argb: 'FF6B7280' } }
+      ws.mergeCells(cursor, 1, cursor, colCount)
+      evtSubRow.height = 16
+      cursor++
+      cursor++ // spacer
+
+      // ─────────────────────────────────
+      // SECTION 1: Overall Numbers
+      // ─────────────────────────────────
+      cursor = writeSectionTitle('Overall Numbers')
+      const confirmedPts = pts.filter(p => p.registration_status === 'confirmed')
+      const totalReg     = confirmedPts.length
+      const totalAtt     = sess.length
+      const totalIn      = sess.filter(s => s.check_in_time && !s.check_out_time).length
+      const totalOut     = sess.filter(s => s.check_in_time && s.check_out_time).length
+      const totalEarly   = sess.filter(s => s.check_out_method === 'early_out').length
+      const totalNoShow  = Math.max(0, totalReg - totalAtt)
+      const attRate      = totalReg > 0 ? Math.round((totalAtt / totalReg) * 100) : 0
+
+      const overallData: [string, string | number][] = [
+        ['Total Registered',  totalReg],
+        ['Total Attended',    totalAtt],
+        ['Attendance Rate',   `${attRate}%`],
+        ['Currently Inside',  totalIn],
+        ['Checked Out',       totalOut],
+        ['Early Outs',        totalEarly],
+        ['No-Shows',          totalNoShow],
+      ]
+      overallData.forEach(([label, value], ri) => {
+        const row = ws.getRow(cursor)
+        row.getCell(1).value = label
+        row.getCell(1).font = { size: 10, color: { argb: 'FF374151' } }
+        row.getCell(1).alignment = { vertical: 'middle' }
+        row.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ri % 2 === 0 ? 'FFFFFFFF' : 'FFF9FAFB' } }
+        row.getCell(2).value = value
+        row.getCell(2).font = { bold: true, size: 11, color: { argb: C.teamText } }
+        row.getCell(2).alignment = { vertical: 'middle', horizontal: 'center' }
+        row.getCell(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ri % 2 === 0 ? 'FFFFFFFF' : 'FFF9FAFB' } }
+        ;[1, 2].forEach(ci => {
+          row.getCell(ci).border = {
+            top: { style: 'hair', color: { argb: 'FFE5E7EB' } }, bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+            left: { style: 'hair', color: { argb: 'FFE5E7EB' } }, right: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+          }
+        })
+        row.height = 18
+        cursor++
+      })
+      cursor++ // spacer
+
+      // ─────────────────────────────────
+      // SECTION 2: Per-Branch Breakdown
+      // ─────────────────────────────────
+      cursor = writeSectionTitle('Per-Branch Breakdown')
+      cursor = writeTableHeader(['Branch', 'Registered', 'Attended', 'Att. Rate', 'Early Outs', 'No-Shows'])
+      allBranches.forEach((branch, ri) => {
+        const bReg   = confirmedPts.filter(p => p.branch_name === branch).length
+        const bAtt   = sess.filter(s => s.branch_name === branch).length
+        const bEarly = sess.filter(s => s.branch_name === branch && s.check_out_method === 'early_out').length
+        const bNo    = Math.max(0, bReg - bAtt)
+        const bRate  = bReg > 0 ? `${Math.round((bAtt / bReg) * 100)}%` : '—'
+        cursor = writeDataRow([branch, bReg, bAtt, bRate, bEarly, bNo], ri)
+      })
+      // Branch totals row
+      const totRow = ws.getRow(cursor)
+      ;['TOTAL', totalReg, totalAtt, `${attRate}%`, totalEarly, totalNoShow].forEach((v, i) => {
+        const cell = totRow.getCell(i + 1)
+        cell.value = v
+        cell.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.header } }
+        cell.alignment = { vertical: 'middle', horizontal: i === 0 ? 'left' : 'center' }
+      })
+      ws.mergeCells(cursor, 1, cursor, 1)
+      totRow.height = 18
+      cursor++
+      cursor++ // spacer
+
+      // ─────────────────────────────────
+      // SECTION 3: Per-Team Breakdown
+      // ─────────────────────────────────
+      cursor = writeSectionTitle('Per-Team Breakdown')
+      cursor = writeTableHeader(['Team', 'Registered', 'Attended', 'Att. Rate', 'Early Outs', 'No-Shows'])
+      const allTeams = [...new Set([
+        ...confirmedPts.map(p => p.team_name || '(No Team)'),
+        ...sess.map(s => s.team_name || '(No Team)'),
+      ])].sort()
+      allTeams.forEach((team, ri) => {
+        const tReg   = confirmedPts.filter(p => (p.team_name || '(No Team)') === team).length
+        const tAtt   = sess.filter(s => (s.team_name || '(No Team)') === team).length
+        const tEarly = sess.filter(s => (s.team_name || '(No Team)') === team && s.check_out_method === 'early_out').length
+        const tNo    = Math.max(0, tReg - tAtt)
+        const tRate  = tReg > 0 ? `${Math.round((tAtt / tReg) * 100)}%` : '—'
+        cursor = writeDataRow([team, tReg, tAtt, tRate, tEarly, tNo], ri)
+      })
+      cursor++ // spacer
+
+      // ─────────────────────────────────
+      // SECTION 4: Peak Check-in Hours
+      // ─────────────────────────────────
+      cursor = writeSectionTitle('Top Check-in Times (Peak Hours)')
+      cursor = writeTableHeader(['Hour', 'Check-ins', 'Check-outs', 'Net Inside'])
+      const hourMap: Record<number, { in: number; out: number }> = {}
+      sess.forEach(s => {
+        if (s.check_in_time) {
+          const h = new Date(s.check_in_time).getHours()
+          if (!hourMap[h]) hourMap[h] = { in: 0, out: 0 }
+          hourMap[h].in++
+        }
+        if (s.check_out_time) {
+          const h = new Date(s.check_out_time).getHours()
+          if (!hourMap[h]) hourMap[h] = { in: 0, out: 0 }
+          hourMap[h].out++
+        }
+      })
+      const hourEntries = Object.entries(hourMap)
+        .map(([h, v]) => ({ hour: Number(h), ...v }))
+        .sort((a, b) => a.hour - b.hour)
+
+      if (hourEntries.length === 0) {
+        const noRow = ws.getRow(cursor)
+        noRow.getCell(1).value = 'No check-in data yet.'
+        noRow.getCell(1).font = { italic: true, color: { argb: 'FF9CA3AF' }, size: 10 }
+        ws.mergeCells(cursor, 1, cursor, 4)
+        cursor++
+      } else {
+        const maxIns = Math.max(...hourEntries.map(e => e.in))
+        hourEntries.forEach((e, ri) => {
+          const h12 = e.hour % 12 || 12
+          const ampm = e.hour < 12 ? 'AM' : 'PM'
+          const label = `${h12}:00 ${ampm}${e.in === maxIns ? ' ⭐ Peak' : ''}`
+          const net = e.in - e.out
+          cursor = writeDataRow([label, e.in, e.out, net >= 0 ? `+${net}` : `${net}`], ri)
+        })
+      }
+    }
+
+    if (docType === 'registrants') {
+      const colHeaders = ['Agent Code', 'Full Name', 'Team', 'Registered At']
+      const colCount = colHeaders.length
+
+      writeSummarySheet({ allBranches, participants, sessions, reportLabel: 'Registration Report' })
+
+      allBranches.forEach(branch => {
+        const ws = wb.addWorksheet(safeSheetName(branch))
+        ws.columns = [{ width: 20 }, { width: 30 }, { width: 22 }, { width: 24 }]
+
+        const branchParticipants = participants.filter(p => p.branch_name === branch && p.registration_status === 'confirmed')
+        const teams = [...new Set(branchParticipants.map(p => p.team_name))].filter(Boolean).sort() as string[]
+
+        let cursor = 1
+
+        // Branch title
+        const titleRow = ws.getRow(cursor)
+        titleRow.getCell(1).value = branch
+        titleRow.getCell(1).font = { bold: true, size: 24, color: { argb: color.header } }
+        titleRow.getCell(1).alignment = { vertical: 'middle' }
+        ws.mergeCells(cursor, 1, cursor, colCount)
+        titleRow.height = 38
+        cursor++
+
+        // Subtitle
+        const subRow = ws.getRow(cursor)
+        subRow.getCell(1).value = `${event.title} · ${new Date(event.event_date).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
+        subRow.getCell(1).font = { size: 10, color: { argb: 'FF6B7280' } }
+        ws.mergeCells(cursor, 1, cursor, colCount)
+        subRow.height = 16
+        cursor++
+        cursor++ // spacer
+
+        if (branchParticipants.length === 0) {
+          const noDataRow = ws.getRow(cursor)
+          noDataRow.getCell(1).value = 'No registrants in this branch.'
+          noDataRow.getCell(1).font = { italic: true, color: { argb: 'FF9CA3AF' }, size: 10 }
+          ws.mergeCells(cursor, 1, cursor, colCount)
+        } else {
+          const allTeams = [...teams]
+          if (branchParticipants.some(p => !p.team_name)) allTeams.push('(No Team)')
+
+          allTeams.forEach(team => {
+            const members = team === '(No Team)'
+              ? branchParticipants.filter(p => !p.team_name)
+              : branchParticipants.filter(p => p.team_name === team)
+            const flatRows = members.flatMap(p => [
+              p.agent_code, p.full_name, p.team_name || '',
+              new Date(p.registered_at).toLocaleString('en-PH'),
+            ])
+            cursor = writeTeamBlock(ws, team, colHeaders, flatRows, cursor, colCount)
+          })
+
+          // Branch total
+          const branchTotalRow = ws.getRow(cursor)
+          branchTotalRow.getCell(1).value = `Branch Total: ${branchParticipants.length} registrant${branchParticipants.length !== 1 ? 's' : ''}`
+          branchTotalRow.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } }
+          branchTotalRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.header } }
+          for (let ci = 2; ci <= colCount; ci++) ws.getRow(cursor).getCell(ci).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.header } }
+          ws.mergeCells(cursor, 1, cursor, colCount)
+          branchTotalRow.height = 22
+        }
+      })
+
+      await download(`${event.title.replace(/\s+/g, '_')}_RegistrationReport.xlsx`)
     }
 
     if (docType === 'attendance') {
-      const ws = wb.addWorksheet('Attendance')
-      applyHeader(ws, ['Agent Code', 'Full Name', 'Branch', 'Team', 'Check In', 'Check Out'])
-      visibleSessions.forEach(s => {
-        ws.addRow([
-          s.agent_code, s.full_name, s.branch_name, s.team_name,
-          new Date(s.check_in_time).toLocaleString('en-PH'),
-          s.check_out_time ? new Date(s.check_out_time).toLocaleString('en-PH') : 'Not yet checked out',
-        ])
+      const colHeaders = ['Agent Code', 'Full Name', 'Team', 'Check In', 'Check Out', 'Status']
+      const colCount = colHeaders.length
+
+      writeSummarySheet({ allBranches, participants, sessions, reportLabel: 'Attendance Report' })
+
+      allBranches.forEach(branch => {
+        const ws = wb.addWorksheet(safeSheetName(branch))
+        ws.columns = [{ width: 18 }, { width: 28 }, { width: 22 }, { width: 24 }, { width: 24 }, { width: 16 }]
+
+        const branchSessions = sessions.filter(s => s.branch_name === branch)
+        const teams = [...new Set(branchSessions.map(s => s.team_name))].filter(Boolean).sort() as string[]
+
+        let cursor = 1
+
+        // Branch title
+        const titleRow = ws.getRow(cursor)
+        titleRow.getCell(1).value = branch
+        titleRow.getCell(1).font = { bold: true, size: 24, color: { argb: color.header } }
+        titleRow.getCell(1).alignment = { vertical: 'middle' }
+        ws.mergeCells(cursor, 1, cursor, colCount)
+        titleRow.height = 38
+        cursor++
+
+        // Subtitle
+        const subRow = ws.getRow(cursor)
+        subRow.getCell(1).value = `${event.title} · ${new Date(event.event_date).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
+        subRow.getCell(1).font = { size: 10, color: { argb: 'FF6B7280' } }
+        ws.mergeCells(cursor, 1, cursor, colCount)
+        subRow.height = 16
+        cursor++
+        cursor++ // spacer
+
+        if (branchSessions.length === 0) {
+          const noDataRow = ws.getRow(cursor)
+          noDataRow.getCell(1).value = 'No attendance records in this branch.'
+          noDataRow.getCell(1).font = { italic: true, color: { argb: 'FF9CA3AF' }, size: 10 }
+          ws.mergeCells(cursor, 1, cursor, colCount)
+        } else {
+          const allTeams = [...teams]
+          if (branchSessions.some(s => !s.team_name)) allTeams.push('(No Team)')
+
+          allTeams.forEach(team => {
+            const members = team === '(No Team)'
+              ? branchSessions.filter(s => !s.team_name)
+              : branchSessions.filter(s => s.team_name === team)
+            const flatRows = members.flatMap(s => {
+              const status = s.check_out_method === 'early_out' ? 'Early Out'
+                : s.check_out_time ? 'Checked Out' : 'Checked In'
+              return [
+                s.agent_code, s.full_name, s.team_name || '',
+                new Date(s.check_in_time).toLocaleString('en-PH'),
+                s.check_out_time ? new Date(s.check_out_time).toLocaleString('en-PH') : 'Not yet checked out',
+                status,
+              ]
+            })
+            cursor = writeTeamBlock(ws, team, colHeaders, flatRows, cursor, colCount)
+          })
+
+          // Branch total
+          const branchTotalRow = ws.getRow(cursor)
+          branchTotalRow.getCell(1).value = `Branch Total: ${branchSessions.length} attendee${branchSessions.length !== 1 ? 's' : ''}`
+          branchTotalRow.getCell(1).font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' } }
+          branchTotalRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.header } }
+          for (let ci = 2; ci <= colCount; ci++) ws.getRow(cursor).getCell(ci).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.header } }
+          ws.mergeCells(cursor, 1, cursor, colCount)
+          branchTotalRow.height = 22
+        }
       })
-      styleDataRows(ws)
-      await download(`${event?.title?.replace(/\s+/g, '_') ?? eventId}_AttendanceReport.xlsx`)
+
+      await download(`${event.title.replace(/\s+/g, '_')}_AttendanceReport.xlsx`)
     }
 
     if (docType === 'scanlogs') {
       const ws = wb.addWorksheet('Scan Logs')
-      applyHeader(ws, ['Agent Code', 'Full Name', 'Scan Type', 'Denial Reason', 'Scanned At'])
-      scanLogs.forEach(s => {
-        ws.addRow([
-          s.agent_code || 'Unknown', s.full_name || 'Unknown',
-          s.scan_type, s.denial_reason || '', new Date(s.scanned_at).toLocaleString('en-PH')
-        ])
+      ws.columns = [{ width: 18 }, { width: 28 }, { width: 14 }, { width: 30 }, { width: 24 }]
+      const headers = ['Agent Code', 'Full Name', 'Scan Type', 'Denial Reason', 'Scanned At']
+      const headerRow = ws.addRow(headers)
+      headerRow.eachCell(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: color.header } }
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 }
+        cell.alignment = { horizontal: 'center', vertical: 'middle' }
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFFFFFFF' } }, bottom: { style: 'thin', color: { argb: 'FFFFFFFF' } },
+          left: { style: 'thin', color: { argb: 'FFFFFFFF' } }, right: { style: 'thin', color: { argb: 'FFFFFFFF' } },
+        }
       })
-      styleDataRows(ws)
-      await download(`${event?.title?.replace(/\s+/g, '_') ?? eventId}_ScanLogsReport.xlsx`)
+      headerRow.height = 22
+      scanLogs.forEach((s, ri) => {
+        const row = ws.addRow([
+          s.agent_code || 'Unknown', s.full_name || 'Unknown',
+          s.scan_type, s.denial_reason || '', new Date(s.scanned_at).toLocaleString('en-PH'),
+        ])
+        row.eachCell(cell => {
+          cell.font = { size: 10 }
+          cell.alignment = { vertical: 'middle' }
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ri % 2 === 0 ? 'FFFFFFFF' : 'FFF9FAFB' } }
+          cell.border = {
+            top: { style: 'hair', color: { argb: 'FFE5E7EB' } }, bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+            left: { style: 'hair', color: { argb: 'FFE5E7EB' } }, right: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+          }
+        })
+        row.height = 18
+      })
+      await download(`${event.title.replace(/\s+/g, '_')}_ScanLogsReport.xlsx`)
     }
   }
 
@@ -1014,6 +1569,18 @@ export default function EventDetail() {
                       <CopyIcon />
                       {copied ? 'Copied!' : 'Copy Link'}
                     </button>
+                    <a
+                      href={`${window.location.origin}/register/${event.event_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-[#2a2a2a] px-3 py-2 rounded-xl hover:border-[#DC143C] hover:text-[#DC143C] transition-all">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+                        <polyline points="15 3 21 3 21 9"/>
+                        <line x1="10" y1="14" x2="21" y2="3"/>
+                      </svg>
+                      Open Link
+                    </a>
                     {isAdmin && event.status !== 'draft' && (
                       <div className="flex items-center gap-2.5">
                         <span className={`text-xs font-semibold ${isOpen ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
@@ -1116,18 +1683,18 @@ export default function EventDetail() {
                       {filteredRegistrants.length === 0 ? (
                         <tr><td colSpan={6} className="text-center py-16 text-gray-400 dark:text-gray-500">No registrants found.</td></tr>
                       ) : pagedRegistrants.map(p => (
-                        <tr key={p.participant_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                        <tr key={p.participant_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
                           <td className="px-5 py-3.5">
-                            <span className="font-medium text-[#DC143C] text-sm">{p.agent_code}</span>
+                            <span className="text-sm font-medium text-[#DC143C]">{fmtAgentCode(p.agent_code)}</span>
                           </td>
                           <td className="px-5 py-3.5">
                             <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-800 dark:text-white">{p.full_name}</span>
+                              <span className="font-medium text-gray-800 dark:text-white truncate">{p.full_name}</span>
                               {p.label && (() => {
                                 const c = getLabelColor(String(p.label))
                                 return (
                                   <button onClick={() => openLabelView(p)}
-                                    className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer hover:opacity-80 transition-opacity ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
+                                    className={`inline-flex items-center whitespace-nowrap text-[10px] font-bold px-2 py-0.5 h-5 rounded-full border cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
                                     {p.label}
                                   </button>
                                 )
@@ -1137,7 +1704,7 @@ export default function EventDetail() {
                           <td className="px-5 py-3.5">
                             <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span>
                           </td>
-                          <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{p.team_name}</td>
+                          <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs truncate max-w-0">{p.team_name}</td>
                           <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">
                             {new Date(p.registered_at).toLocaleString('en-PH')}
                           </td>
@@ -1209,13 +1776,13 @@ export default function EventDetail() {
                   <table className="w-full text-sm table-fixed">
                     <colgroup>
                       <col className="w-[120px]" />
-                      <col className="w-[200px]" />
-                      <col className="w-[140px]" />
+                      <col className="w-[180px]" />
                       <col className="w-[130px]" />
-                      <col className="w-[170px]" />
-                      <col className="w-[170px]" />
+                      <col className="w-[120px]" />
+                      <col className="w-[200px]" />
+                      <col className="w-[200px]" />
                       <col className="w-[110px]" />
-                      {isAdmin && <col className="w-[90px]" />}
+                      {isAdmin && <col className="w-[110px]" />}
                     </colgroup>
                     <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
                       <tr>
@@ -1230,9 +1797,9 @@ export default function EventDetail() {
                       ) : pagedAttendance.map((s, idx) => {
                         const isEditing = isAdmin && !s._isPending && editingSessionId === s.session_id
                         return (
-                        <tr key={s.session_id ?? `pending-${idx}`} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                        <tr key={s.session_id ?? `pending-${idx}`} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
                           <td className="px-5 py-3.5">
-                            <span className="font-medium text-[#DC143C] text-sm">{s.agent_code}</span>
+                            <span className="text-sm font-medium text-[#DC143C]">{fmtAgentCode(s.agent_code)}</span>
                           </td>
                           <td className="px-5 py-3.5">
                             <div className="flex items-center gap-2">
@@ -1243,7 +1810,7 @@ export default function EventDetail() {
                                 const c = getLabelColor(String(p.label))
                                 return (
                                   <button onClick={() => openLabelView(p)}
-                                    className={`inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full border cursor-pointer hover:opacity-80 transition-opacity ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
+                                    className={`inline-flex items-center whitespace-nowrap text-[10px] font-bold px-2 py-0.5 h-5 rounded-full border cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
                                     {p.label}
                                   </button>
                                 )
@@ -1258,11 +1825,10 @@ export default function EventDetail() {
                           {/* ── Check In cell ── */}
                           <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">
                             {isEditing ? (
-                              <input
-                                type="datetime-local"
+                              <MaskedDateTimeInput
                                 value={editCheckIn}
-                                onChange={e => setEditCheckIn(e.target.value)}
-                                className="w-full h-8 px-2 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#141414] text-gray-800 dark:text-white text-xs outline-none focus:border-[#DC143C] transition-colors"
+                                onChange={setEditCheckIn}
+                                className="w-full h-8 px-2 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#141414] text-gray-800 dark:text-white text-xs outline-none focus:border-[#DC143C] transition-colors tabular-nums"
                               />
                             ) : (
                               s.check_in_time ? new Date(s.check_in_time).toLocaleString('en-PH') : '—'
@@ -1272,11 +1838,10 @@ export default function EventDetail() {
                           {/* ── Check Out cell ── */}
                           <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">
                             {isEditing ? (
-                              <input
-                                type="datetime-local"
+                              <MaskedDateTimeInput
                                 value={editCheckOut}
-                                onChange={e => setEditCheckOut(e.target.value)}
-                                className="w-full h-8 px-2 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#141414] text-gray-800 dark:text-white text-xs outline-none focus:border-[#DC143C] transition-colors"
+                                onChange={setEditCheckOut}
+                                className="w-full h-8 px-2 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#141414] text-gray-800 dark:text-white text-xs outline-none focus:border-[#DC143C] transition-colors tabular-nums"
                               />
                             ) : (
                               s.check_out_time ? new Date(s.check_out_time).toLocaleString('en-PH') : '—'
@@ -1287,23 +1852,23 @@ export default function EventDetail() {
                           <td className="pl-2 pr-5 py-3.5">
                             {s._isPending ? (
                               ended ? (
-                                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">
+                                <span className="inline-flex items-center whitespace-nowrap text-xs font-semibold px-2.5 h-6 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">
                                   No-Show
                                 </span>
                               ) : (
-                                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                                <span className="inline-flex items-center whitespace-nowrap text-xs font-semibold px-2.5 h-6 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
                                   Waiting
                                 </span>
                               )
                             ) : s.check_out_method === 'early_out' ? (
                               <button
                                 onClick={() => setEarlyOutModal({ open: true, session: s as any })}
-                                className="text-xs font-semibold px-2.5 py-1 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 hover:opacity-80 transition-opacity"
+                                className="inline-flex items-center whitespace-nowrap text-xs font-semibold px-2.5 h-6 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 hover:opacity-80 transition-opacity"
                               >
                                 Early Out
                               </button>
                             ) : (
-                              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+                              <span className={`inline-flex items-center whitespace-nowrap text-xs font-semibold px-2.5 h-6 rounded-full ${
                                 s.check_out_time
                                   ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
                                   : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
@@ -1315,7 +1880,7 @@ export default function EventDetail() {
 
                           {/* ── Admin Actions cell ── */}
                           {isAdmin && (
-                            <td className="px-3 py-3.5">
+                            <td className="px-5 py-3.5 pl-7">
                               {s._isPending ? (
                                 <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
                               ) : isEditing ? (
@@ -1324,7 +1889,7 @@ export default function EventDetail() {
                                     onClick={() => handleSaveEdit(s.session_id)}
                                     disabled={editSaving}
                                     title="Save"
-                                    className="flex items-center justify-center w-7 h-7 rounded-lg bg-[#DC143C] text-white hover:bg-[#b01030] disabled:opacity-50 transition-colors">
+                                    className="flex items-center justify-center w-8 h-8 rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition-colors">
                                     {editSaving
                                       ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                       : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -1333,7 +1898,7 @@ export default function EventDetail() {
                                   <button
                                     onClick={handleCancelEdit}
                                     title="Cancel"
-                                    className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-400 transition-colors">
+                                    className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-400 transition-colors">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                   </button>
                                 </div>
@@ -1412,9 +1977,9 @@ export default function EventDetail() {
                       {filteredScanLogs.length === 0 ? (
                         <tr><td colSpan={5} className="text-center py-16 text-gray-400 dark:text-gray-500">No scan logs found.</td></tr>
                       ) : pagedScanLogs.map(s => (
-                        <tr key={s.scan_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                        <tr key={s.scan_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
                           <td className="px-5 py-3.5">
-                            <span className="font-medium text-[#DC143C] text-sm">{s.agent_code || s.qr_token}</span>
+                            <span className="text-sm font-medium text-[#DC143C]">{fmtAgentCode(s.agent_code || s.qr_token || '')}</span>
                           </td>
                           <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{s.full_name || '—'}</td>
                           <td className="px-5 py-3.5">
@@ -1462,7 +2027,7 @@ export default function EventDetail() {
                     <h3 className="text-sm font-bold text-gray-800 dark:text-white mb-3">Export Data</h3>
                     <div className="flex flex-col gap-2.5">
                       {([
-                        { key: 'registrants' as TabType, label: 'Registrants Report', desc: `${visibleConfirmedCount} registrants`, color: '023E8A' },
+                        { key: 'registrants' as TabType, label: 'Registration Report', desc: `${visibleConfirmedCount} registrants`, color: '023E8A' },
                         { key: 'attendance'  as TabType, label: 'Attendance Report',  desc: `${visibleSessions.length} sessions`,   color: '276221' },
                         { key: 'scanlogs'   as TabType, label: 'Scan Logs Report',   desc: `${scanLogs.length} scan logs`,  color: '01796F' },
                       ]).map(({ key, label, desc, color }) => (
@@ -1521,9 +2086,9 @@ export default function EventDetail() {
                       </thead>
                       <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
                         {pagedStaff.map(s => (
-                          <tr key={s.user_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                          <tr key={s.user_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
                             <td className="px-5 py-3.5">
-                              <span className="font-medium text-[#DC143C] text-sm">{s.agent_code}</span>
+                              <span className="text-sm font-medium text-[#DC143C]">{fmtAgentCode(s.agent_code)}</span>
                             </td>
                             <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{s.full_name}</td>
                             <td className="px-5 py-3.5">
@@ -1590,15 +2155,15 @@ export default function EventDetail() {
                       </thead>
                       <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
                         {pagedTrash.map(p => (
-                          <tr key={p.participant_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors">
+                          <tr key={p.participant_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
                             <td className="px-5 py-3.5">
-                              <span className="font-medium text-[#DC143C] text-sm">{p.agent_code}</span>
+                              <span className="text-sm font-medium text-[#DC143C]">{fmtAgentCode(p.agent_code)}</span>
                             </td>
                             <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{p.full_name}</td>
                             <td className="px-5 py-3.5">
                               <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span>
                             </td>
-                            <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{p.team_name}</td>
+                            <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs truncate max-w-0">{p.team_name}</td>
                             <td className="px-5 py-3.5">
                               <div className="flex items-center gap-2">
                                 <button
@@ -1669,7 +2234,7 @@ export default function EventDetail() {
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                     {!p.label ? 'Add Label' : isEdit ? 'Edit Label' : 'Label Details'}
                   </h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{p.full_name} · <span className="font-mono text-[#DC143C]">{p.agent_code}</span></p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{p.full_name} · <span className="font-mono font-bold text-[#DC143C]">{fmtAgentCode(p.agent_code)}</span></p>
                 </div>
                 {p.label && !isEdit && (
                   <span className={`inline-flex items-center text-xs font-bold px-3 py-1 rounded-full border ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
@@ -1744,13 +2309,13 @@ export default function EventDetail() {
                       Cancel
                     </button>
                     {p.label && (
-                      <button onClick={() => { setLabelModal({ open: true, participant: p }); handleSetLabel(false) }} disabled={labelLoading}
+                      <button onClick={() => handleSetLabel(false)} disabled={labelLoading}
                         className="px-4 py-3 bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-200 transition-all disabled:opacity-50 text-sm">
                         Remove
                       </button>
                     )}
                     <button
-                      onClick={() => { setLabelModal({ open: true, participant: p }); handleSetLabel(true) }}
+                      onClick={() => handleSetLabel(true)}
                       disabled={labelLoading || (labelType === 'Custom…' && !labelCustom.trim())}
                       className="flex-1 px-4 py-3 bg-[#DC143C] text-white rounded-xl font-semibold hover:bg-[#b01030] transition-all shadow-lg disabled:opacity-50">
                       {labelLoading ? 'Saving...' : 'Save Label'}
@@ -1762,65 +2327,6 @@ export default function EventDetail() {
           </div>
         )
       })()}
-
-      {/* ── LEGACY LABEL MODAL ── */}
-      {labelModal.open && labelModal.participant && !labelViewModal.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-8">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
-              {labelModal.participant.label ? 'Edit Label' : 'Add Label'}
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{labelModal.participant.full_name} · <span className="font-mono text-[#DC143C]">{labelModal.participant.agent_code}</span></p>
-            <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Label Type</label>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {LABEL_OPTIONS.map(opt => {
-                const oc = getLabelColor(opt === 'Custom…' ? 'Custom…' : opt)
-                return (
-                  <button key={opt} onClick={() => setLabelType(opt)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                      labelType === opt
-                        ? `${oc.bg} ${oc.text} ${oc.border} ${oc.darkBg} ${oc.darkText} ring-2 ring-offset-1 ring-current`
-                        : 'bg-gray-50 dark:bg-[#1a1a1a] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#2a2a2a] hover:border-gray-400'
-                    }`}>
-                    {opt}
-                  </button>
-                )
-              })}
-            </div>
-            {labelType === 'Custom…' && (
-              <div className="mb-4">
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Custom Label</label>
-                <input value={labelCustom} onChange={e => setLabelCustom(e.target.value)}
-                  placeholder="e.g. Best Agent, Million Club…"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C]"
-                />
-              </div>
-            )}
-            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 mt-1">Note <span className="font-normal normal-case">optional</span></label>
-            <textarea value={labelNote} onChange={e => setLabelNote(e.target.value)}
-              placeholder="e.g. Seated at Table 2, Row 5"
-              rows={3}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C] resize-none mb-4"
-            />
-            <div className="flex gap-3 mt-2">
-              <button onClick={() => setLabelModal({ open: false, participant: null })}
-                className="flex-1 px-4 py-3 border-2 border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#333333] transition-all">
-                Cancel
-              </button>
-              {labelModal.participant.label && (
-                <button onClick={() => handleSetLabel(false)} disabled={labelLoading}
-                  className="flex-1 px-4 py-3 bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-200 dark:hover:bg-[#333333] transition-all disabled:opacity-50">
-                  Remove Label
-                </button>
-              )}
-              <button onClick={() => handleSetLabel(true)} disabled={labelLoading || (labelType === 'Custom…' && !labelCustom.trim())}
-                className="flex-1 px-4 py-3 bg-[#DC143C] text-white rounded-xl font-semibold hover:bg-[#b01030] transition-all shadow-lg disabled:opacity-50">
-                {labelLoading ? 'Saving...' : 'Save Label'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── REMOVE REGISTRANT MODAL ── */}
       {removeModal.open && removeModal.participant && (
@@ -1958,7 +2464,7 @@ export default function EventDetail() {
               <div>
                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Participant</p>
                 <p className="text-sm font-semibold text-gray-800 dark:text-white">{earlyOutModal.session.full_name}</p>
-                <p className="text-xs text-[#DC143C] font-mono">{earlyOutModal.session.agent_code}</p>
+                <p className="text-xs text-[#DC143C] font-mono font-bold">{fmtAgentCode(earlyOutModal.session.agent_code)}</p>
               </div>
               <div>
                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Check-out Time</p>

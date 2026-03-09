@@ -71,6 +71,7 @@ export const getAllEventsService = async (userId?: string, userRole?: string, _u
        FROM events e
        ${countJoin}
        WHERE e.deleted_at IS NULL
+         AND e.status != 'archived'
        ORDER BY e.event_date DESC`
     )
     return result.rows
@@ -87,6 +88,7 @@ export const getAllEventsService = async (userId?: string, userRole?: string, _u
          ON ep.event_id = e.event_id
          AND ep.user_id = $1
        WHERE e.deleted_at IS NULL
+         AND e.status != 'archived'
        ORDER BY e.event_date DESC`,
       [userId]
     )
@@ -101,6 +103,7 @@ export const getAllEventsService = async (userId?: string, userRole?: string, _u
      FROM events e
      ${countJoin}
      WHERE e.deleted_at IS NULL
+       AND e.status != 'archived'
      ORDER BY e.event_date DESC`
   )
   return result.rows
@@ -291,4 +294,37 @@ export const permanentDeleteEventService = async (event_id: number) => {
   await pool.query('DELETE FROM admin_grants WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM event_branches WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM events WHERE event_id = $1', [event_id])
+}
+
+// ── Feature 4: Archive ────────────────────────────────────────────────────────
+
+export const getArchivedEventsService = async () => {
+  const result = await pool.query(
+    `SELECT e.*,
+            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+            COALESCE(pc.registered_count, 0) AS registered_count
+     FROM events e
+     LEFT JOIN (
+       SELECT event_id, COUNT(*)::int AS registered_count
+       FROM participants
+       WHERE deleted_at IS NULL
+         AND registration_status != 'cancelled'
+       GROUP BY event_id
+     ) pc ON pc.event_id = e.event_id
+     WHERE e.deleted_at IS NULL
+       AND e.status = 'archived'
+     ORDER BY e.updated_at DESC`
+  )
+  return result.rows
+}
+
+export const restoreArchivedEventService = async (event_id: number) => {
+  const result = await pool.query(
+    `UPDATE events SET status = 'closed', updated_at = NOW()
+     WHERE event_id = $1 AND deleted_at IS NULL AND status = 'archived'
+     RETURNING event_id, title`,
+    [event_id]
+  )
+  if (!result.rows[0]) throw new Error('Archived event not found')
+  return result.rows[0]
 }

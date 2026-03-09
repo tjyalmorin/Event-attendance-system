@@ -44,7 +44,7 @@ export interface Event {
   capacity: number
   checkin_cutoff: string
   registration_link: string
-  status: 'draft' | 'open' | 'closed' | 'completed'
+  status: 'draft' | 'open' | 'closed' | 'completed' | 'archived'
   version: number
   created_at: string
   updated_at: string

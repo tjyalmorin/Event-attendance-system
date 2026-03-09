@@ -4,7 +4,8 @@ import {
   createEventService, getAllEventsService, getEventByIdService,
   updateEventService, softDeleteEventService, assignPermissionService,
   getTrashedEventsService, restoreEventService, permanentDeleteEventService,
-  getEventStaffService, removeEventStaffService
+  getEventStaffService, removeEventStaffService,
+  getArchivedEventsService, restoreArchivedEventService
 } from './events.service.js'
 
 const parseField = (val: any) => {
@@ -16,7 +17,6 @@ const parseField = (val: any) => {
 }
 
 export const createEvent = asyncHandler(async (req: Request, res: Response) => {
-  // uploadPoster.any() puts all files in req.files array
   const files = req.files as Express.Multer.File[] | undefined
   console.log('📁 req.files:', files)
   console.log('📋 req.body keys:', Object.keys(req.body))
@@ -93,4 +93,16 @@ export const removeEventStaff = asyncHandler(async (req: Request, res: Response)
   const { user_id } = req.params
   await removeEventStaffService(event_id, user_id)
   res.json({ message: 'Staff removed from event' })
+})
+
+// ── Archive ───────────────────────────────────────────────────────────────────
+
+export const getArchivedEvents = asyncHandler(async (_req: Request, res: Response) => {
+  const events = await getArchivedEventsService()
+  res.json(events)
+})
+
+export const restoreArchivedEvent = asyncHandler(async (req: Request, res: Response) => {
+  const restored = await restoreArchivedEventService(Number(req.params.event_id))
+  res.json({ message: `Event "${restored.title}" restored successfully`, event: restored })
 })

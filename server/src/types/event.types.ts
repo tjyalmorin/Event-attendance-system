@@ -12,7 +12,7 @@ export interface Event {
   capacity: number
   checkin_cutoff: string
   registration_link: string
-  status: 'draft' | 'open' | 'closed' | 'completed'
+  status: 'draft' | 'open' | 'closed' | 'completed' | 'archived'
   version: number
   created_at: Date
   updated_at: Date
@@ -44,5 +44,5 @@ export interface CreateEventPayload {
 }
 
 export interface UpdateEventPayload extends Partial<CreateEventPayload> {
-  status?: 'draft' | 'open' | 'closed' | 'completed'
+  status?: 'draft' | 'open' | 'closed' | 'completed' | 'archived'
 }
