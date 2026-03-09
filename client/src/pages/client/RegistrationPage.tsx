@@ -375,10 +375,10 @@ export default function RegistrationPage() {
 
   const hasPoster = Boolean(event.poster_url)
   const posterSrc = event.poster_url
-    ? event.poster_url.startsWith('http')
-      ? event.poster_url
-      : `http://localhost:5000${event.poster_url}`
-    : null
+  ? event.poster_url.startsWith('http')
+    ? event.poster_url
+    : event.poster_url   // relative — Vite proxies /uploads → port 5000
+  : null
 
   return (
     <div style={s.page}>
