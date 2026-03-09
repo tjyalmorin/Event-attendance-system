@@ -7,8 +7,36 @@ import {
   getEventStaffService, removeEventStaffService
 } from './events.service.js'
 
+const parseField = (val: any) => {
+  if (!val) return []
+  if (typeof val === 'string') {
+    try { return JSON.parse(val) } catch { return [] }
+  }
+  return val
+}
+
 export const createEvent = asyncHandler(async (req: Request, res: Response) => {
-  const event = await createEventService(req.user!.user_id, req.body)
+  // uploadPoster.any() puts all files in req.files array
+  const files = req.files as Express.Multer.File[] | undefined
+  console.log('📁 req.files:', files)
+  console.log('📋 req.body keys:', Object.keys(req.body))
+  const posterFile = files?.find(f => f.fieldname === 'poster' || f.fieldname === 'poster_url')
+
+  const body = {
+    ...req.body,
+    event_branches:     parseField(req.body.event_branches),
+    staff_ids:          parseField(req.body.staff_ids),
+    description:        req.body.description         || null,
+    start_time:         req.body.start_time          || null,
+    end_time:           req.body.end_time            || null,
+    checkin_cutoff:     req.body.checkin_cutoff      || null,
+    registration_start: req.body.registration_start  || null,
+    registration_end:   req.body.registration_end    || null,
+    poster_url:         posterFile
+                          ? `/uploads/posters/${posterFile.filename}`
+                          : null,
+  }
+  const event = await createEventService(req.user!.user_id, body)
   res.status(201).json(event)
 })
 

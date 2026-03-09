@@ -48,6 +48,7 @@ export interface Event {
   version: number
   created_at: string
   updated_at: string
+  poster_url: string | null
 }
 
 export interface CreateEventPayload {

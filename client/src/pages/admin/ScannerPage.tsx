@@ -141,8 +141,9 @@ export default function ScannerPage() {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const flashRef     = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
-  const userRole   = storedUser?.role || 'staff'
+  const storedUser  = JSON.parse(localStorage.getItem('user') || '{}')
+  const userRole    = storedUser?.role || 'staff'
+  const userBranch  = storedUser?.branch_name || undefined
 
   // Countdown duration in seconds
   const COUNTDOWN_SECS = 3
@@ -211,7 +212,7 @@ export default function ScannerPage() {
     setSugLoading(true)
     debounceRef.current = setTimeout(async () => {
       try {
-        const data = await lookupParticipantApi({ query: query.trim(), event_id: Number(eventId) })
+        const data = await lookupParticipantApi({ query: query.trim(), event_id: Number(eventId), ...(userRole === 'staff' && userBranch ? { branch_name: userBranch } : {}) })
         if (data.multiple) {
           setSuggestions((data.participants || []).slice(0, 5))
         } else if (data.participant) {
@@ -266,7 +267,7 @@ export default function ScannerPage() {
     setShowSuggestions(false)
     setLoading(true)
     try {
-      const data = await lookupParticipantApi({ query: q.trim(), event_id: Number(eventId) })
+      const data = await lookupParticipantApi({ query: q.trim(), event_id: Number(eventId), ...(userRole === 'staff' && userBranch ? { branch_name: userBranch } : {}) })
       if (data.multiple) { setPickList(data.participants); setPageState('pick'); setLoading(false); return }
       if (data.next_action === 'blocked') {
         playTone('denied'); triggerFlash('red')

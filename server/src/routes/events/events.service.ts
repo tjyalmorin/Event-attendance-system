@@ -9,14 +9,15 @@ export const createEventService = async (created_by: string, payload: CreateEven
     `INSERT INTO events
       (created_by, title, description, event_date, start_time, end_time,
        registration_start, registration_end, venue, checkin_cutoff,
-       registration_link, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'draft')
+       registration_link, poster_url, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft')
      RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date, 0::int as registered_count`,
     [
       created_by, payload.title, payload.description, payload.event_date,
       payload.start_time, payload.end_time, payload.registration_start,
       payload.registration_end, payload.venue,
-      payload.checkin_cutoff, registration_link
+      payload.checkin_cutoff, registration_link,
+      payload.poster_url ?? null
     ]
   )
 

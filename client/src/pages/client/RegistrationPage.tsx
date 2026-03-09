@@ -374,7 +374,11 @@ export default function RegistrationPage() {
     : event.start_time ? formatTime12h(event.start_time) : ''
 
   const hasPoster = Boolean(event.poster_url)
-  const posterSrc = event.poster_url ?? null
+  const posterSrc = event.poster_url
+    ? event.poster_url.startsWith('http')
+      ? event.poster_url
+      : `http://localhost:5000${event.poster_url}`
+    : null
 
   return (
     <div style={s.page}>

@@ -222,6 +222,12 @@ const migrate = async (): Promise<void> => {
         ADD COLUMN IF NOT EXISTS branch_name VARCHAR(255);
     `);
 
+    // ── poster_url on events ───────────────────────────────
+    await pool.query(`
+      ALTER TABLE events
+        ADD COLUMN IF NOT EXISTS poster_url VARCHAR(500);
+    `);
+
     // ── OTP columns for forgot password (admin only) ───────
     await pool.query(`
       ALTER TABLE users
@@ -395,6 +401,7 @@ const migrate = async (): Promise<void> => {
     console.log('     • event_branches  ← NEW');
     console.log('');
     console.log('  🔧 Also applied: indexes, triggers, column additions, performance indexes');
+    console.log('     • events.poster_url          ← NEW');
     console.log('');
     console.log('  📈 Performance indexes added:');
     console.log('     • idx_participants_agent_event   (composite — scanning)');

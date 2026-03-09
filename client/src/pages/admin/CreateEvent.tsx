@@ -220,6 +220,8 @@ const CreateEvent: React.FC = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ title?: string; eventDate?: string; venue?: string }>({});
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [posterFile, setPosterFile] = useState<File | null>(null);
+  const [posterPreview, setPosterPreview] = useState<string | null>(null);
 
   // ── Dirty check — any field has content ──
   const isDirty = () =>
@@ -231,7 +233,8 @@ const CreateEvent: React.FC = () => {
     endTime !== null ||
     checkinCutoff !== null ||
     registrationStart !== null ||
-    registrationEnd !== null;
+    registrationEnd !== null ||
+    posterFile !== null;
 
   const handleBack = () => {
     if (isDirty()) {
@@ -293,19 +296,20 @@ const CreateEvent: React.FC = () => {
     }
     setLoading(true);
     try {
-      await api.post('/events', {
-        title: formData.title,
-        description: formData.description || null,
-        event_date: eventDate ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}` : '',
-        start_time: formatTime(startTime) || null,
-        end_time: formatTime(endTime) || null,
-        venue: formData.venue,
-        event_branches: selectedBranches,
-        checkin_cutoff: checkinCutoff ? formatTime(checkinCutoff) : null,
-        registration_start: registrationStart ? registrationStart.toISOString() : null,
-        registration_end: registrationEnd ? registrationEnd.toISOString() : null,
-        staff_ids: selectedStaffIds.length > 0 ? selectedStaffIds : [],
-      });
+      const fd = new FormData();
+      fd.append('title', formData.title);
+      fd.append('description', formData.description || '');
+      fd.append('event_date', eventDate ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}` : '');
+      fd.append('start_time', formatTime(startTime) || '');
+      fd.append('end_time', formatTime(endTime) || '');
+      fd.append('venue', formData.venue);
+      fd.append('event_branches', JSON.stringify(selectedBranches));
+      fd.append('checkin_cutoff', checkinCutoff ? formatTime(checkinCutoff) : '');
+      fd.append('registration_start', registrationStart ? registrationStart.toISOString() : '');
+      fd.append('registration_end', registrationEnd ? registrationEnd.toISOString() : '');
+      fd.append('staff_ids', JSON.stringify(selectedStaffIds.length > 0 ? selectedStaffIds : []));
+      if (posterFile) fd.append('poster', posterFile);
+      await api.post('/events', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       navigate('/admin/events', { state: { created: true } });
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to create event');
@@ -332,6 +336,8 @@ const CreateEvent: React.FC = () => {
     setShowDescription(false);
     setFieldErrors({});
     setError('');
+    setPosterFile(null);
+    setPosterPreview(null);
   };
 
   return (
@@ -497,6 +503,49 @@ const CreateEvent: React.FC = () => {
                   <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{formData.description.length}/500 characters</p>
                 </div>
               )}
+
+              {/* Poster Upload */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    Event Poster <span className="text-gray-400 font-normal">(Optional)</span>
+                  </label>
+                  {posterPreview && (
+                    <button type="button"
+                      onClick={() => { setPosterFile(null); setPosterPreview(null); }}
+                      className="text-xs font-bold text-red-600 border border-red-300 dark:border-red-800 rounded-lg px-3 py-1.5 hover:border-red-500 transition-colors">
+                      Remove poster
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  If uploaded, this poster will be shown on the registration page instead of the slideshow.
+                </p>
+                {posterPreview ? (
+                  <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a]" style={{ maxHeight: 220 }}>
+                    <img src={posterPreview} alt="Poster preview" className="w-full object-cover" style={{ maxHeight: 220 }} />
+                    <div className="absolute inset-0 bg-black/10" />
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center gap-2 w-full px-4 py-8 bg-gray-50 dark:bg-[#0f0f0f] border-2 border-dashed border-gray-200 dark:border-[#2a2a2a] rounded-xl cursor-pointer hover:border-[#DC143C] hover:bg-red-50/30 dark:hover:bg-[#DC143C]/5 transition-all">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-gray-400">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">Click to upload poster image</span>
+                    <span className="text-xs text-gray-400">JPG, PNG, WEBP · Max 5MB</span>
+                    <input type="file" accept="image/*" className="sr-only"
+                      onChange={e => {
+                        const file = e.target.files?.[0] ?? null;
+                        if (!file) return;
+                        if (file.size > 5 * 1024 * 1024) { setError('Poster image must be under 5MB.'); return; }
+                        setPosterFile(file);
+                        setPosterPreview(URL.createObjectURL(file));
+                        setError('');
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
 
               {/* Date & Time */}
               <div className="grid grid-cols-3 gap-4">

@@ -40,6 +40,7 @@ export interface CreateEventPayload {
   event_branches?: { branch_name: string; teams: string[] }[] | null
   // ── Staff assigned to this event ──
   staff_ids?: string[] | null
+  poster_url?: string | null
 }
 
 export interface UpdateEventPayload extends Partial<CreateEventPayload> {

@@ -2,7 +2,8 @@ import { Router } from 'express'
 import authenticate from '../../middlewares/authenticate.js'
 import roleGuard from '../../middlewares/roleGuard.js'
 import validate from '../../middlewares/validate.js'
-import { createEventSchema, updateEventSchema } from '../../schemas/events.schema.js'
+import { updateEventSchema } from '../../schemas/events.schema.js'
+import { uploadPoster } from '../../middlewares/upload.js'
 import {
   createEvent, getAllEvents, getEventById, updateEvent, deleteEvent, assignPermission,
   getTrashedEvents, restoreEvent, permanentDeleteEvent,
@@ -23,7 +24,8 @@ router.delete('/:event_id/permanent', roleGuard('admin'), permanentDeleteEvent)
 // ── Standard routes ───────────────────────────────────────────
 router.get('/', getAllEvents)
 router.get('/:event_id', getEventById)
-router.post('/', roleGuard('admin'), validate(createEventSchema), createEvent)
+// POST uses multipart/form-data (poster upload) — multer parses body, no Zod on this route
+router.post('/', roleGuard('admin'), uploadPoster.any(), createEvent)
 router.put('/:event_id', roleGuard('admin'), validate(updateEventSchema), updateEvent)
 router.delete('/:event_id', roleGuard('admin'), deleteEvent)
 router.post('/:event_id/permissions', roleGuard('admin'), assignPermission)
