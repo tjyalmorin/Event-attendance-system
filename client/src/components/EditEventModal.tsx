@@ -10,13 +10,23 @@ const XIcon = () => (
     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
   </svg>
 );
-
+const EditIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+  </svg>
+);
+const WarnIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>
+);
 const CalendarPickerIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-400">
     <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
   </svg>
 );
-
 const ClockPickerIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-400">
     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -127,6 +137,17 @@ interface EditEventModalProps {
   onClose: () => void;
   onSuccess: () => void;
 }
+
+// ── Shared Cancel Button ──
+const CancelBtn: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'Cancel' }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all"
+  >
+    {label}
+  </button>
+);
 
 // ── Component ──
 const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSuccess }) => {
@@ -245,49 +266,68 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
     <>
       <style>{PICKER_STYLES}</style>
 
-      {/* Discard confirm */}
+      {/* ── Discard Confirm Modal ── */}
       {showDiscardConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-sm mx-4 p-6">
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center text-yellow-500">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 overflow-clip">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+              <div className="flex items-center gap-3">
+                <span className="text-yellow-500 dark:text-yellow-400"><WarnIcon /></span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Discard Changes?</h2>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Discard changes?</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Your edits will be lost if you leave now.</p>
-              </div>
-              <div className="flex gap-3 w-full mt-1">
-                <button onClick={() => setShowDiscardConfirm(false)}
-                  className="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl text-sm font-semibold hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
-                  Keep Editing
-                </button>
-                <button onClick={onClose}
-                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 transition-all">
-                  Discard
-                </button>
-              </div>
+              <button
+                onClick={() => setShowDiscardConfirm(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors"
+              >
+                <XIcon />
+              </button>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            {/* Body */}
+            <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+              <p>Your edits will be lost if you leave now.</p>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <CancelBtn onClick={() => setShowDiscardConfirm(false)} label="Keep Editing" />
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all"
+              >
+                Discard
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Main modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-2xl mx-4 flex flex-col max-h-[90vh] overflow-hidden">
-          <div className="h-1.5 w-full bg-gradient-to-r from-[#DC143C] to-[#ff4d6d] flex-shrink-0" />
-          <div className="flex items-center justify-between px-8 pt-6 pb-4 flex-shrink-0">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Edit Event</h2>
-            <button onClick={handleClose} className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#333333] rounded-xl transition-colors">
+      {/* ── Main Edit Modal ── */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-2xl mx-4 flex flex-col max-h-[90vh] overflow-clip">
+
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424] flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="text-gray-500 dark:text-gray-400"><EditIcon /></span>
+              <div>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Edit Event</h2>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate max-w-[360px]">{event.title}</p>
+              </div>
+            </div>
+            <button
+              onClick={handleClose}
+              className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors"
+            >
               <XIcon />
             </button>
           </div>
+          <div className="h-px bg-gray-200 dark:bg-[#2a2a2a] flex-shrink-0" />
 
+          {/* Scrollable body */}
           <div className="overflow-y-auto flex-1">
-            <form id="edit-event-form" onSubmit={handleSubmit} className="px-8 pb-8 space-y-5">
+            <form id="edit-event-form" onSubmit={handleSubmit} className="px-5 py-5 space-y-5">
 
               {/* Event Name */}
               <div>
@@ -428,16 +468,19 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end gap-3 px-8 py-5 border-t border-gray-100 dark:border-[#2a2a2a] flex-shrink-0">
-            <button type="button" onClick={handleClose}
-              className="px-6 py-3 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#333333] transition-all">
-              Cancel
-            </button>
-            <button type="submit" form="edit-event-form" disabled={loading}
-              className="px-6 py-3 bg-[#DC143C] text-white rounded-xl font-semibold hover:bg-[#b01030] transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+          <div className="h-px bg-gray-200 dark:bg-[#2a2a2a] flex-shrink-0" />
+          <div className="flex items-center justify-end gap-2 px-5 py-4 flex-shrink-0">
+            <CancelBtn onClick={handleClose} />
+            <button
+              type="submit"
+              form="edit-event-form"
+              disabled={loading}
+              className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
               {loading
-                ? (<><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Saving...</>)
-                : 'Save Changes'}
+                ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Saving...</>
+                : 'Save Changes'
+              }
             </button>
           </div>
         </div>

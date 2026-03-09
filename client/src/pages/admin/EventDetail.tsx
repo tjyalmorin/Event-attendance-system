@@ -1504,7 +1504,7 @@ export default function EventDetail() {
           {/* ── TOP ROW: Stats + Recent Check-In ── */}
           <div className="flex gap-3 flex-shrink-0">
 
-            {/* Left: stat cards + registration link stacked */}
+            {/* Left: stat cards + registration window stacked */}
             <div className="flex-1 flex flex-col gap-3">
               {!isAdmin && (
                 <div className="flex items-center gap-2">
@@ -1553,14 +1553,25 @@ export default function EventDetail() {
                 </div>
               </div>
 
-              {/* Registration Link */}
+              {/* Registration Window */}
               <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm px-5 py-3.5">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Registration Link</p>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-gray-400 dark:text-white flex-shrink-0"><GlobeIcon /></span>
-                      <p className="text-sm text-[#DC143C] dark:text-white font-mono truncate">{window.location.origin}/register/{event.event_id}</p>
+                    <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Registration Window</p>
+                    <div className="min-w-0">
+                      {event.registration_start && event.registration_end ? (
+                        <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                          {new Date(event.registration_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {' at '}
+                          {new Date(event.registration_start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                          {' → '}
+                          {new Date(event.registration_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {' at '}
+                          {new Date(event.registration_end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-gray-400 dark:text-gray-500 italic">No registration window set</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
