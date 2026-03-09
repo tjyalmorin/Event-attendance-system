@@ -109,23 +109,28 @@ export const getEventByIdService = async (event_id: number) => {
   const result = await pool.query(
     `SELECT e.*,
             TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
-            COALESCE(pc.registered_count, 0) AS registered_count
+            COALESCE(pc.registered_count, 0) AS registered_count,
+            COALESCE(
+              (SELECT json_agg(json_build_object('branch_name', branch_name, 'team_names', team_names))
+               FROM event_branches WHERE event_id = $1),
+              '[]'
+            ) AS event_branches
      FROM events e
      LEFT JOIN (
        SELECT event_id, COUNT(*)::int AS registered_count
        FROM participants
-       WHERE deleted_at IS NULL
-         AND registration_status != 'cancelled'
-         AND event_id = $1
+       WHERE deleted_at IS NULL AND registration_status != 'cancelled' AND event_id = $1
        GROUP BY event_id
      ) pc ON pc.event_id = e.event_id
-     WHERE e.event_id = $1
-       AND e.deleted_at IS NULL`,
+     WHERE e.event_id = $1 AND e.deleted_at IS NULL`,
     [event_id]
   )
   if (!result.rows[0]) throw new Error('Event not found')
+  return result.rows[0]
+}
 
-  const event = result.rows[0]
+export const getEventDetailsForStaffService = async (event_id: number) => {
+  const event = await getEventByIdService(event_id)
 
   // ── Attach event_branches ──────────────────────────────
   const branchesResult = await pool.query(

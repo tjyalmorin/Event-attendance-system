@@ -127,7 +127,7 @@ export default function LoginPage() {
         {/* ── PRU LIFE UK LOGO PILL ── */}
         <div className="relative z-10">
           <div className="inline-flex w-fit items-center gap-3 rounded-2xl bg-white px-5 py-2.5 pl-3 shadow-[0_4px_24px_rgba(0,0,0,0.18)]">
-            <div className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-[10px] overflow-hidden bg-white border border-gray-100">
+            <div className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-1px overflow-hidden bg-white border border-gray-100">
               <img
                 src={pruLogo}
                 alt="Pru Life UK"
@@ -135,8 +135,7 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <div className="text-[15px] font-bold tracking-tight text-gray-800">Pru Life UK</div>
-              <div className="mt-0.5 text-[11px] font-normal text-gray-500">Event Management</div>
+              <div className="mt-0.5 text-[22px] font-normal text-gray-500">#WeWinAsOne</div>
             </div>
           </div>
         </div>

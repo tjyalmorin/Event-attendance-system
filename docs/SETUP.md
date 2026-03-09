@@ -66,7 +66,7 @@ DB_PORT=5432
 JWT_SECRET=change_this_to_a_long_random_string
 CLIENT_URL=http://localhost:5173
 ```
-
+cd .cd..
 > ⚠️ Never commit your `.env` file. It's already in `.gitignore`.
 
 ---

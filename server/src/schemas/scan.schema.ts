@@ -28,7 +28,7 @@ export const logDenialSchema = z.object({
 
 export const updateSessionTimesSchema = z.object({
   check_in_time: z
-    .string({ required_error: 'check_in_time is required' })
+    .string({ error: 'check_in_time is required' })
     .datetime({ message: 'check_in_time must be a valid ISO 8601 datetime' }),
   check_out_time: z
     .string()

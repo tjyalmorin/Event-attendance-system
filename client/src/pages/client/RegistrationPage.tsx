@@ -374,11 +374,11 @@ export default function RegistrationPage() {
               <img
                 src={pruLogo}
                 alt="PRU LIFE UK"
-                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 9 }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0 }}
               />
             </div>
             <div>
-              <div style={s.logoName}>PRU<span style={{ color: '#DC143C' }}>LIFE</span> UK</div>
+              <div style={s.logoName}>A1<span style={{ color: '#DC143C' }}>PRIME</span></div>
               <div style={s.logoSub}>Event Registration</div>
             </div>
           </div>
@@ -512,12 +512,12 @@ export default function RegistrationPage() {
               <img
                 src={pruLogo}
                 alt="PRU LIFE UK"
-                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 7 }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0 }}
               />
             </div>
             <div>
-              <div style={s.badgeName}>PruLife UK</div>
-              <div style={s.badgeSub}>Trusted since 1907</div>
+              <div style={s.badgeName}>A1 Prime</div>
+              <div style={s.badgeSub}>Trusted since 1996</div>
             </div>
           </div>
 
