@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../../components/Sidebar'
 import { getAllUsersApi, createUserApi, deleteUserApi, updateUserApi, toggleUserActiveApi } from '../../api/users.api'
@@ -91,6 +92,11 @@ const ChevronRightIcon = () => (
     <polyline points="9 18 15 12 9 6"/>
   </svg>
 )
+const CheckIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>
+)
 
 // ── Helpers ────────────────────────────────────────────────
 const formatDate = (iso: string) => {
@@ -121,6 +127,196 @@ const ITEMS_PER_PAGE = 10
 const EMPTY_FORM: UserFormState = {
   agent_code: '', full_name: '', email: '', password: '', branch_name: '', role: 'staff'
 }
+
+// ── Custom Select Dropdown ─────────────────────────────────
+interface SelectOption { label: string; value: string }
+interface CustomSelectProps {
+  value: string
+  onChange: (val: string) => void
+  options: SelectOption[]
+  placeholder?: string
+  required?: boolean
+  centered?: boolean
+}
+
+const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, placeholder = 'Select...', required, centered = false }) => {
+  const [open, setOpen] = useState(false)
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 })
+  const ref = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const selected = options.find(o => o.value === value)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = () => setOpen(false)
+    window.addEventListener('resize', handler)
+    return () => {
+      window.removeEventListener('resize', handler)
+    }
+  }, [open])
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      let top: number
+      if (centered) {
+        const dropHeight = Math.min(options.length * 42, 208)
+        const centeredTop = rect.top + rect.height / 2 - dropHeight / 2
+        top = Math.max(12, Math.min(centeredTop, window.innerHeight - dropHeight - 12))
+      } else {
+        top = rect.bottom + 4
+      }
+      setDropPos({ top, left: rect.left, width: rect.width })
+    }
+    setOpen(p => !p)
+  }
+
+  const dropdown = open ? createPortal(
+    <div
+      style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 99999 }}
+      className="bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl"
+      onWheel={e => e.stopPropagation()}
+    >
+      <div className="max-h-52 overflow-y-auto rounded-xl" onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
+        {options.map((opt, i) => (
+          <button
+            key={opt.value}
+            type="button"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => { onChange(opt.value); setOpen(false) }}
+            className={`w-full flex items-center justify-between px-4 py-2.5 text-sm text-left transition-colors
+              ${i === 0 ? '' : 'border-t border-gray-50 dark:border-[#2a2a2a]'}
+              ${value === opt.value
+                ? 'bg-[#DC143C]/5 dark:bg-[#DC143C]/10 text-[#DC143C] font-semibold'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525]'
+              }`}
+          >
+            {opt.label}
+            {value === opt.value && (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-[#DC143C] flex-shrink-0">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body
+  ) : null
+
+  return (
+    <div ref={ref} className="relative">
+      {required && (
+        <input tabIndex={-1} required value={value} onChange={() => {}}
+          className="absolute inset-0 opacity-0 pointer-events-none w-full" />
+      )}
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={handleOpen}
+        className={`h-[44px] w-full rounded-xl border-[1.5px] bg-gray-50 dark:bg-[#1c1c1c] px-4 text-sm outline-none transition-all flex items-center justify-between gap-2
+          ${open
+            ? 'border-[#DC143C] bg-white dark:bg-[#1c1c1c] shadow-[0_0_0_3px_rgba(220,20,60,0.08)]'
+            : 'border-gray-200 dark:border-[#2a2a2a] hover:border-gray-300 dark:hover:border-[#3a3a3a]'
+          }`}
+      >
+        <span className={selected ? 'text-gray-800 dark:text-white' : 'text-gray-400'}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <svg
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+          strokeLinecap="round" strokeLinejoin="round"
+          className={`w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200 ${open ? 'rotate-180 text-[#DC143C]' : 'text-gray-400'}`}
+        >
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {dropdown}
+    </div>
+  )
+}
+
+// ── Shared Cancel Button ───────────────────────────────────
+const CancelBtn: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+  <button
+    onClick={onClick}
+    className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all"
+  >
+    Cancel
+  </button>
+)
+
+// ── Shared Modal Shell ─────────────────────────────────────
+interface ModalShellProps {
+  onClose: () => void
+  icon: React.ReactNode
+  iconClass?: string
+  title: string
+  subtitle?: string
+  children: React.ReactNode
+  footer: React.ReactNode
+  wide?: boolean
+}
+
+const ModalShell: React.FC<ModalShellProps> = ({
+  onClose, icon, iconClass = 'text-gray-500 dark:text-gray-400',
+  title, subtitle, children, footer, wide = false,
+}) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className={`bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full mx-4 overflow-clip ${wide ? 'max-w-lg' : 'max-w-md'}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+        <div className="flex items-center gap-3">
+          <span className={iconClass}>{icon}</span>
+          <div>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">{title}</h2>
+            {subtitle && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{subtitle}</p>}
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors"
+        >
+          <XIcon />
+        </button>
+      </div>
+      <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+      {/* Body */}
+      <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+        {children}
+      </div>
+      <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+      {/* Footer */}
+      <div className="flex items-center justify-end gap-2 px-5 py-4">
+        {footer}
+      </div>
+    </div>
+  </div>
+)
+
+// ── Success Toast ──────────────────────────────────────────
+const SuccessToast: React.FC<{ message: string }> = ({ message }) => (
+  <div className="fixed bottom-6 right-6 z-50 flex items-stretch bg-white dark:bg-[#1c1c1c] rounded-xl shadow-2xl border border-gray-100 dark:border-[#2a2a2a] overflow-hidden min-w-[280px]">
+    <div className="w-3 bg-green-500 flex-shrink-0" />
+    <div className="flex items-center gap-3 px-4 py-4">
+      <div className="w-8 h-8 rounded-full border-2 border-green-500 flex items-center justify-center flex-shrink-0 text-green-500">
+        <CheckIcon />
+      </div>
+      <div>
+        <p className="text-sm font-bold text-gray-800 dark:text-white">Success</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">{message}</p>
+      </div>
+    </div>
+  </div>
+)
 
 // ── ActionDropdown ─────────────────────────────────────────
 function ActionDropdown({ user, isSelf, onEdit, onToggle, onDelete }: {
@@ -236,7 +432,7 @@ export default function AccountManagement() {
   const [selectedUser, setSelectedUser] = useState<(User & { is_active: boolean }) | null>(null)
   const [modalLoading, setModalLoading] = useState(false)
   const [modalError, setModalError] = useState('')
-  const [modalSuccess, setModalSuccess] = useState('')
+  const [toast, setToast] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [form, setForm] = useState<UserFormState>(EMPTY_FORM)
 
@@ -249,7 +445,6 @@ export default function AccountManagement() {
     loadUsers()
   }, [])
 
-  // ── Close sort dropdown on outside click ──
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target as Node)) {
@@ -260,6 +455,22 @@ export default function AccountManagement() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  useEffect(() => {
+    if (toast) {
+      const t = setTimeout(() => setToast(null), 3000)
+      return () => clearTimeout(t)
+    }
+  }, [toast])
+
+  useEffect(() => {
+    if (modalType === 'create' || modalType === 'edit') {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [modalType])
+
   const loadUsers = async () => {
     try { setUsers(await getAllUsersApi() as any) }
     catch { navigate('/admin/login') }
@@ -268,7 +479,7 @@ export default function AccountManagement() {
 
   const openModal = (type: ModalType, user?: User & { is_active: boolean }) => {
     setModalType(type); setSelectedUser(user || null)
-    setModalError(''); setModalSuccess(''); setShowPassword(false)
+    setModalError(''); setShowPassword(false)
     if (type === 'edit' && user) {
       setForm({
         agent_code: user.agent_code || '', full_name: user.full_name, email: user.email,
@@ -284,8 +495,8 @@ export default function AccountManagement() {
     try {
       const created = await createUserApi(form)
       setUsers(prev => [created as any, ...prev])
-      setModalSuccess('Account created successfully!')
-      setTimeout(closeModal, 1500)
+      closeModal()
+      setToast('Account created successfully')
     } catch (err: any) { setModalError(err.response?.data?.error || 'Failed to create account') }
     finally { setModalLoading(false) }
   }
@@ -298,8 +509,8 @@ export default function AccountManagement() {
       if (form.password.trim()) payload.password = form.password
       const updated = await updateUserApi(selectedUser!.user_id, payload)
       setUsers(prev => prev.map(u => u.user_id === updated.user_id ? { ...u, ...updated } : u))
-      setModalSuccess('Account updated successfully!')
-      setTimeout(closeModal, 1500)
+      closeModal()
+      setToast('Account updated successfully')
     } catch (err: any) { setModalError(err.response?.data?.error || 'Failed to update account') }
     finally { setModalLoading(false) }
   }
@@ -309,8 +520,8 @@ export default function AccountManagement() {
     try {
       const updated = await toggleUserActiveApi(selectedUser!.user_id)
       setUsers(prev => prev.map(u => u.user_id === updated.user_id ? { ...u, ...updated } : u))
-      setModalSuccess(updated.is_active ? 'Account reactivated!' : 'Account deactivated!')
-      setTimeout(closeModal, 1500)
+      closeModal()
+      setToast(updated.is_active ? 'Account reactivated successfully' : 'Account deactivated successfully')
     } catch (err: any) { setModalError(err.response?.data?.error || 'Failed to update account') }
     finally { setModalLoading(false) }
   }
@@ -320,8 +531,8 @@ export default function AccountManagement() {
     try {
       await deleteUserApi(selectedUser!.user_id)
       setUsers(prev => prev.filter(u => u.user_id !== selectedUser!.user_id))
-      setModalSuccess('Account deleted successfully!')
-      setTimeout(closeModal, 1500)
+      closeModal()
+      setToast('Account deleted successfully')
     } catch (err: any) { setModalError(err.response?.data?.error || 'Failed to delete account') }
     finally { setModalLoading(false) }
   }
@@ -335,7 +546,6 @@ export default function AccountManagement() {
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
   }).length
 
-  // ── FIX 2: Search now includes branch_name and team_name ──
   const filtered = users
     .filter(u => roleFilter === 'all' ? true : u.role === roleFilter)
     .filter(u => {
@@ -446,7 +656,7 @@ export default function AccountManagement() {
               />
             </div>
 
-            {/* ── FIX 3: Sort by dropdown — same design as EventManagement ── */}
+            {/* Sort dropdown */}
             <div className="relative" ref={sortDropdownRef}>
               <button
                 onClick={() => setOpenSortDropdown(prev => !prev)}
@@ -514,8 +724,6 @@ export default function AccountManagement() {
                     const createdAt = (u as any).created_at || ''
                     return (
                       <tr key={u.user_id} className={`border-b border-gray-50 dark:border-[#2a2a2a] last:border-b-0 transition-colors ${inactive ? 'bg-gray-50 dark:bg-[#161616]' : 'hover:bg-[#fdf5f7] dark:hover:bg-[#1f1416]'}`}>
-
-                        {/* ── FIX 1: Only data cells get opacity, NOT the actions cell ── */}
                         <td className={`pl-7 pr-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
                           <span className={`font-bold text-xs tracking-wide ${inactive ? 'text-gray-400' : 'text-[#DC143C]'}`}>{u.agent_code || '—'}</span>
                         </td>
@@ -560,8 +768,6 @@ export default function AccountManagement() {
                             )}
                           </div>
                         </td>
-
-                        {/* Actions — NO opacity class, always fully visible ── */}
                         <td className="pr-7 px-5 py-3.5">
                           <div className="flex justify-center">
                             <ActionDropdown
@@ -609,151 +815,191 @@ export default function AccountManagement() {
         </div>
       </div>
 
-      {/* ── MODAL ── */}
-      {modalType && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 dark:border-[#2a2a2a]">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                {modalType === 'create' && 'Create Account'}
-                {modalType === 'edit' && <><span className="text-gray-900 dark:text-white -mt-[2px] [&>svg]:w-6 [&>svg]:h-6"><EditIcon /></span>Edit Account</>}
-                {modalType === 'toggle' && selectedUser?.is_active && <><span className="text-yellow-500 dark:text-yellow-400 -mt-[2px] [&>svg]:w-6 [&>svg]:h-6"><BanIcon /></span>Deactivate Account</>}
-                {modalType === 'toggle' && !selectedUser?.is_active && <><span className="text-green-600 dark:text-green-400 -mt-[2px] [&>svg]:w-6 [&>svg]:h-6"><CheckCircleIcon /></span>Reactivate Account</>}
-                {modalType === 'delete' && <><span className="text-[#DC143C] -mt-[2px] [&>svg]:w-6 [&>svg]:h-6"><TrashIcon /></span>Delete Account</>}
-              </h2>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><XIcon /></button>
-            </div>
+      {/* ── MODALS ── */}
 
-            <div className="p-6">
-              {modalSuccess ? (
-                <div className="rounded-xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 px-4 py-3 text-sm text-green-600 dark:text-green-400 text-center">
-                  ✓ {modalSuccess}
+      {/* Create / Edit — wider modal with form */}
+      {(modalType === 'create' || modalType === 'edit') && (
+        <ModalShell
+          onClose={closeModal}
+          icon={modalType === 'create' ? <PlusIcon /> : <EditIcon />}
+          title={modalType === 'create' ? 'Create Account' : 'Edit Account'}
+          subtitle={modalType === 'edit' ? selectedUser?.full_name : undefined}
+          wide
+          footer={
+            <>
+              <CancelBtn onClick={closeModal} />
+              <button
+                form="account-form"
+                type="submit"
+                disabled={modalLoading}
+                className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {modalLoading
+                  ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>{isEdit ? 'Saving...' : 'Creating...'}</>
+                  : isEdit ? 'Save Changes' : 'Create Account'
+                }
+              </button>
+            </>
+          }
+        >
+          <form id="account-form" onSubmit={isEdit ? handleEdit : handleCreate} className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <label className={labelClass}>Full Name</label>
+                <input className={inputClass} value={form.full_name} onChange={e => setForm(p => ({...p, full_name: e.target.value}))} placeholder="Full name" required />
+              </div>
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <label className={labelClass}>Email</label>
+                <input className={inputClass} type="email" value={form.email} onChange={e => setForm(p => ({...p, email: e.target.value}))} placeholder="email@example.com" required />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClass}>Agent Code</label>
+                <input
+                  className={inputClass}
+                  value={form.agent_code}
+                  onChange={e => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 8)
+                    setForm(p => ({ ...p, agent_code: digits }))
+                  }}
+                  placeholder="8-digit code"
+                  maxLength={8}
+                  inputMode="numeric"
+                  required
+                />
+                {form.agent_code.length > 0 && form.agent_code.length !== 8 && (
+                  <span className="text-[11px] text-red-500">Must be exactly 8 digits</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClass}>Role</label>
+                <CustomSelect
+                  value={form.role}
+                  onChange={val => setForm(p => ({ ...p, role: val as 'admin' | 'staff' }))}
+                  options={[
+                    { value: 'staff', label: 'Staff' },
+                    { value: 'admin', label: 'Admin' },
+                  ]}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <label className={labelClass}>Branch</label>
+                <CustomSelect
+                  value={form.branch_name}
+                  onChange={val => setForm(p => ({ ...p, branch_name: val }))}
+                  options={BRANCHES.map(b => ({ value: b.name, label: b.name }))}
+                  placeholder="— Select branch —"
+                  centered
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <label className={labelClass}>
+                  {isEdit ? <>New Password <span className="ml-1 normal-case font-normal text-gray-400">(leave blank to keep current)</span></> : 'Password'}
+                </label>
+                <div className="relative">
+                  <input className={`${inputClass} pr-11`} type={showPassword ? 'text' : 'password'} value={form.password}
+                    onChange={e => setForm(p => ({...p, password: e.target.value}))}
+                    placeholder={isEdit ? 'Enter new password to change' : 'Min. 8 characters'} required={!isEdit} />
+                  <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                    {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                  </button>
                 </div>
-              ) : (
-                <>
-                  {/* ── Create / Edit Form ── */}
-                  {(modalType === 'create' || modalType === 'edit') && (
-                    <form onSubmit={isEdit ? handleEdit : handleCreate} className="flex flex-col gap-4">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="flex flex-col gap-1.5 col-span-2">
-                          <label className={labelClass}>Full Name</label>
-                          <input className={inputClass} value={form.full_name} onChange={e => setForm(p => ({...p, full_name: e.target.value}))} placeholder="Full name" required />
-                        </div>
-                        <div className="flex flex-col gap-1.5 col-span-2">
-                          <label className={labelClass}>Email</label>
-                          <input className={inputClass} type="email" value={form.email} onChange={e => setForm(p => ({...p, email: e.target.value}))} placeholder="email@example.com" required />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <label className={labelClass}>Agent Code</label>
-                          <input
-                            className={inputClass}
-                            value={form.agent_code}
-                            onChange={e => {
-                              const digits = e.target.value.replace(/\D/g, '').slice(0, 8)
-                              setForm(p => ({ ...p, agent_code: digits }))
-                            }}
-                            placeholder="8-digit code"
-                            maxLength={8}
-                            inputMode="numeric"
-                            required
-                          />
-                          {form.agent_code.length > 0 && form.agent_code.length !== 8 && (
-                            <span className="text-[11px] text-red-500">Must be exactly 8 digits</span>
-                          )}
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          <label className={labelClass}>Role</label>
-                          <select className={inputClass} value={form.role} onChange={e => setForm(p => ({...p, role: e.target.value as 'admin' | 'staff'}))}>
-                            <option value="staff">Staff</option>
-                            <option value="admin">Admin</option>
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1.5 col-span-2">
-                          <label className={labelClass}>Branch</label>
-                          <select
-                            className={inputClass}
-                            value={form.branch_name}
-                            onChange={e => setForm(p => ({ ...p, branch_name: e.target.value }))}
-                            required
-                          >
-                            <option value="">— Select branch —</option>
-                            {BRANCHES.map(b => (
-                              <option key={b.name} value={b.name}>{b.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="flex flex-col gap-1.5 col-span-2">
-                          <label className={labelClass}>
-                            {isEdit ? <>New Password <span className="ml-1 normal-case font-normal text-gray-400">(leave blank to keep current)</span></> : 'Password'}
-                          </label>
-                          <div className="relative">
-                            <input className={`${inputClass} pr-11`} type={showPassword ? 'text' : 'password'} value={form.password}
-                              onChange={e => setForm(p => ({...p, password: e.target.value}))}
-                              placeholder={isEdit ? 'Enter new password to change' : 'Min. 8 characters'} required={!isEdit} />
-                            <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
-                              {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                            </button>
-                          </div>
-                          {showPwHints && (
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5">
-                              <span className={`text-[11px] font-medium ${checks.length ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>{checks.length ? '✓' : '○'} 8+ characters</span>
-                              <span className={`text-[11px] font-medium ${checks.uppercase ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>{checks.uppercase ? '✓' : '○'} Uppercase letter</span>
-                              <span className={`text-[11px] font-medium ${checks.number ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>{checks.number ? '✓' : '○'} Number</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      {modalError && <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">{modalError}</div>}
-                      <div className="flex gap-3 mt-2">
-                        <button type="button" onClick={closeModal} className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">Cancel</button>
-                        <button type="submit" disabled={modalLoading} className="flex-1 h-[44px] rounded-xl bg-[#DC143C] text-sm font-bold text-white hover:bg-[#b01030] transition-colors disabled:opacity-60">
-                          {modalLoading ? (isEdit ? 'Saving...' : 'Creating...') : (isEdit ? 'Save Changes' : 'Create Account')}
-                        </button>
-                      </div>
-                    </form>
-                  )}
-
-                  {/* ── Toggle Active ── */}
-                  {modalType === 'toggle' && (
-                    <div className="flex flex-col gap-4">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {selectedUser?.is_active
-                          ? <>Are you sure you want to deactivate <strong className="text-gray-700 dark:text-gray-200">{selectedUser?.full_name}</strong>? They will no longer be able to log in.</>
-                          : <>Are you sure you want to reactivate <strong className="text-gray-700 dark:text-gray-200">{selectedUser?.full_name}</strong>? They will be able to log in again.</>
-                        }
-                      </p>
-                      {modalError && <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">{modalError}</div>}
-                      <div className="flex gap-3">
-                        <button onClick={closeModal} className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">Cancel</button>
-                        <button onClick={handleToggle} disabled={modalLoading}
-                          className={`flex-1 h-[44px] rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-60 ${selectedUser?.is_active ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
-                          {modalLoading ? 'Updating...' : (selectedUser?.is_active ? 'Deactivate' : 'Reactivate')}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── Delete ── */}
-                  {modalType === 'delete' && (
-                    <div className="flex flex-col gap-4">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Are you sure you want to delete <strong className="text-gray-700 dark:text-gray-200">{selectedUser?.full_name}</strong>? This action cannot be undone.
-                      </p>
-                      {modalError && <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">{modalError}</div>}
-                      <div className="flex gap-3">
-                        <button onClick={closeModal} className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">Cancel</button>
-                        <button onClick={handleDelete} disabled={modalLoading} className="flex-1 h-[44px] rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-60">
-                          {modalLoading ? 'Deleting...' : 'Delete Account'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
+                {showPwHints && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5">
+                    <span className={`text-[11px] font-medium ${checks.length ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>{checks.length ? '✓' : '○'} 8+ characters</span>
+                    <span className={`text-[11px] font-medium ${checks.uppercase ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>{checks.uppercase ? '✓' : '○'} Uppercase letter</span>
+                    <span className={`text-[11px] font-medium ${checks.number ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>{checks.number ? '✓' : '○'} Number</span>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
+            {modalError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">
+                {modalError}
+              </div>
+            )}
+          </form>
+        </ModalShell>
       )}
+
+      {/* Deactivate / Reactivate */}
+      {modalType === 'toggle' && selectedUser && (
+        <ModalShell
+          onClose={closeModal}
+          icon={selectedUser.is_active ? <BanIcon /> : <CheckCircleIcon />}
+          iconClass={selectedUser.is_active ? 'text-yellow-500 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}
+          title={selectedUser.is_active ? 'Deactivate Account' : 'Reactivate Account'}
+          subtitle={selectedUser.full_name}
+          footer={
+            <>
+              <CancelBtn onClick={closeModal} />
+              <button
+                onClick={handleToggle}
+                disabled={modalLoading}
+                className={`px-4 py-2 text-sm font-semibold text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${
+                  selectedUser.is_active ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+                }`}
+              >
+                {modalLoading
+                  ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Updating...</>
+                  : selectedUser.is_active ? 'Deactivate' : 'Reactivate'
+                }
+              </button>
+            </>
+          }
+        >
+          <p>
+            {selectedUser.is_active
+              ? <>Are you sure you want to deactivate <span className="font-semibold text-gray-800 dark:text-gray-200">"{selectedUser.full_name}"</span>? They will no longer be able to log in.</>
+              : <>Are you sure you want to reactivate <span className="font-semibold text-gray-800 dark:text-gray-200">"{selectedUser.full_name}"</span>? They will be able to log in again.</>
+            }
+          </p>
+          {modalError && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">
+              {modalError}
+            </div>
+          )}
+        </ModalShell>
+      )}
+
+      {/* Delete */}
+      {modalType === 'delete' && selectedUser && (
+        <ModalShell
+          onClose={closeModal}
+          icon={<TrashIcon />}
+          iconClass="text-red-500 dark:text-red-400"
+          title="Delete Account"
+          subtitle={selectedUser.full_name}
+          footer={
+            <>
+              <CancelBtn onClick={closeModal} />
+              <button
+                onClick={handleDelete}
+                disabled={modalLoading}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {modalLoading
+                  ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Deleting...</>
+                  : 'Delete Account'
+                }
+              </button>
+            </>
+          }
+        >
+          <p>
+            Delete <span className="font-semibold text-gray-800 dark:text-gray-200">"{selectedUser.full_name}"</span>? This action cannot be undone.
+          </p>
+          {modalError && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">
+              {modalError}
+            </div>
+          )}
+        </ModalShell>
+      )}
+
+      {/* ── SUCCESS TOAST ── */}
+      {toast && <SuccessToast message={toast} />}
     </div>
   )
 }
