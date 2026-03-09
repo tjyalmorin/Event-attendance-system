@@ -135,7 +135,7 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <div className="mt-0.5 text-[22px] font-normal text-gray-500">#WeWinAsOne</div>
+              <div className="mt-0.5 text-[px] font-normal text-gray-500">#WeWinAsOne</div>
             </div>
           </div>
         </div>

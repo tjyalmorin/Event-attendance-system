@@ -11,7 +11,7 @@ import imgHealth     from '../../assets/Health.webp'
 import imgRetirement from '../../assets/Retirement.webp'
 import imgTeam       from '../../assets/Team.webp'
 
-// ── SVG Icon Components (black/white, minimal) ────────────────────
+// ── SVG Icon Components ────────────────────────────────────────
 const IconTrendingUp = ({ size = 16, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
@@ -139,6 +139,15 @@ const IconDollarSign = ({ size = 16, color = 'currentColor' }) => (
   </svg>
 )
 
+const IconFileText = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+    <polyline points="10 9 9 9 8 9" />
+  </svg>
+)
+
 // ── Types ─────────────────────────────────────────────────────────
 interface EventBranchEntry {
   branch_name: string
@@ -208,6 +217,15 @@ const slides = [
   },
 ]
 
+// ── Helpers ───────────────────────────────────────────────────────
+const formatTime12h = (time: string) => {
+  if (!time) return ''
+  const [h, m] = time.split(':').map(Number)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  const hour = h % 12 || 12
+  return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
 export default function RegistrationPage() {
   const { eventId } = useParams()
   const navigate = useNavigate()
@@ -231,14 +249,17 @@ export default function RegistrationPage() {
       .finally(() => setLoading(false))
   }, [eventId])
 
+  // Only run slideshow if no poster
   useEffect(() => {
+    if (event?.poster_url) return
     intervalRef.current = setInterval(() => {
       setCurrentSlide(prev => (prev + 1) % slides.length)
     }, 4500)
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [])
+  }, [event?.poster_url])
 
   const goToSlide = (i: number) => {
+    if (event?.poster_url) return
     setCurrentSlide(i)
     if (intervalRef.current) clearInterval(intervalRef.current)
     intervalRef.current = setInterval(() => {
@@ -249,21 +270,11 @@ export default function RegistrationPage() {
   const { branches: allBranches } = useBranches()
   const [agentCodeError, setAgentCodeError] = useState('')
 
-  // ── Build filtered branches from event_branches config ──────────
-  // event_branches tells us which branches AND which teams are included.
-  // If no event_branches config, fall back to showing everything.
   const availableBranches = (() => {
     const eventBranchConfig = event?.event_branches
-
-    // No config saved (old events or no branches set) — show all
-    if (!eventBranchConfig || eventBranchConfig.length === 0) {
-      return allBranches
-    }
-
+    if (!eventBranchConfig || eventBranchConfig.length === 0) return allBranches
     return allBranches
-      // Keep only branches that are in the event config
       .filter(b => eventBranchConfig.some(eb => eb.branch_name === b.name))
-      // Filter teams within each branch to only those selected
       .map(b => {
         const eb = eventBranchConfig.find(eb => eb.branch_name === b.name)
         if (!eb) return b
@@ -275,7 +286,6 @@ export default function RegistrationPage() {
       })
   })()
 
-  // Get teams for the currently selected branch (respects event filtering)
   const getTeamsForSelectedBranch = (branchName: string): string[] => {
     const branch = availableBranches.find(b => b.name === branchName)
     return branch?.teams?.map(t => t.name) ?? []
@@ -283,9 +293,7 @@ export default function RegistrationPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-
     if (name === 'agent_code') {
-      // Only allow digits, max 8
       const digits = value.replace(/\D/g, '').slice(0, 8)
       setForm(prev => ({ ...prev, agent_code: digits }))
       if (digits.length > 0 && digits.length !== 8) {
@@ -295,13 +303,10 @@ export default function RegistrationPage() {
       }
       return
     }
-
     if (name === 'branch_name') {
-      // Reset team when branch changes
       setForm(prev => ({ ...prev, branch_name: value, team_name: '' }))
       return
     }
-
     setForm(prev => ({ ...prev, [name]: value }))
   }
 
@@ -323,6 +328,7 @@ export default function RegistrationPage() {
     }
   }
 
+  // ── Loading ──────────────────────────────────────────────────
   if (loading) return (
     <div style={s.fullPage}>
       <Styles />
@@ -333,7 +339,6 @@ export default function RegistrationPage() {
     </div>
   )
 
-  // ── Event not found ──
   if (!event) return (
     <div style={s.fullPage}>
       <Styles />
@@ -347,7 +352,6 @@ export default function RegistrationPage() {
     </div>
   )
 
-  // ── Closed ──
   if (event.status !== 'open') return (
     <div style={s.fullPage}>
       <Styles />
@@ -360,6 +364,17 @@ export default function RegistrationPage() {
       </div>
     </div>
   )
+
+  // ── Derived event info ────────────────────────────────────────
+  const formattedDate = new Date(event.event_date).toLocaleDateString('en-PH', {
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+  })
+  const timeRange = event.start_time && event.end_time
+    ? `${formatTime12h(event.start_time)} – ${formatTime12h(event.end_time)}`
+    : event.start_time ? formatTime12h(event.start_time) : ''
+
+  const hasPoster = Boolean(event.poster_url)
+  const posterSrc = event.poster_url ?? null
 
   return (
     <div style={s.page}>
@@ -378,38 +393,75 @@ export default function RegistrationPage() {
               />
             </div>
             <div>
-              <div style={s.logoName}>A1<span style={{ color: '#DC143C' }}>PRIME</span></div>
-              <div style={s.logoSub}>Event Registration</div>
+              <div style={s.logoName}>A1<span style={{ color: '#DC143C' }}>PRIME</span> — Register<span style={{ color: '#DC143C' }}>.</span></div>
+              <div style={s.logoSub}>Fill in your agent details below to secure your slot.</div>
             </div>
           </div>
 
-          {/* Event info pill */}
-          <div style={s.eventPill}>
-            <span style={s.eventPillDot} />
-            <span style={s.eventPillText}>OPEN — {event.title}</span>
-          </div>
+          {/* ── Event Info Panel (What / Where / When / Why) ── */}
+          <div style={s.eventInfoBox}>
+            {/* WHAT */}
+            <div style={s.infoRow}>
+              <div style={s.infoRowLeft}>
+                <span style={{ ...s.infoIconBadge, background: '#fef2f2' }}>
+                  <IconFileText size={14} color="#DC143C" />
+                </span>
+              </div>
+              <div style={s.infoRowValue}>{event.title}</div>
+            </div>
 
-          <h1 style={s.heading}>Register for<br />this Event</h1>
-          <p style={s.subheading}>Fill in your agent details below to secure your slot.</p>
+            <div style={s.infoDivider} />
 
-          {/* Event meta strip */}
-          <div style={s.metaStrip}>
-            <div style={s.metaItem}>
-              <span style={s.metaIcon}><IconCalendar size={13} color="#6b7280" /></span>
-              <span style={s.metaVal}>
-                {new Date(event.event_date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </span>
+            {/* WHERE */}
+            <div style={s.infoRow}>
+              <div style={s.infoRowLeft}>
+                <span style={{ ...s.infoIconBadge, background: '#eff6ff' }}>
+                  <IconMapPin size={14} color="#3b82f6" />
+                </span>
+              </div>
+              <div style={s.infoRowValue}>
+                {event.venue || '—'}
+              </div>
             </div>
-            <div style={s.metaDivider} />
-            <div style={s.metaItem}>
-              <span style={s.metaIcon}><IconClock size={13} color="#6b7280" /></span>
-              <span style={s.metaVal}>{event.start_time} – {event.end_time}</span>
+
+            <div style={s.infoDivider} />
+
+            {/* WHEN */}
+            <div style={s.infoRow}>
+              <div style={s.infoRowLeft}>
+                <span style={{ ...s.infoIconBadge, background: '#f0fdf4' }}>
+                  <IconCalendar size={14} color="#10b981" />
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
+                <div style={s.infoRowValue}>
+                  {formattedDate}
+                </div>
+                {timeRange && (
+                  <div style={s.infoRowSub}>
+                    <span style={s.infoCardIconWrap}><IconClock size={12} color="#9ca3af" /></span>
+                    {timeRange}
+                  </div>
+                )}
+              </div>
             </div>
-            <div style={s.metaDivider} />
-            <div style={s.metaItem}>
-              <span style={s.metaIcon}><IconMapPin size={13} color="#6b7280" /></span>
-              <span style={s.metaVal}>{event.venue}</span>
-            </div>
+
+            {/* WHY — only if description exists */}
+            {event.description && (
+              <>
+                <div style={s.infoDivider} />
+                <div style={s.infoRow}>
+                  <div style={s.infoRowLeft}>
+                    <span style={{ ...s.infoIconBadge, background: '#fffbeb' }}>
+                      <IconInfo size={14} color="#f59e0b" />
+                    </span>
+                  </div>
+                  <div style={{ ...s.infoRowValue, fontWeight: 400, fontSize: 12.5, color: '#4b5563', lineHeight: 1.6, alignItems: 'flex-start' }}>
+                    {event.description}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Error */}
@@ -504,68 +556,109 @@ export default function RegistrationPage() {
           </form>
         </div>
 
-        {/* ── RIGHT: SLIDESHOW PANEL ── */}
+        {/* ── RIGHT: POSTER or SLIDESHOW ── */}
         <div style={s.visualPanel} className="pru-visual-panel">
-          {/* Top badge with PRU LIFE UK logo */}
-          <div style={s.topBadge}>
-            <div style={s.badgeIcon}>
-              <img
-                src={pruLogo}
-                alt="PRU LIFE UK"
-                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0 }}
-              />
-            </div>
-            <div>
-              <div style={s.badgeName}>A1 Prime</div>
-              <div style={s.badgeSub}>Trusted since 1996</div>
-            </div>
-          </div>
 
-          {/* Slides */}
-          {slides.map((sl, i) => (
-            <div
-              key={i}
-              style={{
-                ...s.slide,
-                backgroundImage: `url(${sl.image})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                opacity: i === currentSlide ? 1 : 0,
-                zIndex: i === currentSlide ? 1 : 0,
-              }}
-            >
-              <div style={s.slidePattern} />
-              <div style={s.slideOverlay} />
-              <div style={s.slideContent}>
-                <div style={s.slideTag}>{sl.tag}</div>
-                <div style={s.slideHeadline}>{sl.headline.split('\n').map((line, j) => <span key={j}>{line}<br /></span>)}</div>
-                <div style={s.slideDesc}>{sl.desc}</div>
-                <div style={s.pillsGrid}>
-                  {sl.pills.map((p, j) => (
-                    <div key={j} style={s.pill}>
-                      <div style={s.pillIcon}>{p.icon}</div>
-                      <div style={s.pillName}>{p.name}</div>
-                    </div>
-                  ))}
+          {hasPoster ? (
+            /* ── POSTER MODE ── */
+            <div style={s.posterWrap}>
+              {/* Top badge */}
+              <div style={s.topBadge}>
+                <div style={s.badgeIcon}>
+                  <img src={pruLogo} alt="PRU LIFE UK" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0 }} />
+                </div>
+                <div>
+                  <div style={s.badgeName}>A1 Prime</div>
+                  <div style={s.badgeSub}>Trusted since 1996</div>
+                </div>
+              </div>
+
+              <img
+                src={posterSrc!}
+                alt={event.title}
+                style={s.posterImg}
+              />
+
+              {/* Bottom overlay with event name */}
+              <div style={s.posterOverlay}>
+                <div style={s.posterEventLabel}>NOW OPEN FOR REGISTRATION</div>
+                <div style={s.posterEventTitle}>{event.title}</div>
+                <div style={s.posterEventMeta}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <IconCalendar size={13} color="rgba(255,255,255,0.8)" />
+                    {formattedDate}
+                  </span>
+                  {timeRange && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <IconClock size={13} color="rgba(255,255,255,0.8)" />
+                      {timeRange}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
-          ))}
+          ) : (
+            /* ── SLIDESHOW MODE ── */
+            <>
+              {/* Top badge */}
+              <div style={s.topBadge}>
+                <div style={s.badgeIcon}>
+                  <img src={pruLogo} alt="PRU LIFE UK" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0 }} />
+                </div>
+                <div>
+                  <div style={s.badgeName}>A1 Prime</div>
+                  <div style={s.badgeSub}>Trusted since 1996</div>
+                </div>
+              </div>
 
-          {/* Dots */}
-          <div style={s.dots}>
-            {slides.map((_, i) => (
-              <div
-                key={i}
-                onClick={() => goToSlide(i)}
-                style={{
-                  ...s.dot,
-                  width: i === currentSlide ? 20 : 6,
-                  background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)',
-                }}
-              />
-            ))}
-          </div>
+              {slides.map((sl, i) => (
+                <div
+                  key={i}
+                  style={{
+                    ...s.slide,
+                    backgroundImage: `url(${sl.image})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    opacity: i === currentSlide ? 1 : 0,
+                    zIndex: i === currentSlide ? 1 : 0,
+                  }}
+                >
+                  <div style={s.slidePattern} />
+                  <div style={s.slideOverlay} />
+                  <div style={s.slideContent}>
+                    <div style={s.slideTag}>{sl.tag}</div>
+                    <div style={s.slideHeadline}>
+                      {sl.headline.split('\n').map((line, j) => <span key={j}>{line}<br /></span>)}
+                    </div>
+                    <div style={s.slideDesc}>{sl.desc}</div>
+                    <div style={s.pillsGrid}>
+                      {sl.pills.map((p, j) => (
+                        <div key={j} style={s.pill}>
+                          <div style={s.pillIcon}>{p.icon}</div>
+                          <div style={s.pillName}>{p.name}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Dots */}
+              <div style={s.dots}>
+                {slides.map((_, i) => (
+                  <div
+                    key={i}
+                    onClick={() => goToSlide(i)}
+                    style={{
+                      ...s.dot,
+                      width: i === currentSlide ? 20 : 6,
+                      background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)',
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
       </div>
@@ -573,7 +666,7 @@ export default function RegistrationPage() {
   )
 }
 
-// ── Styles component ──────────────────────────────────────────────
+// ── Styles component ──────────────────────────────────────────
 function Styles() {
   return (
     <style>{`
@@ -592,13 +685,8 @@ function Styles() {
         transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
         appearance: auto;
       }
-      select.pru-input {
-        cursor: pointer;
-      }
-      select.pru-input:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
+      select.pru-input { cursor: pointer; }
+      select.pru-input:disabled { opacity: 0.5; cursor: not-allowed; }
       .pru-input:focus {
         border-color: #DC143C;
         background: #fff;
@@ -653,13 +741,13 @@ function Styles() {
   )
 }
 
-// ── Inline styles ─────────────────────────────────────────────────
+// ── Inline styles ─────────────────────────────────────────────
 const FONT = "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
 
 const s: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: '#ffffff',
+    background: '#f0f1f3',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -668,7 +756,7 @@ const s: Record<string, React.CSSProperties> = {
   },
   fullPage: {
     minHeight: '100vh',
-    background: '#ffffff',
+    background: '#f0f1f3',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -678,24 +766,24 @@ const s: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     width: '100%',
-    maxWidth: 1080,
+    maxWidth: 1100,
     minHeight: 700,
     borderRadius: 24,
     overflow: 'hidden',
-    boxShadow: '0 28px 80px rgba(220,20,60,0.1), 0 8px 24px rgba(0,0,0,0.08)',
+    boxShadow: '0 28px 80px rgba(220,20,60,0.08), 0 8px 24px rgba(0,0,0,0.08)',
     background: '#fff',
   },
 
-  // Form panel
+  // ── Form Panel ─────────────────────────────────────────────
   formPanel: {
-    padding: '44px 48px',
+    padding: '36px 44px 40px',
     overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
   },
-  logo: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 },
+  logo: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 },
   logoMark: {
-    width: 42, height: 42,
+    width: 40, height: 40,
     background: '#fff',
     borderRadius: 9,
     border: '1px solid #e5e7eb',
@@ -706,43 +794,89 @@ const s: Record<string, React.CSSProperties> = {
   },
   logoName: {
     fontFamily: FONT,
-    fontSize: '1.1rem', fontWeight: 800, color: '#1f2937', letterSpacing: '-0.02em',
+    fontSize: '1.05rem', fontWeight: 800, color: '#1f2937', letterSpacing: '-0.02em',
   },
-  logoSub: { fontSize: 10, color: '#9ca3af', letterSpacing: '0.5px' },
+  logoSub: { fontSize: 11, color: '#6b7280', letterSpacing: '0.2px', marginTop: 1 },
 
-  eventPill: {
-    display: 'inline-flex', alignItems: 'center', gap: 7,
-    background: '#fff', border: '1px solid #e5e7eb', borderRadius: 20,
-    padding: '5px 12px', marginBottom: 18, alignSelf: 'flex-start',
+  // ── Event Info Unified Box ─────────────────────────────────
+  eventInfoBox: {
+    background: '#f9fafb',
+    border: '1px solid #e5e7eb',
+    borderRadius: 14,
+    padding: '4px 0',
+    marginBottom: 20,
   },
-  eventPillDot: {
-    width: 7, height: 7, borderRadius: '50%', background: '#DC143C',
-    boxShadow: '0 0 0 2px rgba(220,20,60,0.2)',
+  infoRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: '10px 16px',
+  },
+  infoRowLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 36,
+    paddingTop: 1,
     flexShrink: 0,
   },
-  eventPillText: { fontSize: 11, fontWeight: 600, color: '#DC143C', letterSpacing: '0.05em' },
+  infoIconBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  infoRowValue: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#1f2937',
+    lineHeight: 1.4,
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 5,
+    flex: 1,
+  },
+  infoRowSub: {
+    fontSize: 12,
+    color: '#6b7280',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 5,
+  },
+  infoDivider: {
+    height: 1,
+    background: '#e5e7eb',
+    margin: '0 16px',
+  },
+  infoLabelDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '50%',
+    background: '#DC143C',
+    flexShrink: 0,
+    display: 'inline-block',
+  },
+  infoCardIconWrap: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    flexShrink: 0,
+    marginTop: 1,
+  },
 
   heading: {
     fontFamily: FONT,
-    fontSize: '1.85rem', fontWeight: 800, color: '#1f2937',
-    lineHeight: 1.15, marginBottom: 6, letterSpacing: '-0.03em',
+    fontSize: '1.7rem', fontWeight: 800, color: '#1f2937',
+    lineHeight: 1.15, marginBottom: 4, letterSpacing: '-0.03em',
   },
-  subheading: { fontSize: 14, color: '#6b7280', marginBottom: 20 },
-
-  metaStrip: {
-    display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6,
-    background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12,
-    padding: '10px 14px', marginBottom: 20,
-  },
-  metaItem: { display: 'flex', alignItems: 'center', gap: 5 },
-  metaIcon: { display: 'flex', alignItems: 'center' },
-  metaVal: { fontSize: 12, color: '#4b5563', fontWeight: 500 },
-  metaDivider: { width: 1, height: 12, background: '#d1d5db', margin: '0 4px' },
+  subheading: { fontSize: 13.5, color: '#6b7280', marginBottom: 16 },
 
   errorBanner: {
     background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626',
     borderRadius: 12, padding: '10px 14px', fontSize: 13,
-    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
   },
 
   form: { display: 'flex', flexDirection: 'column', gap: 14, flex: 1 },
@@ -750,7 +884,7 @@ const s: Record<string, React.CSSProperties> = {
   field: { display: 'flex', flexDirection: 'column', gap: 5 },
   label: {
     fontSize: 11, fontWeight: 700, color: '#6b7280',
-    letterSpacing: '1px', textTransform: 'uppercase',
+    letterSpacing: '1px', textTransform: 'uppercase' as const,
   },
 
   notice: {
@@ -759,10 +893,62 @@ const s: Record<string, React.CSSProperties> = {
     padding: '10px 13px', fontSize: 12, color: '#92400e',
   },
 
-  // Visual panel
+  // ── Visual Panel ───────────────────────────────────────────
   visualPanel: {
     position: 'relative', overflow: 'hidden', background: '#DC143C',
   },
+
+  // ── Poster mode ────────────────────────────────────────────
+  posterWrap: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  posterImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    objectPosition: 'center',
+    display: 'block',
+  },
+  posterOverlay: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    background: 'linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.0) 100%)',
+    padding: '32px 28px 28px',
+    color: 'white',
+    zIndex: 2,
+  },
+  posterEventLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: '0.12em',
+    textTransform: 'uppercase' as const,
+    color: '#DC143C',
+    background: 'rgba(255,255,255,0.95)',
+    display: 'inline-block',
+    padding: '3px 10px',
+    borderRadius: 20,
+    marginBottom: 10,
+  },
+  posterEventTitle: {
+    fontFamily: FONT,
+    fontSize: '1.4rem',
+    fontWeight: 800,
+    lineHeight: 1.25,
+    marginBottom: 10,
+    letterSpacing: '-0.02em',
+  },
+  posterEventMeta: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 5,
+    fontSize: 12.5,
+    color: 'rgba(255,255,255,0.85)',
+  },
+
+  // ── Slideshow mode ─────────────────────────────────────────
   slide: {
     position: 'absolute', inset: 0, transition: 'opacity 0.9s ease',
   },
@@ -784,7 +970,7 @@ const s: Record<string, React.CSSProperties> = {
     background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(8px)',
     border: '1px solid rgba(255,255,255,0.22)',
     padding: '4px 12px', borderRadius: 20,
-    fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase',
+    fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' as const,
     marginBottom: 12,
   },
   slideHeadline: {
@@ -799,7 +985,7 @@ const s: Record<string, React.CSSProperties> = {
   pill: {
     background: 'rgba(255,255,255,0.11)', backdropFilter: 'blur(8px)',
     border: '1px solid rgba(255,255,255,0.18)', borderRadius: 10,
-    padding: '10px 8px', textAlign: 'center',
+    padding: '10px 8px', textAlign: 'center' as const,
     display: 'flex', flexDirection: 'column', alignItems: 'center',
   },
   pillIcon: { display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
@@ -833,12 +1019,12 @@ const s: Record<string, React.CSSProperties> = {
     transition: 'width 0.3s ease, background 0.3s ease',
   },
 
-  // State screens
+  // ── State screens ──────────────────────────────────────────
   spinnerWrap: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 },
   loadingText: { fontSize: 13, color: '#6b7280' },
   stateCard: {
     background: '#fff', borderRadius: 18, padding: '44px 36px',
-    textAlign: 'center', maxWidth: 360,
+    textAlign: 'center' as const, maxWidth: 360,
     boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
   },
   stateIcon: {
