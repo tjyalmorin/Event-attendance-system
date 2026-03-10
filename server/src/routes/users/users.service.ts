@@ -6,27 +6,42 @@ import { CreateUserPayload } from '../../types/user.types.js'
 const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 
 export const createUserService = async (payload: CreateUserPayload) => {
-  const { agent_code, full_name, email, password, branch_name, role } = payload
-  if (!agent_code?.trim()) throw new Error('Agent code is required')
-  if (!full_name?.trim()) throw new Error('Full name is required')
-  if (!email?.trim()) throw new Error('Email is required')
+  const { agent_code, full_name, email, password, branch_name, role, team_name } = payload
+
+  // ── Required field checks ──
+  if (!full_name?.trim())    throw new Error('Full name is required')
+  if (!email?.trim())        throw new Error('Email is required')
   if (!validateEmail(email)) throw new Error('Invalid email format')
   if (!password || password.length < 6) throw new Error('Password must be at least 6 characters')
-  if (!branch_name?.trim()) throw new Error('Branch name is required')
+  if (!branch_name?.trim())  throw new Error('Branch name is required')
   if (!['admin', 'staff'].includes(role)) throw new Error('Role must be admin or staff')
 
-  const existing = await pool.query('SELECT user_id FROM users WHERE email = $1 AND deleted_at IS NULL', [email.trim().toLowerCase()])
+  // ── Duplicate email check ──
+  const existing = await pool.query(
+    'SELECT user_id FROM users WHERE email = $1 AND deleted_at IS NULL',
+    [email.trim().toLowerCase()]
+  )
   if (existing.rows.length > 0) throw new Error('Email already in use')
-  const existingCode = await pool.query('SELECT user_id FROM users WHERE agent_code = $1 AND deleted_at IS NULL', [agent_code.trim()])
-  if (existingCode.rows.length > 0) throw new Error('Agent code already in use')
+
+  // ── Agent code: optional, but unique if provided ──
+  const trimmedCode = agent_code?.trim() || null
+  if (trimmedCode) {
+    const existingCode = await pool.query(
+      'SELECT user_id FROM users WHERE agent_code = $1 AND deleted_at IS NULL',
+      [trimmedCode]
+    )
+    if (existingCode.rows.length > 0) throw new Error('Agent code already in use')
+  }
 
   const password_hash = await bcrypt.hash(password, 10)
   const user_id = uuidv4()
+  const trimmedTeam = team_name?.trim() || null
+
   const result = await pool.query(
-    `INSERT INTO users (user_id, agent_code, full_name, email, password_hash, branch_name, role)
-     VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `INSERT INTO users (user_id, agent_code, full_name, email, password_hash, branch_name, team_name, role)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      RETURNING user_id, agent_code, full_name, email, branch_name, team_name, role, is_active, created_at`,
-    [user_id, agent_code.trim(), full_name.trim(), email.trim().toLowerCase(), password_hash, branch_name.trim(), role]
+    [user_id, trimmedCode, full_name.trim(), email.trim().toLowerCase(), password_hash, branch_name.trim(), trimmedTeam, role]
   )
   return result.rows[0]
 }
@@ -100,18 +115,26 @@ export const adminResetPasswordService = async (user_id: string, newPassword: st
 }
 
 export const updateUserService = async (user_id: string, payload: {
-  agent_code?: string; full_name?: string; email?: string; password?: string
-  branch_name?: string; team_name?: string; role?: 'admin' | 'staff'
+  agent_code?: string | null; full_name?: string; email?: string; password?: string
+  branch_name?: string; team_name?: string | null; role?: 'admin' | 'staff'
 }) => {
   if (!user_id?.trim()) throw new Error('User ID is required')
-  const { agent_code, full_name, email, password, branch_name, role } = payload
+  const { agent_code, full_name, email, password, branch_name, team_name, role } = payload
 
   if (email) {
-    const existing = await pool.query('SELECT user_id FROM users WHERE email = $1 AND user_id != $2 AND deleted_at IS NULL', [email.trim().toLowerCase(), user_id])
+    const existing = await pool.query(
+      'SELECT user_id FROM users WHERE email = $1 AND user_id != $2 AND deleted_at IS NULL',
+      [email.trim().toLowerCase(), user_id]
+    )
     if (existing.rows.length > 0) throw new Error('Email already in use')
   }
-  if (agent_code) {
-    const existingCode = await pool.query('SELECT user_id FROM users WHERE agent_code = $1 AND user_id != $2 AND deleted_at IS NULL', [agent_code.trim(), user_id])
+
+  const trimmedCode = agent_code?.trim() || null
+  if (trimmedCode) {
+    const existingCode = await pool.query(
+      'SELECT user_id FROM users WHERE agent_code = $1 AND user_id != $2 AND deleted_at IS NULL',
+      [trimmedCode, user_id]
+    )
     if (existingCode.rows.length > 0) throw new Error('Agent code already in use')
   }
 
@@ -119,12 +142,13 @@ export const updateUserService = async (user_id: string, payload: {
   const values: any[] = []
   let idx = 1
 
-  if (full_name)   { fields.push(`full_name = $${idx++}`);   values.push(full_name.trim()) }
-  if (email)       { fields.push(`email = $${idx++}`);       values.push(email.trim().toLowerCase()) }
-  if (agent_code)  { fields.push(`agent_code = $${idx++}`);  values.push(agent_code.trim()) }
-  if (branch_name) { fields.push(`branch_name = $${idx++}`); values.push(branch_name.trim()) }
-  if (role)        { fields.push(`role = $${idx++}`);        values.push(role) }
-  if (password)    { const h = await bcrypt.hash(password, 10); fields.push(`password_hash = $${idx++}`); values.push(h) }
+  if (full_name)                { fields.push(`full_name = $${idx++}`);   values.push(full_name.trim()) }
+  if (email)                    { fields.push(`email = $${idx++}`);       values.push(email.trim().toLowerCase()) }
+  if ('agent_code' in payload)  { fields.push(`agent_code = $${idx++}`);  values.push(trimmedCode) }
+  if (branch_name)              { fields.push(`branch_name = $${idx++}`); values.push(branch_name.trim()) }
+  if (role)                     { fields.push(`role = $${idx++}`);        values.push(role) }
+  if ('team_name' in payload)   { fields.push(`team_name = $${idx++}`);   values.push(team_name?.trim() || null) }
+  if (password)                 { const h = await bcrypt.hash(password, 10); fields.push(`password_hash = $${idx++}`); values.push(h) }
 
   if (fields.length === 0) throw new Error('No fields to update')
   fields.push(`updated_at = NOW()`)

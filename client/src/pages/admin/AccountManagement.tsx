@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import Sidebar from '../../components/Sidebar'
 import { getAllUsersApi, createUserApi, deleteUserApi, updateUserApi, toggleUserActiveApi } from '../../api/users.api'
 import { User } from '../../types'
-import { useBranches } from '../../hooks/useBranches'
+import { getAllBranchesApi, BranchItem } from '../../api/branches.api'
 
 // ── Icons ──────────────────────────────────────────────────
 const PlusIcon = () => (
@@ -108,6 +108,9 @@ const SCROLLBAR_STYLES = `
   .dark [data-custom-select-list]::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 999px; }
   .dark [data-custom-select-list]::-webkit-scrollbar-thumb:hover { background: #DC143C; }
 `
+// scrollbarColor uses light-mode values; dark mode overridden via CSS above
+const SCROLLBAR_COLOR_LIGHT = '#d1d5db transparent'
+const SCROLLBAR_COLOR_DARK  = '#3a3a3a #1c1c1c'
 
 // ── Helpers ────────────────────────────────────────────────
 const formatDate = (iso: string) => {
@@ -131,12 +134,12 @@ type ModalType = 'create' | 'edit' | 'delete' | 'toggle' | null
 
 interface UserFormState {
   agent_code: string; full_name: string; email: string; password: string
-  branch_name: string; role: 'admin' | 'staff'
+  branch_name: string; role: 'admin' | 'staff'; team_name: string
 }
 
 const ITEMS_PER_PAGE = 10
 const EMPTY_FORM: UserFormState = {
-  agent_code: '', full_name: '', email: '', password: '', branch_name: '', role: 'staff'
+  agent_code: '', full_name: '', email: '', password: '', branch_name: '', role: 'staff', team_name: ''
 }
 
 // ── Custom Select Dropdown ─────────────────────────────────
@@ -153,13 +156,27 @@ interface CustomSelectProps {
 const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, placeholder = 'Select...', required, centered = false }) => {
   const [open, setOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 })
-  const ref = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
+  // FIX: use a ref to track open state for the mousedown handler closure
+  const openRef = useRef(false)
+  const dropRef = useRef<HTMLDivElement>(null)
   const selected = options.find(o => o.value === value)
 
+  // FIX: keep openRef in sync with open state
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
+
+  // FIX: listen on the button AND the portal dropdown div — not just a wrapper ref
+  // (the dropdown is rendered in document.body via portal, outside any wrapper ref)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      const clickedBtn = btnRef.current?.contains(target)
+      const clickedDrop = dropRef.current?.contains(target)
+      if (!clickedBtn && !clickedDrop) {
+        setOpen(false)
+      }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -169,47 +186,54 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
     if (!open) return
     const handler = () => setOpen(false)
     window.addEventListener('resize', handler)
-    return () => {
-      window.removeEventListener('resize', handler)
-    }
+    return () => window.removeEventListener('resize', handler)
   }, [open])
 
   const handleOpen = () => {
     if (btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect()
-      let top: number
-      if (centered) {
-        const dropHeight = Math.min(options.length * 42, 208)
-        const centeredTop = rect.top + rect.height / 2 - dropHeight / 2
-        top = Math.max(12, Math.min(centeredTop, window.innerHeight - dropHeight - 12))
-      } else {
-        top = rect.bottom + 4
-      }
-      setDropPos({ top, left: rect.left, width: rect.width })
+      // FIX: use requestAnimationFrame so getBoundingClientRect() runs AFTER
+      // document.body.style.overflow = 'hidden' has been applied by the modal's
+      // useEffect, preventing position offset bugs
+      requestAnimationFrame(() => {
+        if (!btnRef.current) return
+        const rect = btnRef.current.getBoundingClientRect()
+        let top: number
+        if (centered) {
+          const dropHeight = Math.min(options.length * 42, 208)
+          const centeredTop = rect.top + rect.height / 2 - dropHeight / 2
+          top = Math.max(12, Math.min(centeredTop, window.innerHeight - dropHeight - 12))
+        } else {
+          top = rect.bottom + 4
+        }
+        setDropPos({ top, left: rect.left, width: rect.width })
+        setOpen(p => !p)
+      })
     }
-    setOpen(p => !p)
   }
 
   const dropdown = open ? createPortal(
     <div
+      ref={dropRef}
       style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 99999 }}
       className="bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl"
       onWheel={e => e.stopPropagation()}
     >
-      {/* ── Dark mode scrollbar styles injected here ── */}
       <style>{SCROLLBAR_STYLES}</style>
       <div
         data-custom-select-list
         className="max-h-52 overflow-y-auto rounded-xl"
         onWheel={e => e.stopPropagation()}
         onTouchMove={e => e.stopPropagation()}
-        style={{ scrollbarWidth: 'thin', scrollbarColor: '#3a3a3a #1c1c1c' }}
+        style={{ scrollbarWidth: 'thin', scrollbarColor: document.documentElement.classList.contains('dark') ? SCROLLBAR_COLOR_DARK : SCROLLBAR_COLOR_LIGHT }}
       >
         {options.map((opt, i) => (
           <button
             key={opt.value}
             type="button"
-            onMouseDown={e => e.preventDefault()}
+            // FIX: preventDefault stops the modal form from losing focus / blur
+            // FIX: stopPropagation stops the document mousedown handler from
+            // firing and closing the dropdown before onClick registers
+            onMouseDown={e => { e.preventDefault(); e.stopPropagation() }}
             onClick={() => { onChange(opt.value); setOpen(false) }}
             className={`w-full flex items-center justify-between px-4 py-2.5 text-sm text-left transition-colors
               ${i === 0 ? '' : 'border-t border-gray-50 dark:border-[#2a2a2a]'}
@@ -232,7 +256,9 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
   ) : null
 
   return (
-    <div ref={ref} className="relative">
+    // FIX: removed wrapper <div ref={ref}> — the old ref was useless for portal
+    // click-outside detection. Now handled via btnRef + dropRef in the useEffect above.
+    <div className="relative">
       {required && (
         <input tabIndex={-1} required value={value} onChange={() => {}}
           className="absolute inset-0 opacity-0 pointer-events-none w-full" />
@@ -290,9 +316,13 @@ const ModalShell: React.FC<ModalShellProps> = ({
   title, subtitle, children, footer, wide = false,
 }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-    <div className={`bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full mx-4 overflow-clip ${wide ? 'max-w-lg' : 'max-w-md'}`}>
+    {/* FIX: removed overflow-clip — it was clipping the portal-rendered CustomSelect
+        dropdown even though the dropdown is attached to document.body. Chromium's
+        paint/hit-test layer still respects the clipping context of the stacking
+        ancestor, causing pointer events on the dropdown to be swallowed. */}
+    <div className={`bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full mx-4 ${wide ? 'max-w-lg' : 'max-w-md'}`}>
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+      <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424] rounded-t-2xl">
         <div className="flex items-center gap-3">
           <span className={iconClass}>{icon}</span>
           <div>
@@ -457,7 +487,11 @@ export default function AccountManagement() {
 
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
   const userRole = storedUser?.role || 'staff'
-  const { branches: BRANCHES } = useBranches()
+  const [BRANCHES, setBRANCHES] = useState<BranchItem[]>([])
+
+  useEffect(() => {
+    getAllBranchesApi().then(setBRANCHES).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (userRole !== 'admin') { navigate('/admin/settings/profile'); return }
@@ -501,8 +535,13 @@ export default function AccountManagement() {
     setModalError(''); setShowPassword(false)
     if (type === 'edit' && user) {
       setForm({
-        agent_code: user.agent_code || '', full_name: user.full_name, email: user.email,
-        password: '', branch_name: (user as any).branch_name || '', role: user.role as 'admin' | 'staff',
+        agent_code: user.agent_code ?? '',
+        full_name: user.full_name ?? '',
+        email: user.email ?? '',
+        password: '',
+        branch_name: (user as any).branch_name ?? '',
+        role: (user.role as 'admin' | 'staff') ?? 'staff',
+        team_name: (user as any).team_name ?? '',
       })
     } else { setForm(EMPTY_FORM) }
   }
@@ -510,9 +549,18 @@ export default function AccountManagement() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault(); setModalLoading(true); setModalError('')
-    if (form.agent_code.length !== 8) { setModalError('Agent code must be exactly 8 digits'); setModalLoading(false); return }
+    if (form.agent_code && form.agent_code.length !== 8) { setModalError('Agent code must be exactly 8 digits'); setModalLoading(false); return }
     try {
-      const created = await createUserApi(form)
+      const payload: any = {
+        full_name: form.full_name,
+        email: form.email,
+        password: form.password,
+        branch_name: form.branch_name,
+        role: form.role,
+        agent_code: form.agent_code.trim() || '',
+        team_name: form.team_name.trim() || null,
+      }
+      const created = await createUserApi(payload)
       setUsers(prev => [created as any, ...prev])
       closeModal()
       setToast('Account created successfully')
@@ -522,9 +570,9 @@ export default function AccountManagement() {
 
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault(); setModalLoading(true); setModalError('')
-    if (form.agent_code.length !== 8) { setModalError('Agent code must be exactly 8 digits'); setModalLoading(false); return }
+    if (form.agent_code && form.agent_code.length !== 8) { setModalError('Agent code must be exactly 8 digits'); setModalLoading(false); return }
     try {
-      const payload: any = { agent_code: form.agent_code, full_name: form.full_name, email: form.email, branch_name: form.branch_name, role: form.role }
+      const payload: any = { agent_code: form.agent_code.trim() || '', full_name: form.full_name, email: form.email, branch_name: form.branch_name, role: form.role, team_name: form.team_name.trim() || null }
       if (form.password.trim()) payload.password = form.password
       const updated = await updateUserApi(selectedUser!.user_id, payload)
       setUsers(prev => prev.map(u => u.user_id === updated.user_id ? { ...u, ...updated } : u))
@@ -598,6 +646,12 @@ export default function AccountManagement() {
     name: 'Name A–Z',
     agent_code: 'Agent Code',
   }
+
+  const selectedBranch = BRANCHES.find(b => b.name === form.branch_name)
+  const teamOptions = [
+    { value: '', label: 'None' },
+    ...(selectedBranch?.teams ?? []).map((t: any) => ({ value: t.name, label: t.name })),
+  ]
 
   const inputClass = "h-[44px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f] px-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-[#0f0f0f] focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
   const labelClass = "text-[11px] font-bold uppercase tracking-[1px] text-gray-500 dark:text-gray-400"
@@ -872,7 +926,7 @@ export default function AccountManagement() {
                 <input className={inputClass} type="email" value={form.email} onChange={e => setForm(p => ({...p, email: e.target.value}))} placeholder="email@example.com" required />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}>Agent Code</label>
+                <label className={labelClass}>Agent Code <span className="normal-case font-normal text-gray-400">(optional)</span></label>
                 <input
                   className={inputClass}
                   value={form.agent_code}
@@ -883,7 +937,6 @@ export default function AccountManagement() {
                   placeholder="8-digit code"
                   maxLength={8}
                   inputMode="numeric"
-                  required
                 />
                 {form.agent_code.length > 0 && form.agent_code.length !== 8 && (
                   <span className="text-[11px] text-red-500">Must be exactly 8 digits</span>
@@ -905,11 +958,21 @@ export default function AccountManagement() {
                 <label className={labelClass}>Branch</label>
                 <CustomSelect
                   value={form.branch_name}
-                  onChange={val => setForm(p => ({ ...p, branch_name: val }))}
+                  onChange={val => setForm(p => ({ ...p, branch_name: val, team_name: '' }))}
                   options={BRANCHES.map(b => ({ value: b.name, label: b.name }))}
                   placeholder="— Select branch —"
                   centered
                   required
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <label className={labelClass}>Team <span className="normal-case font-normal text-gray-400">(optional)</span></label>
+                <CustomSelect
+                  value={form.team_name}
+                  onChange={val => setForm(p => ({ ...p, team_name: val }))}
+                  options={teamOptions}
+                  placeholder={form.branch_name ? '— Select team —' : '— Select a branch first —'}
+                  centered
                 />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
@@ -1012,7 +1075,7 @@ export default function AccountManagement() {
           {modalError && (
             <div className="mt-3 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">
               {modalError}
-            </div>
+          </div>
           )}
         </ModalShell>
       )}

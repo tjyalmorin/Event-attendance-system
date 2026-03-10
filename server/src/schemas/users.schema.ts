@@ -7,21 +7,22 @@ const strongPassword = z.string()
   .regex(/[0-9]/, 'Must contain at least one number')
 
 export const createUserSchema = z.object({
-  agent_code:  z.string().min(1, 'Agent code is required').max(50),
+  agent_code:  z.string().max(50).optional(),
   full_name:   z.string().min(1, 'Full name is required').max(255),
   email:       z.string().email('Invalid email').toLowerCase(),
   password:    strongPassword,
   branch_name: z.string().min(1, 'Branch name is required').max(255),
+  team_name:   z.string().max(255).optional().nullable(),
   role:        z.enum(['admin', 'staff'], { error: 'Role must be admin or staff' }),
 })
 
 export const updateUserSchema = z.object({
-  agent_code:  z.string().min(1).max(50).optional(),
+  agent_code:  z.string().max(50).optional().nullable(),
   full_name:   z.string().min(1).max(255).optional(),
   email:       z.string().email('Invalid email').toLowerCase().optional(),
   password:    strongPassword.optional(),
   branch_name: z.string().min(1).max(255).optional(),
-  team_name:   z.string().min(1).max(255).optional(),
+  team_name:   z.string().max(255).optional().nullable(),
   role:        z.enum(['admin', 'staff']).optional(),
 })
 
