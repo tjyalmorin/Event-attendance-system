@@ -120,7 +120,7 @@ export default function ScannerPage() {
   const [error, setError]           = useState('')
   const [loading, setLoading]       = useState(false)
   const [photoError, setPhotoError] = useState(false)
-  const [countdown, setCountdown]   = useState(2)
+  const [countdown, setCountdown]   = useState(1)
   const [checkedInCount, setCheckedInCount] = useState(0)
   const [flashColor, setFlashColor] = useState<'green' | 'blue' | 'red' | null>(null)
   const [isEarlyOut, setIsEarlyOut] = useState(false)
@@ -146,7 +146,7 @@ export default function ScannerPage() {
   const userBranch  = storedUser?.branch_name || undefined
 
   // Countdown duration in seconds
-  const COUNTDOWN_SECS = 3
+  const COUNTDOWN_SECS = 1
 
   useEffect(() => {
     if (!eventId) return
@@ -177,7 +177,7 @@ export default function ScannerPage() {
             const next = prev - 1
             if (next <= 0) {
               clearInterval(countdownRef.current!)
-              setTimeout(() => resetToInput(), 1000)
+              setTimeout(() => resetToInput(), 0)
               return 0
             }
             return next

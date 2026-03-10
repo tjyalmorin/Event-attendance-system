@@ -1186,96 +1186,124 @@ export default function EventDetailTabs({
         const isEdit = labelViewModal.editMode || !p.label
         const c = p.label ? getLabelColor(String(p.label)) : getLabelColor('Custom…')
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setLabelViewModal({ open: false, participant: null, editMode: false })}>
-            <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-8" onClick={e => e.stopPropagation()}>
-              <div className="flex items-start justify-between mb-5">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                    {!p.label ? 'Add Label' : isEdit ? 'Edit Label' : 'Label Details'}
-                  </h2>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{p.full_name} · <span className="font-mono font-bold text-[#DC143C]">{fmtAgentCode(p.agent_code)}</span></p>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setLabelViewModal({ open: false, participant: null, editMode: false })}>
+            <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 overflow-clip" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+                <div className="flex items-center gap-3">
+                  <span className="text-[#DC143C]"><TagIcon /></span>
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                      {!p.label ? 'Add Label' : isEdit ? 'Edit Label' : 'Label Details'}
+                    </h2>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{p.full_name} · <span className="font-mono font-bold text-[#DC143C]">{fmtAgentCode(p.agent_code)}</span></p>
+                  </div>
                 </div>
-                {p.label && !isEdit && (
-                  <span className={`inline-flex items-center text-xs font-bold px-3 py-1 rounded-full border ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
-                    {p.label}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {p.label && !isEdit && (
+                    <span className={`inline-flex items-center text-xs font-bold px-2.5 py-0.5 rounded-full border ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
+                      {p.label}
+                    </span>
+                  )}
+                  <button onClick={() => setLabelViewModal({ open: false, participant: null, editMode: false })}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors">
+                    <XIcon />
+                  </button>
+                </div>
               </div>
+              <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+
+              {/* View mode */}
               {!isEdit && p.label && (
                 <>
-                  <div className="bg-gray-50 dark:bg-[#141414] rounded-2xl p-5 mb-6 space-y-3">
-                    <div>
-                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Label</p>
-                      <p className="text-sm font-semibold text-gray-800 dark:text-white">{p.label}</p>
-                    </div>
-                    {p.label_description ? (
+                  <div className="px-5 py-5 space-y-4">
+                    <div className="bg-gray-50 dark:bg-[#141414] rounded-xl p-4 space-y-3">
                       <div>
-                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Note</p>
-                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{p.label_description}</p>
+                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Label</p>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-white">{p.label}</p>
                       </div>
-                    ) : (
-                      <p className="text-sm text-gray-400 dark:text-gray-600 italic">No note added.</p>
-                    )}
+                      {p.label_description ? (
+                        <div>
+                          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Note</p>
+                          <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{p.label_description}</p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400 dark:text-gray-600 italic">No note added.</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex gap-3">
+                  <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+                  <div className="flex items-center justify-end gap-2 px-5 py-4">
                     <button onClick={() => setLabelViewModal({ open: false, participant: null, editMode: false })}
-                      className="flex-1 px-4 py-3 border border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-all">
+                      className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
                       Close
                     </button>
                     <button onClick={() => setLabelViewModal({ open: labelViewModal.open, participant: labelViewModal.participant, editMode: true })}
-                      className="flex-1 px-4 py-3 bg-[#DC143C] text-white rounded-xl font-semibold hover:bg-[#b01030] transition-all shadow-lg">
+                      className="px-4 py-2 text-sm font-semibold bg-slate-900 hover:bg-slate-800 text-white rounded-xl transition-all">
                       Edit
                     </button>
                   </div>
                 </>
               )}
+
+              {/* Edit mode */}
               {isEdit && (
                 <>
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Label Type</label>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {LABEL_OPTIONS.map(opt => {
-                      const oc = getLabelColor(opt === 'Custom…' ? 'Custom…' : opt)
-                      return (
-                        <button key={opt} onClick={() => setLabelType(opt)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                            labelType === opt
-                              ? `${oc.bg} ${oc.text} ${oc.border} ${oc.darkBg} ${oc.darkText} ring-2 ring-offset-1 ring-current`
-                              : 'bg-gray-50 dark:bg-[#1a1a1a] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#2a2a2a] hover:border-gray-400'
-                          }`}>
-                          {opt}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {labelType === 'Custom…' && (
-                    <div className="mb-4">
-                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Custom Label</label>
-                      <input value={labelCustom} onChange={e => setLabelCustom(e.target.value)}
-                        placeholder="e.g. Best Agent, Million Club…"
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C]"
+                  <div className="px-5 py-5 space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Label Type</label>
+                      <div className="flex flex-wrap gap-2">
+                        {LABEL_OPTIONS.map(opt => {
+                          const oc = getLabelColor(opt === 'Custom…' ? 'Custom…' : opt)
+                          return (
+                            <button key={opt} onClick={() => setLabelType(opt)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                labelType === opt
+                                  ? `${oc.bg} ${oc.text} ${oc.border} ${oc.darkBg} ${oc.darkText} ring-2 ring-offset-1 ring-current`
+                                  : 'bg-gray-50 dark:bg-[#1a1a1a] text-gray-600 dark:text-gray-400 border-gray-200 dark:border-[#2a2a2a] hover:border-gray-400'
+                              }`}>
+                              {opt}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    {labelType === 'Custom…' && (
+                      <div>
+                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Custom Label</label>
+                        <input value={labelCustom} onChange={e => setLabelCustom(e.target.value)}
+                          placeholder="e.g. Best Agent, Million Club…"
+                          className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C]"
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Note <span className="font-normal normal-case text-gray-400">(optional)</span></label>
+                      <textarea value={labelNote} onChange={e => setLabelNote(e.target.value)}
+                        placeholder="e.g. Seated at Table 2, Row 5 · Perform after opening remarks"
+                        rows={3}
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C] resize-none"
                       />
                     </div>
-                  )}
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2 mt-1">Note <span className="font-normal normal-case">optional</span></label>
-                  <textarea value={labelNote} onChange={e => setLabelNote(e.target.value)}
-                    placeholder="e.g. Seated at Table 2, Row 5 · Perform after opening remarks"
-                    rows={3}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C] resize-none mb-5"
-                  />
-                  <div className="flex gap-3">
+                  </div>
+                  <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+                  <div className="flex items-center justify-end gap-2 px-5 py-4">
                     <button onClick={() => p.label ? setLabelViewModal({ open: labelViewModal.open, participant: labelViewModal.participant, editMode: false }) : setLabelViewModal({ open: false, participant: null, editMode: false })}
-                      className="flex-1 px-4 py-3 border border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-all">
+                      className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
                       Cancel
                     </button>
                     {p.label && (
                       <button onClick={() => onSetLabel(false)} disabled={labelLoading}
-                        className="px-4 py-3 bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-200 transition-all disabled:opacity-50 text-sm">
+                        className="px-4 py-2 text-sm font-semibold bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-300 rounded-xl hover:bg-gray-200 dark:hover:bg-[#333] transition-all disabled:opacity-50">
                         Remove
                       </button>
                     )}
                     <button onClick={() => onSetLabel(true)} disabled={labelLoading || (labelType === 'Custom…' && !labelCustom.trim())}
-                      className="flex-1 px-4 py-3 bg-[#DC143C] text-white rounded-xl font-semibold hover:bg-[#b01030] transition-all shadow-lg disabled:opacity-50">
-                      {labelLoading ? 'Saving...' : 'Save Label'}
+                      className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 flex items-center gap-2">
+                      {labelLoading
+                        ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Saving...</>
+                        : 'Save Label'
+                      }
                     </button>
                   </div>
                 </>
@@ -1287,26 +1315,34 @@ export default function EventDetailTabs({
 
       {/* ── REMOVE REGISTRANT MODAL ── */}
       {removeModal.open && removeModal.participant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <span className="text-[#DC143C] mt-[1px] [&>svg]:w-6 [&>svg]:h-6"><TrashIcon /></span>
-                Remove Registrant
-              </h2>
-              <button onClick={() => setRemoveModal({ open: false, participant: null })} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><XIcon /></button>
-            </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Are you sure you want to remove <strong className="text-gray-700 dark:text-gray-200">{removeModal.participant.full_name}</strong> from this event? They will be moved to Trash and can be restored later.
-            </p>
-            <div className="flex gap-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 overflow-clip">
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+              <div className="flex items-center gap-3">
+                <span className="text-red-500"><TrashIcon /></span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Remove Registrant</h2>
+              </div>
               <button onClick={() => setRemoveModal({ open: false, participant: null })}
-                className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors">
+                <XIcon />
+              </button>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400">
+              Are you sure you want to remove <strong className="text-gray-800 dark:text-gray-200">{removeModal.participant.full_name}</strong> from this event? They will be moved to Trash and can be restored later.
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <button onClick={() => setRemoveModal({ open: false, participant: null })}
+                className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
                 Cancel
               </button>
               <button onClick={onRemoveConfirm} disabled={removeLoading}
-                className="flex-1 h-[44px] rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-60">
-                {removeLoading ? 'Removing...' : 'Move to Trash'}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all disabled:opacity-50 flex items-center gap-2">
+                {removeLoading
+                  ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Removing...</>
+                  : 'Move to Trash'
+                }
               </button>
             </div>
           </div>
@@ -1315,26 +1351,34 @@ export default function EventDetailTabs({
 
       {/* ── PERMANENT DELETE MODAL ── */}
       {permDeleteModal.open && permDeleteModal.participant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <span className="text-[#DC143C] mt-[1px] [&>svg]:w-6 [&>svg]:h-6"><TrashIcon /></span>
-                Permanently Delete
-              </h2>
-              <button onClick={() => setPermDeleteModal({ open: false, participant: null })} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><XIcon /></button>
-            </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Permanently delete <strong className="text-gray-700 dark:text-gray-200">{permDeleteModal.participant.full_name}</strong>? This will remove all their scan logs and attendance records. <span className="text-red-500 font-semibold">This cannot be undone.</span>
-            </p>
-            <div className="flex gap-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 overflow-clip">
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+              <div className="flex items-center gap-3">
+                <span className="text-red-500"><TrashIcon /></span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Delete Forever</h2>
+              </div>
               <button onClick={() => setPermDeleteModal({ open: false, participant: null })}
-                className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors">
+                <XIcon />
+              </button>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400">
+              Permanently delete <strong className="text-gray-800 dark:text-gray-200">{permDeleteModal.participant.full_name}</strong>? This will remove all their scan logs and attendance records. <span className="text-red-500 font-semibold">This cannot be undone.</span>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <button onClick={() => setPermDeleteModal({ open: false, participant: null })}
+                className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
                 Cancel
               </button>
               <button onClick={onPermDeleteConfirm} disabled={permDeleteLoading}
-                className="flex-1 h-[44px] rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-60">
-                {permDeleteLoading ? 'Deleting...' : 'Delete Forever'}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all disabled:opacity-50 flex items-center gap-2">
+                {permDeleteLoading
+                  ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Deleting...</>
+                  : 'Delete Forever'
+                }
               </button>
             </div>
           </div>
@@ -1343,23 +1387,34 @@ export default function EventDetailTabs({
 
       {/* ── REMOVE STAFF MODAL ── */}
       {removeStaffModal.open && removeStaffModal.staff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Remove Staff Access</h2>
-              <button onClick={() => setRemoveStaffModal({ open: false, staff: null })} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><XIcon /></button>
-            </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Remove <strong className="text-gray-700 dark:text-gray-200">{removeStaffModal.staff.full_name}</strong> from this event? They will lose access to this event's data.
-            </p>
-            <div className="flex gap-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 overflow-clip">
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+              <div className="flex items-center gap-3">
+                <span className="text-red-500"><TrashIcon /></span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Remove Staff Access</h2>
+              </div>
               <button onClick={() => setRemoveStaffModal({ open: false, staff: null })}
-                className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors">
+                <XIcon />
+              </button>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400">
+              Remove <strong className="text-gray-800 dark:text-gray-200">{removeStaffModal.staff.full_name}</strong> from this event? They will lose access to this event's data.
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <button onClick={() => setRemoveStaffModal({ open: false, staff: null })}
+                className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
                 Cancel
               </button>
               <button onClick={onRemoveStaff} disabled={!!removingStaffId}
-                className="flex-1 h-[44px] rounded-xl bg-red-600 text-sm font-bold text-white hover:bg-red-700 transition-colors disabled:opacity-60">
-                {removingStaffId ? 'Removing...' : 'Remove Access'}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all disabled:opacity-50 flex items-center gap-2">
+                {removingStaffId
+                  ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Removing...</>
+                  : 'Remove Access'
+                }
               </button>
             </div>
           </div>
@@ -1368,26 +1423,34 @@ export default function EventDetailTabs({
 
       {/* ── BULK CHECK OUT MODAL ── */}
       {bulkCheckOutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <span className="text-[#DC143C] mt-[1px] [&>svg]:w-6 [&>svg]:h-6"><BulkOutIcon /></span>
-                Check Out All
-              </h2>
-              <button onClick={() => setBulkCheckOutModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><XIcon /></button>
-            </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              This will check out all <strong className="text-gray-700 dark:text-gray-200">{visibleCheckedInCount} attendee{visibleCheckedInCount !== 1 ? 's' : ''}</strong> currently inside the event. This action cannot be undone.
-            </p>
-            <div className="flex gap-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 overflow-clip">
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+              <div className="flex items-center gap-3">
+                <span className="text-[#DC143C]"><BulkOutIcon /></span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Check Out All</h2>
+              </div>
               <button onClick={() => setBulkCheckOutModal(false)}
-                className="flex-1 h-[44px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors">
+                <XIcon />
+              </button>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400">
+              This will check out all <strong className="text-gray-800 dark:text-gray-200">{visibleCheckedInCount} attendee{visibleCheckedInCount !== 1 ? 's' : ''}</strong> currently inside the event. This action cannot be undone.
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <button onClick={() => setBulkCheckOutModal(false)}
+                className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
                 Cancel
               </button>
               <button onClick={onBulkCheckOut} disabled={bulkCheckOutLoading}
-                className="flex-1 h-[44px] rounded-xl bg-[#DC143C] text-sm font-bold text-white hover:bg-[#b01030] transition-colors disabled:opacity-60">
-                {bulkCheckOutLoading ? 'Checking out…' : `Check Out ${visibleCheckedInCount}`}
+                className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 flex items-center gap-2">
+                {bulkCheckOutLoading
+                  ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Checking out…</>
+                  : `Check Out ${visibleCheckedInCount}`
+                }
               </button>
             </div>
           </div>
@@ -1396,13 +1459,24 @@ export default function EventDetailTabs({
 
       {/* ── EARLY OUT MODAL ── */}
       {earlyOutModal.open && earlyOutModal.session && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setEarlyOutModal({ open: false, session: null })}>
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-sm mx-4 p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-gray-900 dark:text-white">Early Out Details</h2>
-              <button onClick={() => setEarlyOutModal({ open: false, session: null })} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"><XIcon /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEarlyOutModal({ open: false, session: null })}>
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-sm mx-4 overflow-clip" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+              <div className="flex items-center gap-3">
+                <span className="text-yellow-500 dark:text-yellow-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                </span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Early Out Details</h2>
+              </div>
+              <button onClick={() => setEarlyOutModal({ open: false, session: null })}
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors">
+                <XIcon />
+              </button>
             </div>
-            <div className="space-y-3">
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="px-5 py-5 space-y-4">
               <div>
                 <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Participant</p>
                 <p className="text-sm font-semibold text-gray-800 dark:text-white">{earlyOutModal.session.full_name}</p>
@@ -1421,10 +1495,13 @@ export default function EventDetailTabs({
                 </p>
               </div>
             </div>
-            <button onClick={() => setEarlyOutModal({ open: false, session: null })}
-              className="w-full mt-4 h-[42px] rounded-xl border border-gray-200 dark:border-[#2a2a2a] text-sm font-semibold text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
-              Close
-            </button>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="flex items-center justify-end px-5 py-4">
+              <button onClick={() => setEarlyOutModal({ open: false, session: null })}
+                className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

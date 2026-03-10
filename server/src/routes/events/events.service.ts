@@ -267,9 +267,16 @@ export const getTrashedEventsService = async () => {
   return result.rows
 }
 
+// ── BUG FIX: Also reset status if it was 'archived' before being trashed.
+//    Without this, restoring an event that was archived → trashed would leave
+//    status = 'archived', causing it to reappear in the Archive instead of
+//    the main EventManagement page.
 export const restoreEventService = async (event_id: number) => {
   const result = await pool.query(
-    `UPDATE events SET deleted_at = NULL, updated_at = NOW()
+    `UPDATE events
+     SET deleted_at = NULL,
+         status = CASE WHEN status = 'archived' THEN 'closed' ELSE status END,
+         updated_at = NOW()
      WHERE event_id = $1 AND deleted_at IS NOT NULL
      RETURNING event_id, title`,
     [event_id]
