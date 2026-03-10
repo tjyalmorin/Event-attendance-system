@@ -15,6 +15,7 @@ import { Event, Participant, AttendanceSession, ScanLog } from '../../types'
 import Sidebar from '../../components/Sidebar'
 import { useStaffProtection } from '../../hooks/useStaffProtection'
 import EventDetailTabs, { AssignedStaff, TabType } from './EventDetailTabs'
+import EditEventModal from '../../components/EditEventModal'
 
 // ─────────────────────────────────────────────────────────────
 // Constants / helpers
@@ -41,6 +42,12 @@ const ScannerIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <polyline points="3 7 3 3 7 3" /><polyline points="17 3 21 3 21 7" /><polyline points="21 17 21 21 17 21" /><polyline points="7 21 3 21 3 17" />
     <rect x="7" y="7" width="10" height="10" />
+  </svg>
+)
+const EditIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
   </svg>
 )
 const UsersIcon = () => (
@@ -140,6 +147,7 @@ export default function EventDetail() {
   // ── UI state ──
   const [copied, setCopied] = useState(false)
   const [statusToggling, setStatusToggling] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
 
   // ── Label modal state ──
   const [labelType, setLabelType] = useState('Awardee')
@@ -360,7 +368,7 @@ export default function EventDetail() {
   }
 
   // ─────────────────────────────────────────────────────────
-  // Excel export (unchanged from original)
+  // Excel export (unchanged)
   // ─────────────────────────────────────────────────────────
   const handleExport = async (docType: TabType) => {
     if (!event) return
@@ -371,7 +379,6 @@ export default function EventDetail() {
       scanlogs:    { header: 'FF01796F', teamBg: 'FFE0F2F1', teamText: 'FF01796F', totalBg: 'FFB2DFDB' },
     } as const
     const color = COLORS[docType as keyof typeof COLORS] ?? COLORS.registrants
-
     const wb = new ExcelJS.Workbook()
 
     const download = async (filename: string) => {
@@ -546,13 +553,13 @@ export default function EventDetail() {
 
       cursor = writeSectionTitle('Overall Numbers')
       const confirmedPts = pts.filter(p => p.registration_status === 'confirmed')
-      const totalReg   = confirmedPts.length
-      const totalAtt   = sess.length
-      const totalIn    = sess.filter(s => s.check_in_time && !s.check_out_time).length
-      const totalOut   = sess.filter(s => s.check_in_time && s.check_out_time).length
-      const totalEarly = sess.filter(s => s.check_out_method === 'early_out').length
+      const totalReg    = confirmedPts.length
+      const totalAtt    = sess.length
+      const totalIn     = sess.filter(s => s.check_in_time && !s.check_out_time).length
+      const totalOut    = sess.filter(s => s.check_in_time && s.check_out_time).length
+      const totalEarly  = sess.filter(s => s.check_out_method === 'early_out').length
       const totalNoShow = Math.max(0, totalReg - totalAtt)
-      const attRate    = totalReg > 0 ? Math.round((totalAtt / totalReg) * 100) : 0
+      const attRate     = totalReg > 0 ? Math.round((totalAtt / totalReg) * 100) : 0
 
       const overallData: [string, string | number][] = [
         ['Total Registered', totalReg], ['Total Attended', totalAtt], ['Attendance Rate', `${attRate}%`],
@@ -582,11 +589,11 @@ export default function EventDetail() {
       cursor = writeSectionTitle('Per-Branch Breakdown')
       cursor = writeTableHeader(['Branch', 'Registered', 'Attended', 'Att. Rate', 'Early Outs', 'No-Shows'])
       allBranches.forEach((branch, ri) => {
-        const bReg   = confirmedPts.filter(p => p.branch_name === branch).length
-        const bAtt   = sess.filter(s => s.branch_name === branch).length
-        const bEarly = sess.filter(s => s.branch_name === branch && s.check_out_method === 'early_out').length
+        const bReg    = confirmedPts.filter(p => p.branch_name === branch).length
+        const bAtt    = sess.filter(s => s.branch_name === branch).length
+        const bEarly  = sess.filter(s => s.branch_name === branch && s.check_out_method === 'early_out').length
         const bNoShow = Math.max(0, bReg - bAtt)
-        const bRate  = bReg > 0 ? `${Math.round((bAtt / bReg) * 100)}%` : '—'
+        const bRate   = bReg > 0 ? `${Math.round((bAtt / bReg) * 100)}%` : '—'
         cursor = writeDataRow([branch, bReg, bAtt, bRate, bEarly, bNoShow], ri)
       })
     }
@@ -786,6 +793,16 @@ export default function EventDetail() {
             )}
 
             <div className="flex-1" />
+
+            {/* ── Edit Event Button (admin only) ── */}
+            {isAdmin && (
+              <button
+                onClick={() => setEditModalOpen(true)}
+                className="flex items-center gap-2 border border-gray-200 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 px-5 py-2.5 rounded-xl font-semibold text-sm hover:border-[#DC143C] hover:text-[#DC143C] dark:hover:border-[#DC143C] dark:hover:text-[#DC143C] transition-all">
+                <EditIcon />
+                Edit Event
+              </button>
+            )}
 
             <button
               onClick={() => navigate(`/admin/events/${eventId}/scanner`)}
@@ -1019,6 +1036,18 @@ export default function EventDetail() {
 
         </div>
       </div>
+
+      {/* ── EDIT EVENT MODAL ── */}
+      {editModalOpen && (
+        <EditEventModal
+          event={event}
+          onClose={() => setEditModalOpen(false)}
+          onSuccess={() => {
+            setEditModalOpen(false)
+            fetchData()
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -98,6 +98,17 @@ const CheckIcon = () => (
   </svg>
 )
 
+// ── Scrollbar styles injected once ────────────────────────
+const SCROLLBAR_STYLES = `
+  [data-custom-select-list]::-webkit-scrollbar { width: 4px; }
+  [data-custom-select-list]::-webkit-scrollbar-track { background: transparent; }
+  [data-custom-select-list]::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
+  [data-custom-select-list]::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+  .dark [data-custom-select-list]::-webkit-scrollbar-track { background: #1c1c1c; }
+  .dark [data-custom-select-list]::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 999px; }
+  .dark [data-custom-select-list]::-webkit-scrollbar-thumb:hover { background: #DC143C; }
+`
+
 // ── Helpers ────────────────────────────────────────────────
 const formatDate = (iso: string) => {
   if (!iso) return '—'
@@ -185,7 +196,15 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
       className="bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl"
       onWheel={e => e.stopPropagation()}
     >
-      <div className="max-h-52 overflow-y-auto rounded-xl" onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
+      {/* ── Dark mode scrollbar styles injected here ── */}
+      <style>{SCROLLBAR_STYLES}</style>
+      <div
+        data-custom-select-list
+        className="max-h-52 overflow-y-auto rounded-xl"
+        onWheel={e => e.stopPropagation()}
+        onTouchMove={e => e.stopPropagation()}
+        style={{ scrollbarWidth: 'thin', scrollbarColor: '#3a3a3a #1c1c1c' }}
+      >
         {options.map((opt, i) => (
           <button
             key={opt.value}
@@ -222,7 +241,7 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
         ref={btnRef}
         type="button"
         onClick={handleOpen}
-        className={`h-[44px] w-full rounded-xl border-[1.5px] bg-gray-50 dark:bg-[#1c1c1c] px-4 text-sm outline-none transition-all flex items-center justify-between gap-2
+        className={`h-[44px] w-full rounded-xl border-[1.5px] bg-gray-50 dark:bg-[#0f0f0f] px-4 text-sm outline-none transition-all flex items-center justify-between gap-2
           ${open
             ? 'border-[#DC143C] bg-white dark:bg-[#1c1c1c] shadow-[0_0_0_3px_rgba(220,20,60,0.08)]'
             : 'border-gray-200 dark:border-[#2a2a2a] hover:border-gray-300 dark:hover:border-[#3a3a3a]'
@@ -580,7 +599,7 @@ export default function AccountManagement() {
     agent_code: 'Agent Code',
   }
 
-  const inputClass = "h-[44px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#1c1c1c] px-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-[#1c1c1c] focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
+  const inputClass = "h-[44px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f] px-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-[#0f0f0f] focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
   const labelClass = "text-[11px] font-bold uppercase tracking-[1px] text-gray-500 dark:text-gray-400"
   const isEdit = modalType === 'edit'
   const checks = pwChecks(form.password)
