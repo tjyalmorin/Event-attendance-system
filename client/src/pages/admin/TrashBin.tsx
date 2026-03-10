@@ -65,6 +65,7 @@ const TrashBin: React.FC = () => {
   const [pendingDeleteIds, setPendingDeleteIds] = useState<number[]>([])
   const [toast, setToast] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   useEffect(() => {
     fetchTrashedEvents()
@@ -142,6 +143,7 @@ const TrashBin: React.FC = () => {
   }
 
   const handleConfirmDelete = async () => {
+    setDeleteLoading(true)
     for (const id of pendingDeleteIds) {
       setPermDeletingId(id)
       try {
@@ -155,6 +157,7 @@ const TrashBin: React.FC = () => {
     setSelected([])
     setPendingDeleteIds([])
     setShowDeleteConfirm(false)
+    setDeleteLoading(false)
     setToast('Event permanently deleted')
   }
 
@@ -231,7 +234,6 @@ const TrashBin: React.FC = () => {
                 </span>
               </div>
 
-              {/* Bulk action bar — only visible when something is selected */}
               {someSelected && (
                 <div className="flex items-center gap-2 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl px-4 py-2.5">
                   <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 mr-1">
@@ -347,7 +349,6 @@ const TrashBin: React.FC = () => {
             </div>
           )}
 
-          {/* Footer note */}
           {trashedEvents.length > 0 && !search && (
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-6 text-center">
               Deleted events are kept here until permanently removed.
@@ -356,46 +357,68 @@ const TrashBin: React.FC = () => {
         </div>
       </div>
 
-      {/* Delete Forever Confirmation Modal */}
+      {/* ── Delete Forever Confirmation Modal ── */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-sm mx-4 p-6">
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-500">
-                <TrashIcon />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 overflow-clip">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+              <div className="flex items-center gap-3">
+                <span className="text-red-500"><TrashIcon /></span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Delete Forever?</h2>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Delete Forever?</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {pendingDeleteEvents.length === 1
-                    ? 'This event will be permanently deleted and cannot be recovered.'
-                    : `These ${pendingDeleteEvents.length} events will be permanently deleted and cannot be recovered.`}
-                </p>
-              </div>
-              <div className="w-full bg-gray-50 dark:bg-[#141414] border border-gray-200 dark:border-[#2a2a2a] rounded-xl overflow-y-auto max-h-[180px]">
-                {pendingDeleteEvents.map((event, idx) => (
-                  <div
-                    key={event.event_id}
-                    className={`px-4 py-2.5 text-left ${idx !== pendingDeleteEvents.length - 1 ? 'border-b border-gray-100 dark:border-[#2a2a2a]' : ''}`}
-                  >
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{event.title}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-3 w-full mt-1">
-                <button
-                  onClick={() => { setShowDeleteConfirm(false); setPendingDeleteIds([]) }}
-                  className="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl text-sm font-semibold hover:bg-gray-50 dark:hover:bg-[#333] transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmDelete}
-                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 transition-all"
-                >
-                  Delete Forever
-                </button>
-              </div>
+              <button
+                onClick={() => { setShowDeleteConfirm(false); setPendingDeleteIds([]) }}
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors"
+              >
+                <XIcon />
+              </button>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+
+            {/* Body */}
+            <div className="px-5 py-5 space-y-3">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {pendingDeleteEvents.length === 1
+                  ? <><strong className="text-gray-700 dark:text-gray-200">{pendingDeleteEvents[0].title}</strong> will be permanently deleted and cannot be recovered.</>
+                  : <>These <strong className="text-gray-700 dark:text-gray-200">{pendingDeleteEvents.length} events</strong> will be permanently deleted and cannot be recovered.</>
+                }
+              </p>
+              {pendingDeleteEvents.length > 1 && (
+                <div className="bg-gray-50 dark:bg-[#141414] border border-gray-200 dark:border-[#2a2a2a] rounded-xl overflow-hidden max-h-[180px] overflow-y-auto">
+                  {pendingDeleteEvents.map((event, idx) => (
+                    <div
+                      key={event.event_id}
+                      className={`px-4 py-2.5 ${idx !== pendingDeleteEvents.length - 1 ? 'border-b border-gray-100 dark:border-[#2a2a2a]' : ''}`}
+                    >
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{event.title}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => { setShowDeleteConfirm(false); setPendingDeleteIds([]) }}
+                className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deleteLoading}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {deleteLoading
+                  ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Deleting...</>
+                  : 'Delete Forever'
+                }
+              </button>
             </div>
           </div>
         </div>

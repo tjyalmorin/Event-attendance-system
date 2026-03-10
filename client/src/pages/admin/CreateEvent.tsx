@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -62,10 +62,10 @@ const DateInput = React.forwardRef<HTMLButtonElement, { value?: string; onClick?
     </button>
   )
 );
-const TimeInput = React.forwardRef<HTMLButtonElement, { value?: string; onClick?: () => void; placeholder?: string }>(
-  ({ value, onClick, placeholder }, ref) => (
+const TimeInput = React.forwardRef<HTMLButtonElement, { value?: string; onClick?: () => void; placeholder?: string; hasError?: boolean }>(
+  ({ value, onClick, placeholder, hasError }, ref) => (
     <button type="button" onClick={onClick} ref={ref}
-      className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-left focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all flex items-center justify-between gap-2">
+      className={`w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border rounded-xl text-left focus:outline-none focus:ring-2 transition-all flex items-center justify-between gap-2 ${hasError ? 'border-red-400 focus:border-red-400 focus:ring-red-400/20' : 'border-gray-200 dark:border-[#2a2a2a] focus:border-[#DC143C] focus:ring-[#DC143C]/20'}`}>
       <span className={value ? 'text-gray-900 dark:text-white text-sm' : 'text-gray-400 dark:text-gray-600 text-sm'}>{value || placeholder}</span>
       <ClockIcon />
     </button>
@@ -91,6 +91,14 @@ const CreateEvent: React.FC = () => {
   const availableBranches = userRole === 'admin'
     ? branches
     : branches.filter(b => b.name === userBranch);
+
+  // ── Refs for scroll-to-first-error ──
+  const titleRef     = useRef<HTMLDivElement>(null);
+  const eventDateRef = useRef<HTMLDivElement>(null);
+  const startTimeRef = useRef<HTMLDivElement>(null);
+  const endTimeRef   = useRef<HTMLDivElement>(null);
+  const venueRef     = useRef<HTMLDivElement>(null);
+  const branchesRef  = useRef<HTMLDivElement>(null);
 
   // ── Branch/Team state ──
   const [selectedBranches, setSelectedBranches] = useState<BranchSelection[]>([]);
@@ -196,7 +204,13 @@ const CreateEvent: React.FC = () => {
   const [showDescription, setShowDescription] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [fieldErrors, setFieldErrors] = useState<{ title?: string; eventDate?: string; venue?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{
+    title?: string;
+    eventDate?: string;
+    startTime?: string;
+    endTime?: string;
+    venue?: string;
+  }>({});
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
@@ -220,16 +234,37 @@ const CreateEvent: React.FC = () => {
   const formatTime = (date: Date | null) => date ? date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
   const formatTimeDisplay = (date: Date | null) => date ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
 
+  // ── Validate + auto-scroll to first error ──
   const validate = () => {
-    const errors: { title?: string; eventDate?: string; venue?: string } = {};
+    const errors: typeof fieldErrors = {};
+    let branchErr = '';
+
     if (!formData.title.trim()) errors.title = 'Event name is required.';
     if (!eventDate) errors.eventDate = 'Event date is required.';
+    if (!startTime) errors.startTime = 'Start time is required.';
+    if (!endTime) errors.endTime = 'End time is required.';
     if (!formData.venue.trim()) errors.venue = 'Venue is required.';
-    if (selectedBranches.length === 0) { setBranchesError('Please select at least one branch.'); setFieldErrors(errors); return false; }
-    if (selectedBranches.some(b => b.teams.length === 0)) { setBranchesError('Please select at least one team for each checked branch.'); setFieldErrors(errors); return false; }
-    setBranchesError('');
+    if (selectedBranches.length === 0) branchErr = 'Please select at least one branch.';
+    else if (selectedBranches.some(b => b.teams.length === 0)) branchErr = 'Please select at least one team for each checked branch.';
+
     setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
+    setBranchesError(branchErr);
+
+    // Scroll to the first field with an error, in DOM order
+    const firstErrorRef = [
+      errors.title     ? titleRef     : null,
+      errors.eventDate ? eventDateRef : null,
+      errors.startTime ? startTimeRef : null,
+      errors.endTime   ? endTimeRef   : null,
+      errors.venue     ? venueRef     : null,
+      branchErr        ? branchesRef  : null,
+    ].find(Boolean);
+
+    if (firstErrorRef?.current) {
+      firstErrorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    return Object.keys(errors).length === 0 && !branchErr;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -294,6 +329,8 @@ const CreateEvent: React.FC = () => {
         .dark .react-datepicker__day--today { color: #ff6b6b; }
         .react-datepicker__day--outside-month { color: #d1d5db; }
         .dark .react-datepicker__day--outside-month { color: #4b5563; }
+        .react-datepicker__day--disabled { color: #d1d5db !important; cursor: not-allowed !important; background: transparent !important; }
+        .dark .react-datepicker__day--disabled { color: #3a3a3a !important; }
         .react-datepicker__navigation-icon::before { border-color: #9ca3af; }
         .react-datepicker__navigation:hover .react-datepicker__navigation-icon::before { border-color: #DC143C; }
         .react-datepicker__month-container { background: #fff; }
@@ -371,10 +408,8 @@ const CreateEvent: React.FC = () => {
         <div className="max-w-4xl mx-auto px-8 py-8">
           <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-sm border border-gray-200 dark:border-[#2a2a2a] overflow-clip">
 
-            {/* Red top edge */}
             <div className="h-1.5 w-full bg-gradient-to-r from-[#DC143C] to-[#ff4d6d]" />
 
-            {/* Container header */}
             <div className="flex items-center justify-between px-6 py-4 bg-gray-50 dark:bg-[#242424]">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">Create Event</h2>
               <span className="text-xs text-gray-400 dark:text-gray-500">Fields marked <span className="text-[#DC143C]">*</span> are required</span>
@@ -387,7 +422,8 @@ const CreateEvent: React.FC = () => {
                 {/* ── 1. Basic Info ── */}
                 <SectionDivider step={1} label="Basic Info" />
 
-                <div>
+                {/* Event Name */}
+                <div ref={titleRef}>
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                     Event Name <span className="text-[#DC143C]">*</span>
                   </label>
@@ -464,24 +500,29 @@ const CreateEvent: React.FC = () => {
                 <SectionDivider step={2} label="Schedule" />
 
                 <div className="grid grid-cols-3 gap-4">
-                  <div>
+                  <div ref={eventDateRef}>
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Date <span className="text-[#DC143C]">*</span></label>
                     <DatePicker selected={eventDate}
                       onChange={(date: Date | null) => { setEventDate(date); if (fieldErrors.eventDate) setFieldErrors(p => ({ ...p, eventDate: undefined })); }}
-                      dateFormat="MM/dd/yyyy" placeholderText="Pick a date" customInput={<DateInput />} popperPlacement="bottom-start" />
+                      dateFormat="MM/dd/yyyy" placeholderText="Pick a date" customInput={<DateInput />} popperPlacement="bottom-start"
+                      minDate={new Date()} />
                     <FieldError msg={fieldErrors.eventDate} />
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Start Time</label>
-                    <DatePicker selected={startTime} onChange={(date: Date | null) => setStartTime(date)}
+                  <div ref={startTimeRef}>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Start Time <span className="text-[#DC143C]">*</span></label>
+                    <DatePicker selected={startTime}
+                      onChange={(date: Date | null) => { setStartTime(date); if (fieldErrors.startTime) setFieldErrors(p => ({ ...p, startTime: undefined })); }}
                       showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Start" dateFormat="h:mm aa"
-                      placeholderText="Pick start time" customInput={<TimeInput />} popperPlacement="bottom-start" />
+                      placeholderText="Pick start time" customInput={<TimeInput hasError={!!fieldErrors.startTime} />} popperPlacement="bottom-start" />
+                    <FieldError msg={fieldErrors.startTime} />
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">End Time</label>
-                    <DatePicker selected={endTime} onChange={(date: Date | null) => setEndTime(date)}
+                  <div ref={endTimeRef}>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">End Time <span className="text-[#DC143C]">*</span></label>
+                    <DatePicker selected={endTime}
+                      onChange={(date: Date | null) => { setEndTime(date); if (fieldErrors.endTime) setFieldErrors(p => ({ ...p, endTime: undefined })); }}
                       showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="End" dateFormat="h:mm aa"
-                      placeholderText="Pick end time" customInput={<TimeInput />} popperPlacement="bottom-start" />
+                      placeholderText="Pick end time" customInput={<TimeInput hasError={!!fieldErrors.endTime} />} popperPlacement="bottom-start" />
+                    <FieldError msg={fieldErrors.endTime} />
                   </div>
                 </div>
 
@@ -489,8 +530,7 @@ const CreateEvent: React.FC = () => {
                   <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#2a2a2a] px-4 py-3 rounded-xl -mt-2">
                     <div className="w-0.5 h-4 bg-[#DC143C] rounded-full flex-shrink-0" />
                     <p className="text-sm text-gray-600 dark:text-gray-300">
-                      {eventDate.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
-                      {' · '}{formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)}
+                      The event will be on {eventDate.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}, from {formatTimeDisplay(startTime)} to {formatTimeDisplay(endTime)}.
                     </p>
                   </div>
                 )}
@@ -498,7 +538,7 @@ const CreateEvent: React.FC = () => {
                 {/* ── 3. Venue ── */}
                 <SectionDivider step={3} label="Venue" />
 
-                <div>
+                <div ref={venueRef}>
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Venue <span className="text-[#DC143C]">*</span></label>
                   <input type="text" name="venue" value={formData.venue} onChange={handleChange}
                     placeholder="e.g., Makati City, Ayala North Tower 1"
@@ -511,7 +551,7 @@ const CreateEvent: React.FC = () => {
                 {/* ── 4. Branches & Teams ── */}
                 <SectionDivider step={4} label={userRole === 'admin' ? 'Branches & Teams' : 'Teams'} />
 
-                <div>
+                <div ref={branchesRef}>
                   {userRole === 'admin' && availableBranches.length > 0 && (
                     <div className="flex items-center justify-between mb-3">
                       <p className="text-xs text-gray-400 dark:text-gray-500">Select which branches and teams are included in this event.</p>
@@ -535,9 +575,7 @@ const CreateEvent: React.FC = () => {
 
                       return (
                         <div key={branch.branch_id} className={bi > 0 ? 'border-t border-gray-100 dark:border-[#2a2a2a]' : ''}>
-                          {/* Branch row */}
                           <div className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${checked ? 'bg-white dark:bg-[#DC143C]/5' : 'bg-white dark:bg-[#1c1c1c]'}`}>
-                            {/* Checkbox */}
                             <div onClick={() => userRole === 'admin' && toggleBranch(branch.name)}
                               className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${userRole === 'admin' ? 'cursor-pointer' : 'cursor-default'} ${checked || userRole === 'staff' ? 'border-[#DC143C] bg-[#DC143C]' : 'border-gray-300 dark:border-[#444] bg-white dark:bg-[#0f0f0f] hover:border-[#DC143C]'}`}>
                               {(checked || userRole === 'staff') && (
@@ -546,8 +584,6 @@ const CreateEvent: React.FC = () => {
                                 </svg>
                               )}
                             </div>
-
-                            {/* Branch name + pill — clickable to expand */}
                             <div className={`flex-1 flex items-center gap-2.5 min-w-0 ${(checked || userRole === 'staff') && teams.length > 0 ? 'cursor-pointer' : ''}`}
                               onClick={() => (checked || userRole === 'staff') && teams.length > 0 && toggleBranchExpand(branch.name)}>
                               <span className={`font-semibold text-sm ${checked || userRole === 'staff' ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}>
@@ -563,8 +599,6 @@ const CreateEvent: React.FC = () => {
                                 </span>
                               )}
                             </div>
-
-                            {/* Chevron expand toggle */}
                             {(checked || userRole === 'staff') && teams.length > 0 && (
                               <button type="button" onClick={() => toggleBranchExpand(branch.name)}
                                 className={`p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#333] transition-all ${expanded ? 'rotate-180' : ''}`}>
@@ -573,7 +607,6 @@ const CreateEvent: React.FC = () => {
                             )}
                           </div>
 
-                          {/* Teams panel */}
                           {(checked || userRole === 'staff') && expanded && teams.length > 0 && (
                             <div className="bg-gray-100 dark:bg-[#161616] border-t border-gray-200 dark:border-[#252525] px-4 py-3.5">
                               <div className="flex items-center justify-between mb-3">
@@ -664,7 +697,6 @@ const CreateEvent: React.FC = () => {
                 {/* ── Advanced Settings ── */}
                 <SectionDivider step={advancedStep} label="Advanced Settings" />
 
-                {/* Check-in Cutoff */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
                     Check-in Cutoff <span className="text-gray-400 font-normal">(Optional)</span>
@@ -672,10 +704,18 @@ const CreateEvent: React.FC = () => {
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-2.5">
                     Attendees who check in after this time will be marked <span className="font-semibold text-amber-600 dark:text-amber-400">Late</span>.
                   </p>
-                  <div className="max-w-[200px]">
-                    <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}
-                      showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Cutoff" dateFormat="h:mm aa"
-                      placeholderText="e.g., 9:00 AM" customInput={<TimeInput />} popperPlacement="bottom-start" />
+                  <div className="inline-flex items-center gap-1.5">
+                    <div className="w-[200px]">
+                      <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}
+                        showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Cutoff" dateFormat="h:mm aa"
+                        placeholderText="e.g., 9:00 AM" customInput={<TimeInput />} popperPlacement="bottom-start" />
+                    </div>
+                    {checkinCutoff && (
+                      <button type="button" onClick={() => setCheckinCutoff(null)}
+                        className="text-xs font-semibold text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border border-red-200 dark:border-red-800 rounded-lg px-2.5 py-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all flex-shrink-0">
+                        Remove
+                      </button>
+                    )}
                   </div>
                   {checkinCutoff && (
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
@@ -684,7 +724,6 @@ const CreateEvent: React.FC = () => {
                   )}
                 </div>
 
-                {/* Registration Window */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
                     Registration Window <span className="text-gray-400 font-normal">(Optional)</span>
@@ -699,19 +738,25 @@ const CreateEvent: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 mb-2 uppercase tracking-wide">Closes</label>
-                      <DatePicker selected={registrationEnd} onChange={(date: Date | null) => setRegistrationEnd(date)}
-                        showTimeSelect timeIntervals={15} timeCaption="Time" dateFormat="MMM d, yyyy h:mm aa"
-                        placeholderText="End date & time" customInput={<DateInput />} popperPlacement="bottom-start"
-                        minDate={registrationStart || undefined} />
+                      <div className="flex items-center gap-2.5">
+                        <DatePicker selected={registrationEnd} onChange={(date: Date | null) => setRegistrationEnd(date)}
+                          showTimeSelect timeIntervals={15} timeCaption="Time" dateFormat="MMM d, yyyy h:mm aa"
+                          placeholderText="End date & time" customInput={<DateInput />} popperPlacement="bottom-start"
+                          minDate={registrationStart || undefined} />
+                        {(registrationStart || registrationEnd) && (
+                          <button type="button" onClick={() => { setRegistrationStart(null); setRegistrationEnd(null); }}
+                            className="text-xs font-semibold text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border border-red-200 dark:border-red-800 rounded-lg px-2.5 py-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all flex-shrink-0">
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                   {registrationStart && registrationEnd && registrationEnd > registrationStart && (
                     <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#2a2a2a] px-4 py-3 rounded-xl mt-3">
                       <div className="w-0.5 h-4 bg-[#DC143C] rounded-full flex-shrink-0" />
                       <p className="text-sm text-gray-600 dark:text-gray-300">
-                        {registrationStart.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} {registrationStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                        <span className="mx-2 text-gray-300 dark:text-gray-600">→</span>
-                        {registrationEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} {registrationEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                        Registration will open on {registrationStart.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at {registrationStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} and will close on {registrationEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at {registrationEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}.
                       </p>
                     </div>
                   )}
@@ -725,7 +770,6 @@ const CreateEvent: React.FC = () => {
                 )}
               </div>
 
-              {/* Footer */}
               <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
               <div className="flex items-center justify-end gap-2 px-6 py-4">
                 <button type="button" onClick={handleClear}
