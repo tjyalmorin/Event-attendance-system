@@ -1,3 +1,6 @@
+import { setDefaultResultOrder } from 'dns'
+setDefaultResultOrder('ipv4first')
+
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -21,11 +24,12 @@ cloudinary.config({
 // ── Database Config ───────────────────────────────────────────────────────────
 const { Pool } = pg
 const pool = new Pool({
-  user:     process.env.DB_USER     || 'postgres',
-  host:     process.env.DB_HOST     || 'localhost',
-  database: process.env.DB_NAME     || 'primelog_local',
-  password: process.env.DB_PASSWORD,
-  port:     parseInt(process.env.DB_PORT || '5432'),
+  user:     'postgres.sxuvmzgjpnncekdmrtmj',
+  host:     'aws-1-ap-south-1.pooler.supabase.com',
+  database: process.env.DB_NAME     || 'primelog',
+  password: 'Primeloga1prime',
+  port:     6543,
+  ssl:      { rejectUnauthorized: false },
 })
 
 // ── Settings ──────────────────────────────────────────────────────────────────

@@ -1,3 +1,6 @@
+import { setDefaultResultOrder } from 'dns';
+setDefaultResultOrder('ipv4first');
+
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -22,7 +25,7 @@ const migrate = async (): Promise<void> => {
     // Enable UUID support
     await pool.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
 
-    // ── users ──────────────────────────────────────────────
+    // ── users ──────────────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         user_id         UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -39,9 +42,9 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── agents ─────────────────────────────────────────────
+    // ── agents ─────────────────────────────────────────────────────
     // Stores agent photos independently of event participation.
-    // photo_url is resolved from here at registration time,
+    // photo_url is resolved from here at query time via LEFT JOIN,
     // instead of being stored/copied into participants.
     await pool.query(`
       CREATE TABLE IF NOT EXISTS agents (
@@ -52,7 +55,7 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── events ─────────────────────────────────────────────
+    // ── events ─────────────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS events (
         event_id            SERIAL          PRIMARY KEY,
@@ -77,7 +80,7 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── event_permissions ──────────────────────────────────
+    // ── event_permissions ──────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS event_permissions (
         permission_id   SERIAL          PRIMARY KEY,
@@ -88,7 +91,7 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── admin_grants ───────────────────────────────────────
+    // ── admin_grants ───────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS admin_grants (
         grant_id              SERIAL          PRIMARY KEY,
@@ -103,7 +106,7 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── participants ───────────────────────────────────────
+    // ── participants ───────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS participants (
         participant_id      SERIAL          PRIMARY KEY,
@@ -125,7 +128,7 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── attendance_sessions ────────────────────────────────
+    // ── attendance_sessions ────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS attendance_sessions (
         session_id              SERIAL          PRIMARY KEY,
@@ -142,7 +145,7 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── override_logs ──────────────────────────────────────
+    // ── override_logs ──────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS override_logs (
         override_id             SERIAL          PRIMARY KEY,
@@ -159,7 +162,7 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── scan_logs ──────────────────────────────────────────
+    // ── scan_logs ──────────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS scan_logs (
         scan_id         SERIAL          PRIMARY KEY,
@@ -173,7 +176,7 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── branches ───────────────────────────────────────────
+    // ── branches ───────────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS branches (
         branch_id   SERIAL        PRIMARY KEY,
@@ -183,7 +186,7 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── teams ──────────────────────────────────────────────
+    // ── teams ──────────────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS teams (
         team_id     SERIAL        PRIMARY KEY,
@@ -195,7 +198,7 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── event_branches ─────────────────────────────────────
+    // ── event_branches ─────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS event_branches (
         id          SERIAL        PRIMARY KEY,
@@ -207,39 +210,34 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
-    // ── Safe column additions for existing tables ──────────
+    // ── Safe column additions for existing tables ──────────────────
     await pool.query(`
       ALTER TABLE participants
         ADD COLUMN IF NOT EXISTS photo_url          VARCHAR(500);
     `);
 
-    // Drop OLD column names if they still exist
     await pool.query(`
       ALTER TABLE participants
         DROP COLUMN IF EXISTS label,
         DROP COLUMN IF EXISTS label_description;
     `);
 
-    // Add new column names if not yet present
     await pool.query(`
       ALTER TABLE participants
         ADD COLUMN IF NOT EXISTS label              VARCHAR(100),
         ADD COLUMN IF NOT EXISTS label_description  TEXT;
     `);
 
-    // ── branch_name on events (safe add) ──────────────────
     await pool.query(`
       ALTER TABLE events
         ADD COLUMN IF NOT EXISTS branch_name VARCHAR(255);
     `);
 
-    // ── poster_url on events ───────────────────────────────
     await pool.query(`
       ALTER TABLE events
         ADD COLUMN IF NOT EXISTS poster_url VARCHAR(500);
     `);
 
-    // ── OTP columns ────────────────────────────────────────
     await pool.query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS otp_code     VARCHAR(6),
@@ -247,13 +245,12 @@ const migrate = async (): Promise<void> => {
         ADD COLUMN IF NOT EXISTS otp_verified BOOLEAN DEFAULT FALSE;
     `);
 
-    // ── is_active column ───────────────────────────────────
     await pool.query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
     `);
 
-    // ── Indexes ────────────────────────────────────────────
+    // ── Indexes ────────────────────────────────────────────────────
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_users_agent_code              ON users(agent_code);
       CREATE INDEX IF NOT EXISTS idx_users_deleted_at              ON users(deleted_at);
@@ -280,12 +277,10 @@ const migrate = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_scan_logs_scanned_at          ON scan_logs(scanned_at);
       CREATE INDEX IF NOT EXISTS idx_teams_branch_id               ON teams(branch_id);
       CREATE INDEX IF NOT EXISTS idx_event_branches_event_id       ON event_branches(event_id);
-
-      -- agents table index
       CREATE INDEX IF NOT EXISTS idx_agents_agent_code             ON agents(agent_code);
     `);
 
-    // ── Performance indexes ────────────────────────────────
+    // ── Performance indexes ────────────────────────────────────────
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_participants_agent_event
         ON participants(agent_code, event_id)
@@ -316,7 +311,7 @@ const migrate = async (): Promise<void> => {
         ON participants USING gin(to_tsvector('english', full_name));
     `);
 
-    // ── Auto-update updated_at trigger ─────────────────────
+    // ── Auto-update updated_at trigger ─────────────────────────────
     await pool.query(`
       CREATE OR REPLACE FUNCTION trigger_set_updated_at()
       RETURNS TRIGGER AS $$
@@ -337,24 +332,24 @@ const migrate = async (): Promise<void> => {
       `);
     }
 
-    // ── Seed SuperAdmin ────────────────────────────────────
-    const bcrypt = await import('bcryptjs')
+    // ── Seed SuperAdmin ────────────────────────────────────────────
+    const bcrypt = await import('bcryptjs');
     const existingSuperAdmin = await pool.query(
       `SELECT user_id FROM users WHERE email = 'kurtrusselgliponeo@gmail.com'`
-    )
+    );
     if (existingSuperAdmin.rows.length === 0) {
-      const hash = await bcrypt.default.hash('Admin@1234', 10)
+      const hash = await bcrypt.default.hash('Admin@1234', 10);
       await pool.query(
         `INSERT INTO users (full_name, email, password_hash, role, branch_name)
          VALUES ($1, $2, $3, 'admin', 'A1 Prime')`,
         ['Kurt Russel Gliponeo', 'kurtrusselgliponeo@gmail.com', hash]
-      )
-      console.log('✅ SuperAdmin seeded!')
+      );
+      console.log('✅ SuperAdmin seeded!');
     } else {
-      console.log('ℹ️  SuperAdmin already exists, skipping.')
+      console.log('ℹ️  SuperAdmin already exists, skipping.');
     }
 
-    // ── Seed Branches & Teams ──────────────────────────────
+    // ── Seed Branches & Teams ──────────────────────────────────────
     const branchSeed = [
       { name: 'Alexandrite 3',    teams: ['Team Crisan', 'Team Jhainnie', 'Team Shai', 'Team Louis'] },
       { name: 'A3 Axinite',       teams: ['Team Tony'] },
@@ -362,18 +357,18 @@ const migrate = async (): Promise<void> => {
       { name: 'A3 Phoenix Stone', teams: ['Team Elvin', 'Team Feti', 'Team Jhen', 'Team Maan', 'Team Mark', 'Team Redge', 'Team Otchie'] },
       { name: 'Alexandrite 1',    teams: ['Team Alou', 'Team Dong', 'Team Henson', 'Team Isa', 'Team Nikki', 'Team Doris'] },
       { name: 'A1 Prime',         teams: ['Team Norj', 'Team Donel', 'Team Paulyn', 'Team Esmael'] },
-    ]
+    ];
     for (const branch of branchSeed) {
       const res = await pool.query(
         `INSERT INTO branches (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING branch_id`,
         [branch.name]
-      )
-      const branchId = res.rows[0].branch_id
+      );
+      const branchId = res.rows[0].branch_id;
       for (const team of branch.teams) {
         await pool.query(
           `INSERT INTO teams (branch_id, name) VALUES ($1, $2) ON CONFLICT (branch_id, name) DO NOTHING`,
           [branchId, team]
-        )
+        );
       }
     }
     console.log('✅ Branches & Teams seeded!');
