@@ -22,11 +22,17 @@ api.interceptors.request.use(
   }
 );
 
+// Public routes that should never trigger an auth redirect
+const PUBLIC_PATHS = ['/register', '/confirmation'];
+
+const isPublicRoute = () =>
+  PUBLIC_PATHS.some((path) => window.location.pathname.startsWith(path));
+
 // Response interceptor
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !isPublicRoute()) {
       localStorage.removeItem('authToken');
       window.location.href = '/admin/login';
     }
