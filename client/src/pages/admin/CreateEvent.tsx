@@ -7,20 +7,8 @@ import Sidebar from '../../components/Sidebar';
 import { useBranches } from '../../hooks/useBranches';
 import { getStaffByBranchesApi } from '../../api/events.api';
 
-// ── Branch/Team checklist types ──
-interface BranchSelection {
-  branch_name: string
-  teams: string[]
-}
-
-// ── Staff assignment types ──
-interface StaffUser {
-  user_id: string
-  full_name: string
-  agent_code: string
-  branch_name: string
-  email: string
-}
+interface BranchSelection { branch_name: string; teams: string[] }
+interface StaffUser { user_id: string; full_name: string; agent_code: string; branch_name: string; email: string }
 
 // ── Icons ──
 const ArrowLeftIcon = () => (
@@ -28,193 +16,183 @@ const ArrowLeftIcon = () => (
     <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
   </svg>
 );
-
 const CalendarIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-400">
     <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
   </svg>
 );
-
 const ClockIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-400">
     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
   </svg>
 );
+const WarnIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>
+);
+const XIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+);
+const ChevronDownIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <polyline points="6 9 12 15 18 9"/>
+  </svg>
+);
 
-// ── Custom input wrappers for DatePicker ──
+// ── Numbered section divider ──
+const SectionDivider: React.FC<{ label: string; step: number }> = ({ label, step }) => (
+  <div className="flex items-center gap-3 pt-1">
+    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[#DC143C] text-white text-[10px] font-bold flex-shrink-0">{step}</span>
+    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest whitespace-nowrap">{label}</span>
+    <div className="h-px flex-1 bg-gray-200 dark:bg-[#2a2a2a]" />
+  </div>
+);
+
+// ── DatePicker custom inputs ──
 const DateInput = React.forwardRef<HTMLButtonElement, { value?: string; onClick?: () => void; placeholder?: string }>(
   ({ value, onClick, placeholder }, ref) => (
     <button type="button" onClick={onClick} ref={ref}
       className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-left focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all flex items-center justify-between gap-2">
-      <span className={value ? 'text-gray-900 dark:text-white text-sm' : 'text-gray-400 dark:text-gray-600 text-sm'}>
-        {value || placeholder}
-      </span>
+      <span className={value ? 'text-gray-900 dark:text-white text-sm' : 'text-gray-400 dark:text-gray-600 text-sm'}>{value || placeholder}</span>
       <CalendarIcon />
     </button>
   )
 );
-
 const TimeInput = React.forwardRef<HTMLButtonElement, { value?: string; onClick?: () => void; placeholder?: string }>(
   ({ value, onClick, placeholder }, ref) => (
     <button type="button" onClick={onClick} ref={ref}
       className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-left focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all flex items-center justify-between gap-2">
-      <span className={value ? 'text-gray-900 dark:text-white text-sm' : 'text-gray-400 dark:text-gray-600 text-sm'}>
-        {value || placeholder}
-      </span>
+      <span className={value ? 'text-gray-900 dark:text-white text-sm' : 'text-gray-400 dark:text-gray-600 text-sm'}>{value || placeholder}</span>
       <ClockIcon />
     </button>
   )
 );
 
+// ── Field error ──
+const FieldError: React.FC<{ msg?: string }> = ({ msg }) => msg ? (
+  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    {msg}
+  </p>
+) : null;
+
 const CreateEvent: React.FC = () => {
   const navigate = useNavigate();
   const { branches } = useBranches();
 
-  // ── Who is creating? ──────────────────────────────────
-  const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
-  const userRole: 'admin' | 'staff' = storedUser?.role || 'staff'
-  const userBranch: string = storedUser?.branch_name || ''
+  const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const userRole: 'admin' | 'staff' = storedUser?.role || 'staff';
+  const userBranch: string = storedUser?.branch_name || '';
 
-  // ── Branch/Team checklist state ───────────────────────
-  // For admin: all branches available; for staff: only their branch
   const availableBranches = userRole === 'admin'
     ? branches
-    : branches.filter(b => b.name === userBranch)
+    : branches.filter(b => b.name === userBranch);
 
-  const [selectedBranches, setSelectedBranches] = useState<BranchSelection[]>([])
-  const [branchesError, setBranchesError] = useState('')
+  // ── Branch/Team state ──
+  const [selectedBranches, setSelectedBranches] = useState<BranchSelection[]>([]);
+  const [branchesError, setBranchesError] = useState('');
+  const [expandedBranches, setExpandedBranches] = useState<string[]>([]);
 
-  // ── Staff assignment state ─────────────────────────────
-  const [allStaff, setAllStaff] = useState<StaffUser[]>([])
-  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
-  const [staffLoading, setStaffLoading] = useState(false)
+  // ── Staff state ──
+  const [allStaff, setAllStaff] = useState<StaffUser[]>([]);
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  const [staffLoading, setStaffLoading] = useState(false);
 
-  // Auto-init staff — their branch is pre-selected, no other choice
   useEffect(() => {
     if (userRole === 'staff' && userBranch && branches.length > 0) {
-      const staffBranch = branches.find(b => b.name === userBranch)
+      const staffBranch = branches.find(b => b.name === userBranch);
       if (staffBranch && selectedBranches.length === 0) {
-        setSelectedBranches([{ branch_name: staffBranch.name, teams: [] }])
+        setSelectedBranches([{ branch_name: staffBranch.name, teams: [] }]);
+        setExpandedBranches([staffBranch.name]);
       }
     }
-  }, [branches])
+  }, [branches]);
 
-  // Fetch staff whenever selected branches change (admin only)
   useEffect(() => {
-    if (userRole !== 'admin') return
-    const branchNames = selectedBranches.map(b => b.branch_name)
-    if (branchNames.length === 0) {
-      setAllStaff([])
-      setSelectedStaffIds([])
-      return
-    }
-    setStaffLoading(true)
+    if (userRole !== 'admin') return;
+    const branchNames = selectedBranches.map(b => b.branch_name);
+    if (branchNames.length === 0) { setAllStaff([]); setSelectedStaffIds([]); return; }
+    setStaffLoading(true);
     getStaffByBranchesApi(branchNames)
       .then((data: StaffUser[]) => {
-        setAllStaff(data)
-        // Drop any previously selected staff whose branch is no longer selected
-        setSelectedStaffIds(prev => prev.filter(id => data.some((s: StaffUser) => s.user_id === id)))
+        setAllStaff(data);
+        setSelectedStaffIds(prev => prev.filter(id => data.some((s: StaffUser) => s.user_id === id)));
       })
       .catch(console.error)
-      .finally(() => setStaffLoading(false))
-  }, [selectedBranches])
+      .finally(() => setStaffLoading(false));
+  }, [selectedBranches]);
 
-  const isBranchChecked = (branchName: string) =>
-    selectedBranches.some(b => b.branch_name === branchName)
-
-  const isTeamChecked = (branchName: string, teamName: string) =>
-    selectedBranches.find(b => b.branch_name === branchName)?.teams.includes(teamName) ?? false
-
-  const allTeamsSelected = (branchName: string) => {
-    const branch = branches.find(b => b.name === branchName)
-    const sel = selectedBranches.find(b => b.branch_name === branchName)
-    if (!branch || !sel) return false
-    return (branch.teams ?? []).every(t => sel.teams.includes(t.name))
-  }
+  const isBranchChecked = (n: string) => selectedBranches.some(b => b.branch_name === n);
+  const isTeamChecked = (bn: string, tn: string) => selectedBranches.find(b => b.branch_name === bn)?.teams.includes(tn) ?? false;
+  const allTeamsSelected = (bn: string) => {
+    const branch = branches.find(b => b.name === bn);
+    const sel = selectedBranches.find(b => b.branch_name === bn);
+    if (!branch || !sel) return false;
+    return (branch.teams ?? []).every(t => sel.teams.includes(t.name));
+  };
+  const someTeamsSelected = (bn: string) => (selectedBranches.find(b => b.branch_name === bn)?.teams.length ?? 0) > 0;
 
   const toggleBranch = (branchName: string) => {
-    setBranchesError('')
+    setBranchesError('');
     if (isBranchChecked(branchName)) {
-      setSelectedBranches(prev => prev.filter(b => b.branch_name !== branchName))
+      setSelectedBranches(prev => prev.filter(b => b.branch_name !== branchName));
+      setExpandedBranches(prev => prev.filter(n => n !== branchName));
     } else {
-      // Auto-select all teams when branch is checked
-      const branch = branches.find(b => b.name === branchName)
-      const allTeams = (branch?.teams ?? []).map(t => t.name)
-      setSelectedBranches(prev => [...prev, { branch_name: branchName, teams: allTeams }])
+      const branch = branches.find(b => b.name === branchName);
+      const allTeams = (branch?.teams ?? []).map(t => t.name);
+      setSelectedBranches(prev => [...prev, { branch_name: branchName, teams: allTeams }]);
+      setExpandedBranches(prev => [...prev, branchName]);
     }
-  }
+  };
 
-  const toggleTeam = (branchName: string, teamName: string) => {
-    setBranchesError('')
+  const toggleTeam = (bn: string, tn: string) => {
+    setBranchesError('');
     setSelectedBranches(prev => prev.map(b => {
-      if (b.branch_name !== branchName) return b
-      return {
-        ...b,
-        teams: b.teams.includes(teamName)
-          ? b.teams.filter(t => t !== teamName)
-          : [...b.teams, teamName]
-      }
-    }))
-  }
+      if (b.branch_name !== bn) return b;
+      return { ...b, teams: b.teams.includes(tn) ? b.teams.filter(t => t !== tn) : [...b.teams, tn] };
+    }));
+  };
 
-  const toggleAllTeamsInBranch = (branchName: string) => {
-    const branch = branches.find(b => b.name === branchName)
-    if (!branch) return
-    const allTeams = (branch.teams ?? []).map(t => t.name)
-    const all = allTeamsSelected(branchName)
-    setSelectedBranches(prev => prev.map(b =>
-      b.branch_name === branchName ? { ...b, teams: all ? [] : allTeams } : b
-    ))
-  }
+  const toggleAllTeamsInBranch = (bn: string) => {
+    const branch = branches.find(b => b.name === bn);
+    if (!branch) return;
+    const allTeams = (branch.teams ?? []).map(t => t.name);
+    const all = allTeamsSelected(bn);
+    setSelectedBranches(prev => prev.map(b => b.branch_name === bn ? { ...b, teams: all ? [] : allTeams } : b));
+  };
+
+  const toggleBranchExpand = (bn: string) =>
+    setExpandedBranches(prev => prev.includes(bn) ? prev.filter(n => n !== bn) : [...prev, bn]);
 
   const selectAllBranches = () => {
-    setBranchesError('')
-    setSelectedBranches(availableBranches.map(b => ({
-      branch_name: b.name,
-      teams: (b.teams ?? []).map(t => t.name)
-    })))
-  }
+    setBranchesError('');
+    setSelectedBranches(availableBranches.map(b => ({ branch_name: b.name, teams: (b.teams ?? []).map(t => t.name) })));
+    setExpandedBranches(availableBranches.map(b => b.name));
+  };
 
   const deselectAllBranches = () => {
-    if (userRole === 'staff') {
-      // Staff can't deselect their branch, only teams
-      setSelectedBranches([{ branch_name: userBranch, teams: [] }])
-    } else {
-      setSelectedBranches([])
-    }
-  }
-
-  // ── Staff assignment helpers ───────────────────────────
-  const toggleStaff = (uid: string) => {
-    setSelectedStaffIds(prev =>
-      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
-    )
-  }
-
-  const toggleAllStaff = () => {
-    if (selectedStaffIds.length === allStaff.length) {
-      setSelectedStaffIds([])
-    } else {
-      setSelectedStaffIds(allStaff.map(s => s.user_id))
-    }
-  }
+    if (userRole === 'staff') { setSelectedBranches([{ branch_name: userBranch, teams: [] }]); }
+    else { setSelectedBranches([]); setExpandedBranches([]); }
+  };
 
   const allBranchesSelected = availableBranches.length > 0 &&
-    availableBranches.every(b => isBranchChecked(b.name) && allTeamsSelected(b.name))
+    availableBranches.every(b => isBranchChecked(b.name) && allTeamsSelected(b.name));
 
+  const toggleStaff = (uid: string) => setSelectedStaffIds(prev => prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]);
+  const toggleAllStaff = () => setSelectedStaffIds(selectedStaffIds.length === allStaff.length ? [] : allStaff.map(s => s.user_id));
+
+  // ── Form state ──
   const [eventDate, setEventDate] = useState<Date | null>(null);
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [endTime, setEndTime] = useState<Date | null>(null);
   const [checkinCutoff, setCheckinCutoff] = useState<Date | null>(null);
   const [registrationStart, setRegistrationStart] = useState<Date | null>(null);
   const [registrationEnd, setRegistrationEnd] = useState<Date | null>(null);
-
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    venue: '',
-  });
-
+  const [formData, setFormData] = useState({ title: '', description: '', venue: '' });
   const [showDescription, setShowDescription] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -223,64 +201,32 @@ const CreateEvent: React.FC = () => {
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
 
-  // ── Dirty check — any field has content ──
   const isDirty = () =>
-    formData.title.trim() !== '' ||
-    formData.description.trim() !== '' ||
-    formData.venue.trim() !== '' ||
-    eventDate !== null ||
-    startTime !== null ||
-    endTime !== null ||
-    checkinCutoff !== null ||
-    registrationStart !== null ||
-    registrationEnd !== null ||
-    posterFile !== null;
+    formData.title.trim() !== '' || formData.description.trim() !== '' || formData.venue.trim() !== '' ||
+    eventDate !== null || startTime !== null || endTime !== null ||
+    checkinCutoff !== null || registrationStart !== null || registrationEnd !== null || posterFile !== null;
 
-  const handleBack = () => {
-    if (isDirty()) {
-      setShowDiscardConfirm(true);
-    } else {
-      navigate('/admin/events');
-    }
-  };
+  const handleBack = () => isDirty() ? setShowDiscardConfirm(true) : navigate('/admin/events');
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     if (name === 'title' && value.length > 100) return;
     if (name === 'description' && value.length > 500) return;
     if (name === 'venue' && value.length > 200) return;
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (fieldErrors[name as keyof typeof fieldErrors]) {
-      setFieldErrors(prev => ({ ...prev, [name]: undefined }));
-    }
+    if (fieldErrors[name as keyof typeof fieldErrors]) setFieldErrors(prev => ({ ...prev, [name]: undefined }));
   };
 
-  const formatTime = (date: Date | null): string => {
-    if (!date) return '';
-    return date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: false });
-  };
-
-  const formatTimeDisplay = (date: Date | null): string => {
-    if (!date) return '';
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  };
+  const formatTime = (date: Date | null) => date ? date.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+  const formatTimeDisplay = (date: Date | null) => date ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
 
   const validate = () => {
     const errors: { title?: string; eventDate?: string; venue?: string } = {};
     if (!formData.title.trim()) errors.title = 'Event name is required.';
     if (!eventDate) errors.eventDate = 'Event date is required.';
     if (!formData.venue.trim()) errors.venue = 'Venue is required.';
-    if (selectedBranches.length === 0) {
-      setBranchesError('Please select at least one branch.');
-      setFieldErrors(errors);
-      return false;
-    }
-    const hasNoTeams = selectedBranches.some(b => b.teams.length === 0)
-    if (hasNoTeams) {
-      setBranchesError('Please select at least one team for each checked branch.')
-      setFieldErrors(errors);
-      return false;
-    }
+    if (selectedBranches.length === 0) { setBranchesError('Please select at least one branch.'); setFieldErrors(errors); return false; }
+    if (selectedBranches.some(b => b.teams.length === 0)) { setBranchesError('Please select at least one team for each checked branch.'); setFieldErrors(errors); return false; }
     setBranchesError('');
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -290,24 +236,21 @@ const CreateEvent: React.FC = () => {
     e.preventDefault();
     setError('');
     if (!validate()) return;
-    if (registrationStart && registrationEnd && registrationEnd <= registrationStart) {
-      setError('Registration end must be after registration start.');
-      return;
-    }
+    if (registrationStart && registrationEnd && registrationEnd <= registrationStart) { setError('Registration end must be after registration start.'); return; }
     setLoading(true);
     try {
       const fd = new FormData();
       fd.append('title', formData.title);
       fd.append('description', formData.description || '');
       fd.append('event_date', eventDate ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}` : '');
-      fd.append('start_time', formatTime(startTime) || '');
-      fd.append('end_time', formatTime(endTime) || '');
+      fd.append('start_time', formatTime(startTime));
+      fd.append('end_time', formatTime(endTime));
       fd.append('venue', formData.venue);
       fd.append('event_branches', JSON.stringify(selectedBranches));
       fd.append('checkin_cutoff', checkinCutoff ? formatTime(checkinCutoff) : '');
       fd.append('registration_start', registrationStart ? registrationStart.toISOString() : '');
       fd.append('registration_end', registrationEnd ? registrationEnd.toISOString() : '');
-      fd.append('staff_ids', JSON.stringify(selectedStaffIds.length > 0 ? selectedStaffIds : []));
+      fd.append('staff_ids', JSON.stringify(selectedStaffIds));
       if (posterFile) fd.append('poster', posterFile);
       await api.post('/events', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       navigate('/admin/events', { state: { created: true } });
@@ -320,36 +263,22 @@ const CreateEvent: React.FC = () => {
 
   const handleClear = () => {
     setFormData({ title: '', description: '', venue: '' });
-    if (userRole === 'staff') {
-      setSelectedBranches([{ branch_name: userBranch, teams: [] }])
-    } else {
-      setSelectedBranches([]);
-    }
+    setSelectedBranches(userRole === 'staff' ? [{ branch_name: userBranch, teams: [] }] : []);
+    setExpandedBranches(userRole === 'staff' ? [userBranch] : []);
     setBranchesError('');
     setSelectedStaffIds([]);
-    setEventDate(null);
-    setStartTime(null);
-    setEndTime(null);
-    setCheckinCutoff(null);
-    setRegistrationStart(null);
-    setRegistrationEnd(null);
-    setShowDescription(false);
-    setFieldErrors({});
-    setError('');
-    setPosterFile(null);
-    setPosterPreview(null);
+    setEventDate(null); setStartTime(null); setEndTime(null);
+    setCheckinCutoff(null); setRegistrationStart(null); setRegistrationEnd(null);
+    setShowDescription(false); setFieldErrors({}); setError('');
+    setPosterFile(null); setPosterPreview(null);
   };
+
+  const advancedStep = userRole === 'admin' && selectedBranches.length > 0 ? 6 : 5;
 
   return (
     <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
       <style>{`
-        .react-datepicker {
-          font-family: inherit;
-          border: 1px solid #e5e7eb;
-          border-radius: 16px;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-          overflow: hidden;
-        }
+        .react-datepicker { font-family: inherit; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); overflow: hidden; }
         .dark .react-datepicker { background: #1c1c1c; border-color: #2a2a2a; }
         .react-datepicker__header { background: #fff; border-bottom: 1px solid #f3f4f6; padding: 16px 16px 8px; }
         .dark .react-datepicker__header { background: #1c1c1c; border-bottom-color: #2a2a2a; }
@@ -392,35 +321,33 @@ const CreateEvent: React.FC = () => {
         .dark .react-datepicker__time-container .react-datepicker__time .react-datepicker__time-box { background: #1c1c1c !important; }
       `}</style>
 
-      {/* Discard Confirmation Modal */}
+      {/* ── Discard Confirm Modal ── */}
       {showDiscardConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-2xl border border-gray-200 dark:border-[#2a2a2a] w-full max-w-sm mx-4 p-6">
-            <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center text-yellow-500">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 overflow-clip">
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+              <div className="flex items-center gap-3">
+                <span className="text-yellow-500 dark:text-yellow-400"><WarnIcon /></span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Discard Changes?</h2>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Discard changes?</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Your progress will be lost if you go back now.</p>
-              </div>
-              <div className="flex gap-3 w-full mt-1">
-                <button
-                  onClick={() => setShowDiscardConfirm(false)}
-                  className="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl text-sm font-semibold hover:bg-gray-50 dark:hover:bg-[#333] transition-all"
-                >
-                  Keep Editing
-                </button>
-                <button
-                  onClick={() => navigate('/admin/events')}
-                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 transition-all"
-                >
-                  Discard
-                </button>
-              </div>
+              <button onClick={() => setShowDiscardConfirm(false)} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors">
+                <XIcon />
+              </button>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400">
+              Your progress will be lost if you go back now.
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <button type="button" onClick={() => setShowDiscardConfirm(false)}
+                className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
+                Keep Editing
+              </button>
+              <button onClick={() => navigate('/admin/events')}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all">
+                Discard
+              </button>
             </div>
           </div>
         </div>
@@ -429,13 +356,11 @@ const CreateEvent: React.FC = () => {
       <Sidebar userRole={userRole} />
 
       <div className="flex-1 overflow-auto">
-        {/* Header */}
+        {/* Page header */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
           <div className="px-12 h-[76px] flex items-center gap-4">
-            <button onClick={handleBack}
-              className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors mr-2">
-              <ArrowLeftIcon />
-              <span className="font-medium">Back</span>
+            <button onClick={handleBack} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors mr-2">
+              <ArrowLeftIcon /><span className="font-medium">Back</span>
             </button>
             <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
               Event<span className="text-[#DC143C]">.</span>Management
@@ -444,427 +369,375 @@ const CreateEvent: React.FC = () => {
         </div>
 
         <div className="max-w-4xl mx-auto px-8 py-8">
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-3xl shadow-sm border border-gray-200 dark:border-[#2a2a2a] overflow-hidden">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-sm border border-gray-200 dark:border-[#2a2a2a] overflow-clip">
+
+            {/* Red top edge */}
             <div className="h-1.5 w-full bg-gradient-to-r from-[#DC143C] to-[#ff4d6d]" />
-            <div className="px-8 pt-8 pb-4">
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Create Event</h2>
+
+            {/* Container header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-gray-50 dark:bg-[#242424]">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Create Event</h2>
+              <span className="text-xs text-gray-400 dark:text-gray-500">Fields marked <span className="text-[#DC143C]">*</span> are required</span>
             </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
 
-            <form onSubmit={handleSubmit} className="px-8 pb-8 space-y-6">
+            <form onSubmit={handleSubmit}>
+              <div className="px-6 py-6 space-y-7">
 
-              {/* Event Name */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Event Name <span className="text-[#DC143C]">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="title"
-                  value={formData.title}
-                  onChange={handleChange}
-                  placeholder="e.g., Chasing Dreams - Financial Advisors Summit"
-                  className={`w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:ring-2 transition-all ${
-                    fieldErrors.title
-                      ? 'border-red-400 focus:border-red-400 focus:ring-red-400/20'
-                      : 'border-gray-200 dark:border-[#2a2a2a] focus:border-[#DC143C] focus:ring-[#DC143C]/20'
-                  }`}
-                />
-                {fieldErrors.title && (
-                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    {fieldErrors.title}
-                  </p>
-                )}
-                <div className="flex items-center justify-between mt-2">
-                  <p className="text-xs text-gray-500 dark:text-gray-500">{formData.title.length}/100 characters</p>
-                  {!showDescription && (
-                    <button type="button" onClick={() => setShowDescription(true)}
-                      className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-[#DC143C] border border-gray-300 dark:border-[#2a2a2a] rounded-lg hover:border-[#DC143C] transition-colors">
-                      Add description
-                    </button>
-                  )}
-                </div>
-              </div>
+                {/* ── 1. Basic Info ── */}
+                <SectionDivider step={1} label="Basic Info" />
 
-              {/* Description */}
-              {showDescription && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">Description (Optional)</label>
-                    <button type="button" onClick={() => { setShowDescription(false); setFormData(prev => ({ ...prev, description: '' })); }}
-                      className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-300 dark:border-red-800 rounded-lg hover:border-red-500 transition-colors">
-                      Remove description
-                    </button>
-                  </div>
-                  <textarea name="description" value={formData.description} onChange={handleChange}
-                    placeholder="Brief description of the event..." rows={3}
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all resize-none"
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{formData.description.length}/500 characters</p>
-                </div>
-              )}
-
-              {/* Poster Upload */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    Event Poster <span className="text-gray-400 font-normal">(Optional)</span>
-                  </label>
-                  {posterPreview && (
-                    <button type="button"
-                      onClick={() => { setPosterFile(null); setPosterPreview(null); }}
-                      className="text-xs font-bold text-red-600 border border-red-300 dark:border-red-800 rounded-lg px-3 py-1.5 hover:border-red-500 transition-colors">
-                      Remove poster
-                    </button>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                  If uploaded, this poster will be shown on the registration page instead of the slideshow.
-                </p>
-                {posterPreview ? (
-                  <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a]" style={{ maxHeight: 220 }}>
-                    <img src={posterPreview} alt="Poster preview" className="w-full object-cover" style={{ maxHeight: 220 }} />
-                    <div className="absolute inset-0 bg-black/10" />
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center gap-2 w-full px-4 py-8 bg-gray-50 dark:bg-[#0f0f0f] border-2 border-dashed border-gray-200 dark:border-[#2a2a2a] rounded-xl cursor-pointer hover:border-[#DC143C] hover:bg-red-50/30 dark:hover:bg-[#DC143C]/5 transition-all">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 text-gray-400">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-                    </svg>
-                    <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">Click to upload poster image</span>
-                    <span className="text-xs text-gray-400">JPG, PNG, WEBP · Max 5MB</span>
-                    <input type="file" accept="image/*" className="sr-only"
-                      onChange={e => {
-                        const file = e.target.files?.[0] ?? null;
-                        if (!file) return;
-                        if (file.size > 5 * 1024 * 1024) { setError('Poster image must be under 5MB.'); return; }
-                        setPosterFile(file);
-                        setPosterPreview(URL.createObjectURL(file));
-                        setError('');
-                      }}
-                    />
-                  </label>
-                )}
-              </div>
-
-              {/* Date & Time */}
-              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Date <span className="text-[#DC143C]">*</span>
+                    Event Name <span className="text-[#DC143C]">*</span>
                   </label>
-                  <DatePicker
-                    selected={eventDate}
-                    onChange={(date: Date | null) => { setEventDate(date); if (fieldErrors.eventDate) setFieldErrors(p => ({ ...p, eventDate: undefined })); }}
-                    dateFormat="MM/dd/yyyy"
-                    placeholderText="Pick a date"
-                    customInput={<DateInput />}
-                    popperPlacement="bottom-start"
+                  <input type="text" name="title" value={formData.title} onChange={handleChange}
+                    placeholder="e.g., Chasing Dreams — Financial Advisors Summit"
+                    className={`w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:ring-2 transition-all ${fieldErrors.title ? 'border-red-400 focus:border-red-400 focus:ring-red-400/20' : 'border-gray-200 dark:border-[#2a2a2a] focus:border-[#DC143C] focus:ring-[#DC143C]/20'}`}
                   />
-                  {fieldErrors.eventDate && (
-                    <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                      {fieldErrors.eventDate}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Time (Start)</label>
-                  <DatePicker selected={startTime} onChange={(date: Date | null) => setStartTime(date)}
-                    showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Start" dateFormat="h:mm aa"
-                    placeholderText="Pick start time" customInput={<TimeInput />} popperPlacement="bottom-start" />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Time (End)</label>
-                  <DatePicker selected={endTime} onChange={(date: Date | null) => setEndTime(date)}
-                    showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="End" dateFormat="h:mm aa"
-                    placeholderText="Pick end time" customInput={<TimeInput />} popperPlacement="bottom-start" />
-                </div>
-              </div>
-
-              {/* Date + Time summary */}
-              {eventDate && startTime && endTime && (
-                <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#262626] border border-gray-200 dark:border-[#333333] px-4 py-3 rounded-xl">
-                  <div className="w-0.5 h-4 bg-[#DC143C] rounded-full flex-shrink-0" />
-                  <p className="text-sm text-gray-600 dark:text-gray-300">
-                    {`This event will take place on ${eventDate.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })} from ${formatTimeDisplay(startTime)} to ${formatTimeDisplay(endTime)}`}
-                  </p>
-                </div>
-              )}
-
-              {/* Venue */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                  Venue <span className="text-[#DC143C]">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="venue"
-                  value={formData.venue}
-                  onChange={handleChange}
-                  placeholder="e.g., Makati City, Ayala North Tower 1"
-                  className={`w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:ring-2 transition-all ${
-                    fieldErrors.venue
-                      ? 'border-red-400 focus:border-red-400 focus:ring-red-400/20'
-                      : 'border-gray-200 dark:border-[#2a2a2a] focus:border-[#DC143C] focus:ring-[#DC143C]/20'
-                  }`}
-                />
-                {fieldErrors.venue && (
-                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    {fieldErrors.venue}
-                  </p>
-                )}
-                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">{formData.venue.length}/200 characters</p>
-              </div>
-
-              {/* Branch & Team Checklist */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    {userRole === 'admin' ? 'Branches & Teams' : 'Teams'} <span className="text-[#DC143C]">*</span>
-                  </label>
-                  {userRole === 'admin' && availableBranches.length > 0 && (
-                    <button type="button"
-                      onClick={allBranchesSelected ? deselectAllBranches : selectAllBranches}
-                      className="text-xs font-bold text-[#DC143C] hover:text-[#b01030] transition-colors px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10">
-                      {allBranchesSelected ? 'Deselect All' : 'Select All'}
-                    </button>
-                  )}
-                </div>
-
-                <div className={`rounded-xl border-[1.5px] overflow-hidden ${branchesError ? 'border-red-400' : 'border-gray-200 dark:border-[#2a2a2a]'}`}>
-                  {availableBranches.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-sm text-gray-400">Loading branches...</div>
-                  ) : availableBranches.map((branch, bi) => {
-                    const checked = isBranchChecked(branch.name)
-                    const teams = branch.teams ?? []
-                    const allTeams = allTeamsSelected(branch.name)
-
-                    return (
-                      <div key={branch.branch_id} className={bi > 0 ? 'border-t border-gray-100 dark:border-[#2a2a2a]' : ''}>
-                        {/* Branch row */}
-                        <div className={`flex items-center gap-3 px-4 py-3 ${checked ? 'bg-red-50/60 dark:bg-[#DC143C]/5' : 'bg-white dark:bg-[#1c1c1c]'} ${userRole === 'staff' ? 'cursor-default' : 'cursor-pointer hover:bg-gray-50 dark:hover:bg-[#1a1a1a]'} transition-colors`}
-                          onClick={() => userRole === 'admin' && toggleBranch(branch.name)}>
-                          {/* Checkbox */}
-                          <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-                            userRole === 'staff'
-                              ? 'border-[#DC143C] bg-[#DC143C]'
-                              : checked
-                                ? 'border-[#DC143C] bg-[#DC143C]'
-                                : 'border-gray-300 dark:border-[#444] bg-white dark:bg-[#0f0f0f]'
-                          }`}>
-                            {(checked || userRole === 'staff') && (
-                              <svg viewBox="0 0 12 9" fill="none" className="w-3 h-3">
-                                <path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            )}
-                          </div>
-                          <span className={`font-semibold text-sm flex-1 ${checked || userRole === 'staff' ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
-                            {branch.name}
-                          </span>
-                          {(checked || userRole === 'staff') && teams.length > 0 && (
-                            <span className="text-xs text-gray-400 dark:text-gray-500">
-                              {selectedBranches.find(b => b.branch_name === branch.name)?.teams.length ?? 0}/{teams.length} teams
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Teams — compact pill tags */}
-                        {(checked || userRole === 'staff') && teams.length > 0 && (
-                          <div className="bg-gray-50 dark:bg-[#161616] border-t border-gray-100 dark:border-[#2a2a2a] px-4 py-2.5" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Teams</span>
-                              <button type="button"
-                                onClick={e => { e.stopPropagation(); toggleAllTeamsInBranch(branch.name) }}
-                                className="text-[11px] font-bold text-[#DC143C] hover:text-[#b01030] px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
-                                {allTeams ? 'Deselect All' : 'Select All'}
-                              </button>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {teams.map(team => {
-                                const teamChecked = isTeamChecked(branch.name, team.name)
-                                return (
-                                  <button key={team.team_id} type="button"
-                                    onClick={e => { e.stopPropagation(); toggleTeam(branch.name, team.name) }}
-                                    className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
-                                      teamChecked
-                                        ? 'bg-[#DC143C] border-[#DC143C] text-white'
-                                        : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#333] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
-                                    }`}>
-                                    {team.name}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {branchesError && (
-                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    {branchesError}
-                  </p>
-                )}
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-                  {userRole === 'admin'
-                    ? 'Registrants will only see teams from the selected branches when signing up.'
-                    : 'Select the teams from your branch that are included in this event.'}
-                </p>
-              </div>
-
-              {/* ── Assign Staff (admin only, shown when branches are selected) ── */}
-              {userRole === 'admin' && selectedBranches.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Assign Staff <span className="text-gray-400 font-normal">(Optional)</span>
-                    </label>
-                    {allStaff.length > 0 && (
-                      <button type="button" onClick={toggleAllStaff}
-                        className="text-xs font-bold text-[#DC143C] hover:text-[#b01030] transition-colors px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10">
-                        {selectedStaffIds.length === allStaff.length ? 'Deselect All' : 'Select All'}
+                  <FieldError msg={fieldErrors.title} />
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{formData.title.length}/100</p>
+                    {!showDescription && (
+                      <button type="button" onClick={() => setShowDescription(true)}
+                        className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-[#DC143C] border border-gray-200 dark:border-[#2a2a2a] rounded-lg hover:border-[#DC143C] transition-colors">
+                        + Add description
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                    Selected staff will be able to access this event's registrants, attendance, and reports for their branch.
-                  </p>
+                </div>
 
-                  {staffLoading ? (
-                    <div className="px-4 py-4 text-center text-sm text-gray-400 rounded-xl border border-gray-200 dark:border-[#2a2a2a]">
-                      Loading staff...
+                {showDescription && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">Description <span className="text-gray-400 font-normal">(Optional)</span></label>
+                      <button type="button" onClick={() => { setShowDescription(false); setFormData(prev => ({ ...prev, description: '' })); }}
+                        className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 dark:border-red-900 rounded-lg hover:border-red-400 transition-colors">
+                        Remove
+                      </button>
                     </div>
-                  ) : allStaff.length === 0 ? (
-                    <div className="px-4 py-4 text-center text-sm text-gray-400 italic rounded-xl border border-gray-200 dark:border-[#2a2a2a]">
-                      No staff accounts found for the selected branches.
+                    <textarea name="description" value={formData.description} onChange={handleChange}
+                      placeholder="Brief overview of the event..." rows={3}
+                      className="w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all resize-none" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{formData.description.length}/500</p>
+                  </div>
+                )}
+
+                {/* Poster */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      Event Poster <span className="text-gray-400 font-normal">(Optional)</span>
+                    </label>
+                    {posterPreview && (
+                      <button type="button" onClick={() => { setPosterFile(null); setPosterPreview(null); }}
+                        className="text-xs font-semibold text-red-600 border border-red-200 dark:border-red-900 rounded-lg px-3 py-1.5 hover:border-red-400 transition-colors">
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Shown on the registration page instead of the slideshow if uploaded.</p>
+                  {posterPreview ? (
+                    <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a]" style={{ maxHeight: 200 }}>
+                      <img src={posterPreview} alt="Poster preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
+                      <div className="absolute inset-0 bg-black/10" />
                     </div>
                   ) : (
-                    <div className="rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] overflow-hidden">
-                      {allStaff.map((staff, si) => {
-                        const checked = selectedStaffIds.includes(staff.user_id)
-                        return (
-                          <div key={staff.user_id}
-                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${si > 0 ? 'border-t border-gray-100 dark:border-[#2a2a2a]' : ''} ${checked ? 'bg-red-50/60 dark:bg-[#DC143C]/5' : 'bg-white dark:bg-[#1c1c1c] hover:bg-gray-50 dark:hover:bg-[#1a1a1a]'}`}
-                            onClick={() => toggleStaff(staff.user_id)}>
+                    <label className="flex flex-col items-center justify-center gap-2 w-full py-7 bg-gray-50 dark:bg-[#0f0f0f] border-2 border-dashed border-gray-200 dark:border-[#2a2a2a] rounded-xl cursor-pointer hover:border-[#DC143C] hover:bg-red-50/20 dark:hover:bg-[#DC143C]/5 transition-all">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-gray-300 dark:text-gray-600">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                      </svg>
+                      <span className="text-sm font-semibold text-gray-400 dark:text-gray-500">Click to upload</span>
+                      <span className="text-xs text-gray-300 dark:text-gray-600">JPG, PNG, WEBP · Max 5MB</span>
+                      <input type="file" accept="image/*" className="sr-only"
+                        onChange={e => {
+                          const file = e.target.files?.[0] ?? null;
+                          if (!file) return;
+                          if (file.size > 5 * 1024 * 1024) { setError('Poster image must be under 5MB.'); return; }
+                          setPosterFile(file); setPosterPreview(URL.createObjectURL(file)); setError('');
+                        }} />
+                    </label>
+                  )}
+                </div>
+
+                {/* ── 2. Schedule ── */}
+                <SectionDivider step={2} label="Schedule" />
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Date <span className="text-[#DC143C]">*</span></label>
+                    <DatePicker selected={eventDate}
+                      onChange={(date: Date | null) => { setEventDate(date); if (fieldErrors.eventDate) setFieldErrors(p => ({ ...p, eventDate: undefined })); }}
+                      dateFormat="MM/dd/yyyy" placeholderText="Pick a date" customInput={<DateInput />} popperPlacement="bottom-start" />
+                    <FieldError msg={fieldErrors.eventDate} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Start Time</label>
+                    <DatePicker selected={startTime} onChange={(date: Date | null) => setStartTime(date)}
+                      showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Start" dateFormat="h:mm aa"
+                      placeholderText="Pick start time" customInput={<TimeInput />} popperPlacement="bottom-start" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">End Time</label>
+                    <DatePicker selected={endTime} onChange={(date: Date | null) => setEndTime(date)}
+                      showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="End" dateFormat="h:mm aa"
+                      placeholderText="Pick end time" customInput={<TimeInput />} popperPlacement="bottom-start" />
+                  </div>
+                </div>
+
+                {eventDate && startTime && endTime && (
+                  <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#2a2a2a] px-4 py-3 rounded-xl -mt-2">
+                    <div className="w-0.5 h-4 bg-[#DC143C] rounded-full flex-shrink-0" />
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      {eventDate.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' })}
+                      {' · '}{formatTimeDisplay(startTime)} – {formatTimeDisplay(endTime)}
+                    </p>
+                  </div>
+                )}
+
+                {/* ── 3. Venue ── */}
+                <SectionDivider step={3} label="Venue" />
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Venue <span className="text-[#DC143C]">*</span></label>
+                  <input type="text" name="venue" value={formData.venue} onChange={handleChange}
+                    placeholder="e.g., Makati City, Ayala North Tower 1"
+                    className={`w-full px-4 py-3 bg-gray-50 dark:bg-[#0f0f0f] border rounded-xl text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:ring-2 transition-all ${fieldErrors.venue ? 'border-red-400 focus:border-red-400 focus:ring-red-400/20' : 'border-gray-200 dark:border-[#2a2a2a] focus:border-[#DC143C] focus:ring-[#DC143C]/20'}`}
+                  />
+                  <FieldError msg={fieldErrors.venue} />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{formData.venue.length}/200</p>
+                </div>
+
+                {/* ── 4. Branches & Teams ── */}
+                <SectionDivider step={4} label={userRole === 'admin' ? 'Branches & Teams' : 'Teams'} />
+
+                <div>
+                  {userRole === 'admin' && availableBranches.length > 0 && (
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs text-gray-400 dark:text-gray-500">Select which branches and teams are included in this event.</p>
+                      <button type="button" onClick={allBranchesSelected ? deselectAllBranches : selectAllBranches}
+                        className="text-xs font-bold text-[#DC143C] hover:text-[#b01030] px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors flex-shrink-0 ml-4">
+                        {allBranchesSelected ? 'Deselect All' : 'Select All'}
+                      </button>
+                    </div>
+                  )}
+
+                  <div className={`rounded-xl border overflow-hidden ${branchesError ? 'border-red-400' : 'border-gray-200 dark:border-[#2a2a2a]'}`}>
+                    {availableBranches.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-sm text-gray-400">Loading branches...</div>
+                    ) : availableBranches.map((branch, bi) => {
+                      const checked = isBranchChecked(branch.name);
+                      const expanded = expandedBranches.includes(branch.name);
+                      const teams = branch.teams ?? [];
+                      const selectedTeamCount = selectedBranches.find(b => b.branch_name === branch.name)?.teams.length ?? 0;
+                      const allTeams = allTeamsSelected(branch.name);
+                      const someTeams = someTeamsSelected(branch.name);
+
+                      return (
+                        <div key={branch.branch_id} className={bi > 0 ? 'border-t border-gray-100 dark:border-[#2a2a2a]' : ''}>
+                          {/* Branch row */}
+                          <div className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${checked ? 'bg-white dark:bg-[#DC143C]/5' : 'bg-white dark:bg-[#1c1c1c]'}`}>
                             {/* Checkbox */}
-                            <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${checked ? 'border-[#DC143C] bg-[#DC143C]' : 'border-gray-300 dark:border-[#444] bg-white dark:bg-[#0f0f0f]'}`}>
-                              {checked && (
+                            <div onClick={() => userRole === 'admin' && toggleBranch(branch.name)}
+                              className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${userRole === 'admin' ? 'cursor-pointer' : 'cursor-default'} ${checked || userRole === 'staff' ? 'border-[#DC143C] bg-[#DC143C]' : 'border-gray-300 dark:border-[#444] bg-white dark:bg-[#0f0f0f] hover:border-[#DC143C]'}`}>
+                              {(checked || userRole === 'staff') && (
                                 <svg viewBox="0 0 12 9" fill="none" className="w-3 h-3">
                                   <path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
                               )}
                             </div>
-                            {/* Name + code */}
-                            <span className={`font-semibold text-sm flex-1 ${checked ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>
-                              {staff.full_name}
-                            </span>
-                            <span className="text-xs text-gray-400 dark:text-gray-500 font-mono mr-2">
-                              #{staff.agent_code}
-                            </span>
-                            {/* Branch badge */}
-                            <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border ${checked ? 'bg-[#DC143C]/10 border-[#DC143C]/30 text-[#DC143C]' : 'bg-gray-100 dark:bg-[#2a2a2a] border-gray-200 dark:border-[#333] text-gray-500 dark:text-gray-400'}`}>
-                              {staff.branch_name}
-                            </span>
+
+                            {/* Branch name + pill — clickable to expand */}
+                            <div className={`flex-1 flex items-center gap-2.5 min-w-0 ${(checked || userRole === 'staff') && teams.length > 0 ? 'cursor-pointer' : ''}`}
+                              onClick={() => (checked || userRole === 'staff') && teams.length > 0 && toggleBranchExpand(branch.name)}>
+                              <span className={`font-semibold text-sm ${checked || userRole === 'staff' ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}>
+                                {branch.name}
+                              </span>
+                              {(checked || userRole === 'staff') && teams.length > 0 && (
+                                <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold flex-shrink-0 ${
+                                  allTeams ? 'bg-[#DC143C]/10 text-[#DC143C]'
+                                  : someTeams ? 'bg-amber-100 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'
+                                  : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-400'
+                                }`}>
+                                  {selectedTeamCount}/{teams.length} teams
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Chevron expand toggle */}
+                            {(checked || userRole === 'staff') && teams.length > 0 && (
+                              <button type="button" onClick={() => toggleBranchExpand(branch.name)}
+                                className={`p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#333] transition-all ${expanded ? 'rotate-180' : ''}`}>
+                                <ChevronDownIcon />
+                              </button>
+                            )}
                           </div>
-                        )
-                      })}
+
+                          {/* Teams panel */}
+                          {(checked || userRole === 'staff') && expanded && teams.length > 0 && (
+                            <div className="bg-gray-100 dark:bg-[#161616] border-t border-gray-200 dark:border-[#252525] px-4 py-3.5">
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Select Teams</span>
+                                <button type="button" onClick={() => toggleAllTeamsInBranch(branch.name)}
+                                  className="text-[11px] font-bold text-[#DC143C] hover:text-[#b01030] px-2 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
+                                  {allTeams ? 'Deselect All' : 'Select All'}
+                                </button>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {teams.map(team => {
+                                  const teamChecked = isTeamChecked(branch.name, team.name);
+                                  return (
+                                    <button key={team.team_id} type="button"
+                                      onClick={() => toggleTeam(branch.name, team.name)}
+                                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                        teamChecked
+                                          ? 'bg-[#DC143C] border-[#DC143C] text-white shadow-sm'
+                                          : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+                                      }`}>
+                                      {team.name}
+                                      {teamChecked && (
+                                        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-2.5 h-2.5 opacity-80">
+                                          <line x1="2" y1="2" x2="8" y2="8"/><line x1="8" y1="2" x2="2" y2="8"/>
+                                        </svg>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <FieldError msg={branchesError} />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+                    {userRole === 'admin'
+                      ? 'Registrants will only see teams from the selected branches when signing up.'
+                      : 'Select the teams from your branch that are included in this event.'}
+                  </p>
+                </div>
+
+                {/* ── 5. Assign Staff (admin only) ── */}
+                {userRole === 'admin' && selectedBranches.length > 0 && (
+                  <>
+                    <SectionDivider step={5} label="Assign Staff" />
+                    <div>
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">Selected staff can access registrants, attendance, and reports for their branch.</p>
+                        {allStaff.length > 0 && (
+                          <button type="button" onClick={toggleAllStaff}
+                            className="text-xs font-bold text-[#DC143C] hover:text-[#b01030] px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors flex-shrink-0">
+                            {selectedStaffIds.length === allStaff.length ? 'Deselect All' : 'Select All'}
+                          </button>
+                        )}
+                      </div>
+                      {staffLoading ? (
+                        <div className="px-4 py-4 text-center text-sm text-gray-400 rounded-xl border border-gray-200 dark:border-[#2a2a2a]">Loading staff...</div>
+                      ) : allStaff.length === 0 ? (
+                        <div className="px-4 py-4 text-center text-sm text-gray-400 italic rounded-xl border border-gray-200 dark:border-[#2a2a2a]">No staff accounts found for the selected branches.</div>
+                      ) : (
+                        <div className="rounded-xl border border-gray-200 dark:border-[#2a2a2a] overflow-hidden">
+                          {allStaff.map((staff, si) => {
+                            const checked = selectedStaffIds.includes(staff.user_id);
+                            return (
+                              <div key={staff.user_id}
+                                className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${si > 0 ? 'border-t border-gray-100 dark:border-[#2a2a2a]' : ''} ${checked ? 'bg-red-50/40 dark:bg-[#DC143C]/5' : 'bg-white dark:bg-[#1c1c1c] hover:bg-gray-50 dark:hover:bg-[#1a1a1a]'}`}
+                                onClick={() => toggleStaff(staff.user_id)}>
+                                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${checked ? 'border-[#DC143C] bg-[#DC143C]' : 'border-gray-300 dark:border-[#444] bg-white dark:bg-[#0f0f0f]'}`}>
+                                  {checked && <svg viewBox="0 0 12 9" fill="none" className="w-3 h-3"><path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                                </div>
+                                <span className={`font-semibold text-sm flex-1 ${checked ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400'}`}>{staff.full_name}</span>
+                                <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">#{staff.agent_code}</span>
+                                <span className={`ml-2 text-xs px-2.5 py-0.5 rounded-full font-semibold ${checked ? 'bg-[#DC143C]/10 text-[#DC143C]' : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-400 dark:text-gray-500'}`}>
+                                  {staff.branch_name}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
+                  </>
+                )}
+
+                {/* ── Advanced Settings ── */}
+                <SectionDivider step={advancedStep} label="Advanced Settings" />
+
+                {/* Check-in Cutoff */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Check-in Cutoff <span className="text-gray-400 font-normal">(Optional)</span>
+                  </label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2.5">
+                    Attendees who check in after this time will be marked <span className="font-semibold text-amber-600 dark:text-amber-400">Late</span>.
+                  </p>
+                  <div className="max-w-[200px]">
+                    <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}
+                      showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Cutoff" dateFormat="h:mm aa"
+                      placeholderText="e.g., 9:00 AM" customInput={<TimeInput />} popperPlacement="bottom-start" />
+                  </div>
+                  {checkinCutoff && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+                      Late after <span className="font-semibold text-gray-600 dark:text-gray-300">{formatTimeDisplay(checkinCutoff)}</span>.
+                    </p>
                   )}
                 </div>
-              )}
 
-              {/* Check-in Cutoff */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Check-in Cutoff <span className="text-gray-400 font-normal">(Optional)</span>
-                </label>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                  Participants who scan their agent code <span className="font-semibold text-gray-600 dark:text-gray-300">after this time</span> will be marked as <span className="font-semibold text-yellow-600 dark:text-yellow-400">Late</span>. Leave blank if you don't need late tracking.
-                </p>
-                <DatePicker selected={checkinCutoff} onChange={(date: Date | null) => setCheckinCutoff(date)}
-                  showTimeSelect showTimeSelectOnly timeIntervals={15} timeCaption="Cutoff" dateFormat="h:mm aa"
-                  placeholderText="e.g., 9:00 AM" customInput={<TimeInput />} popperPlacement="bottom-start" />
-                {checkinCutoff && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-                    Anyone checking in after <span className="font-semibold text-gray-700 dark:text-gray-300">{checkinCutoff.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</span> will be marked Late.
-                  </p>
+                {/* Registration Window */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Registration Window <span className="text-gray-400 font-normal">(Optional)</span>
+                  </label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Set when participants can register for this event.</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 mb-2 uppercase tracking-wide">Opens</label>
+                      <DatePicker selected={registrationStart} onChange={(date: Date | null) => setRegistrationStart(date)}
+                        showTimeSelect timeIntervals={15} timeCaption="Time" dateFormat="MMM d, yyyy h:mm aa"
+                        placeholderText="Start date & time" customInput={<DateInput />} popperPlacement="bottom-start" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 mb-2 uppercase tracking-wide">Closes</label>
+                      <DatePicker selected={registrationEnd} onChange={(date: Date | null) => setRegistrationEnd(date)}
+                        showTimeSelect timeIntervals={15} timeCaption="Time" dateFormat="MMM d, yyyy h:mm aa"
+                        placeholderText="End date & time" customInput={<DateInput />} popperPlacement="bottom-start"
+                        minDate={registrationStart || undefined} />
+                    </div>
+                  </div>
+                  {registrationStart && registrationEnd && registrationEnd > registrationStart && (
+                    <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#1a1a1a] border border-gray-200 dark:border-[#2a2a2a] px-4 py-3 rounded-xl mt-3">
+                      <div className="w-0.5 h-4 bg-[#DC143C] rounded-full flex-shrink-0" />
+                      <p className="text-sm text-gray-600 dark:text-gray-300">
+                        {registrationStart.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} {registrationStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                        <span className="mx-2 text-gray-300 dark:text-gray-600">→</span>
+                        {registrationEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} {registrationEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                      </p>
+                    </div>
+                  )}
+                  {registrationStart && registrationEnd && registrationEnd <= registrationStart && (
+                    <FieldError msg="Registration end must be after registration start." />
+                  )}
+                </div>
+
+                {error && (
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl text-sm">{error}</div>
                 )}
               </div>
 
-              {/* Registration Window */}
-              <div>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="h-px flex-1 bg-gray-200 dark:bg-[#2a2a2a]" />
-                  <span className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex-shrink-0">Registration Window</span>
-                  <div className="h-px flex-1 bg-gray-200 dark:bg-[#2a2a2a]" />
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Set when participants can register for this event. (Optional)</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Registration Opens</label>
-                    <DatePicker
-                      selected={registrationStart}
-                      onChange={(date: Date | null) => setRegistrationStart(date)}
-                      showTimeSelect timeIntervals={15} timeCaption="Time"
-                      dateFormat="MMM d, yyyy h:mm aa"
-                      placeholderText="Pick start date & time"
-                      customInput={<DateInput />}
-                      popperPlacement="bottom-start"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Registration Closes</label>
-                    <DatePicker
-                      selected={registrationEnd}
-                      onChange={(date: Date | null) => setRegistrationEnd(date)}
-                      showTimeSelect timeIntervals={15} timeCaption="Time"
-                      dateFormat="MMM d, yyyy h:mm aa"
-                      placeholderText="Pick end date & time"
-                      customInput={<DateInput />}
-                      popperPlacement="bottom-start"
-                      minDate={registrationStart || undefined}
-                    />
-                  </div>
-                </div>
-
-                {/* Registration window summary */}
-                {registrationStart && registrationEnd && (
-                  <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#262626] border border-gray-200 dark:border-[#333333] px-4 py-3 rounded-xl mt-3">
-                    <div className="w-0.5 h-4 bg-[#DC143C] rounded-full flex-shrink-0" />
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      {`Registration open from ${registrationStart.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at ${registrationStart.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} until ${registrationEnd.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} at ${registrationEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`}
-                    </p>
-                  </div>
-                )}
-
-                {registrationStart && registrationEnd && registrationEnd <= registrationStart && (
-                  <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3 flex-shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    Registration end must be after registration start.
-                  </p>
-                )}
-              </div>
-
-              {error && (
-                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl text-sm">{error}</div>
-              )}
-
-              {/* Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4">
+              {/* Footer */}
+              <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+              <div className="flex items-center justify-end gap-2 px-6 py-4">
                 <button type="button" onClick={handleClear}
-                  className="px-6 py-3 border-2 border-gray-300 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-[#333333] transition-all">
+                  className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
                   Clear
                 </button>
                 <button type="submit" disabled={loading}
-                  className="px-6 py-3 bg-[#DC143C] text-white rounded-xl font-semibold hover:bg-[#b01030] transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                  {loading ? (
-                    <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Creating...</>
-                  ) : 'Create Event'}
+                  className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md">
+                  {loading
+                    ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Creating...</>
+                    : 'Create Event'
+                  }
                 </button>
               </div>
             </form>

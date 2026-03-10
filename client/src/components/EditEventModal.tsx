@@ -305,14 +305,17 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
 
       {/* ── Main Edit Modal ── */}
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-2xl mx-4 flex flex-col max-h-[90vh] overflow-clip">
+        <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border-x border-b border-gray-200 dark:border-[#2a2a2a] w-full max-w-2xl mx-4 flex flex-col max-h-[90vh] overflow-clip">
+
+          {/* Red top edge */}
+          <div className="h-1.5 w-full bg-gradient-to-r from-[#DC143C] to-[#ff4d6d] flex-shrink-0" />
 
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424] flex-shrink-0">
             <div className="flex items-center gap-3">
               <span className="text-gray-500 dark:text-gray-400"><EditIcon /></span>
               <div>
-                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Edit Event</h2>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Edit Event</h2>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate max-w-[360px]">{event.title}</p>
               </div>
             </div>
