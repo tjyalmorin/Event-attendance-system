@@ -210,6 +210,11 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
+    await pool.query(`
+      ALTER TABLE participants
+        ADD COLUMN IF NOT EXISTS agent_type VARCHAR(50);
+    `);
+
     // ── Safe column additions for existing tables ──────────────────
     await pool.query(`
       ALTER TABLE participants

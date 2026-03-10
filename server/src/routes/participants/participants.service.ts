@@ -6,13 +6,14 @@ import {
 } from '../../utils/cache.js'
 
 export const registerParticipantService = async (event_id: number, payload: RegisterPayload) => {
-  const { agent_code, full_name, branch_name, team_name } = payload
+  const { agent_code, full_name, branch_name, team_name, agent_type } = payload
 
   if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
   if (!agent_code?.trim()) throw new Error('Agent code is required')
   if (!full_name?.trim()) throw new Error('Full name is required')
   if (!branch_name?.trim()) throw new Error('Branch name is required')
   if (!team_name?.trim()) throw new Error('Team name is required')
+  if (!agent_type?.trim()) throw new Error('Agent type is required')
   if (agent_code.length > 50) throw new Error('Agent code too long')
   if (full_name.length > 100) throw new Error('Full name too long')
 
@@ -45,11 +46,11 @@ export const registerParticipantService = async (event_id: number, payload: Regi
 
   const result = await pool.query(
     `INSERT INTO participants
-      (event_id, agent_code, full_name, branch_name, team_name,
+      (event_id, agent_code, full_name, branch_name, team_name, agent_type,
        registration_status, registered_at)
-     VALUES ($1,$2,$3,$4,$5,'confirmed', NOW())
+     VALUES ($1,$2,$3,$4,$5,$6,'confirmed', NOW())
      RETURNING *`,
-    [event_id, agent_code.trim(), full_name.trim(), branch_name.trim(), team_name.trim()]
+    [event_id, agent_code.trim(), full_name.trim(), branch_name.trim(), team_name.trim(), agent_type.trim()]
   )
 
   // Invalidate participants cache and event detail (registered_count changes)
@@ -79,6 +80,7 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
          p.full_name,
          p.branch_name,
          p.team_name,
+         p.agent_type,
          p.registration_status,
          p.registered_at,
          p.updated_at,
@@ -176,6 +178,7 @@ export const getCancelledParticipantsByEventService = async (event_id: number) =
        p.full_name,
        p.branch_name,
        p.team_name,
+       p.agent_type,
        p.registration_status,
        p.registered_at,
        p.updated_at,

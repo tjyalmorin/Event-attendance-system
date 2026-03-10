@@ -239,6 +239,7 @@ export default function RegistrationPage() {
     full_name: '',
     branch_name: '',
     team_name: '',
+    agent_type: '',
   })
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -314,6 +315,10 @@ export default function RegistrationPage() {
     e.preventDefault()
     if (form.agent_code.length !== 8) {
       setAgentCodeError('Agent code must be exactly 8 digits')
+      return
+    }
+    if (!form.agent_type) {
+      setError('Please select your agent type.')
       return
     }
     setSubmitting(true)
@@ -537,6 +542,23 @@ export default function RegistrationPage() {
                   {getTeamsForSelectedBranch(form.branch_name).map(t => (
                     <option key={t} value={t}>{t}</option>
                   ))}
+                </select>
+              </div>
+              <div style={s.field}>
+                <label style={s.label}>AGENT TYPE</label>
+                <select
+                  className="pru-input"
+                  name="agent_type"
+                  value={form.agent_type}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="">— Select agent type —</option>
+                  <option value="District Manager">District Manager</option>
+                  <option value="Area Manager">Area Manager</option>
+                  <option value="Branch Manager">Branch Manager</option>
+                  <option value="Unit Manager">Unit Manager</option>
+                  <option value="Agent">Agent</option>
                 </select>
               </div>
             </div>

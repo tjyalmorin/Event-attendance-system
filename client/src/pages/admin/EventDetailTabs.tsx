@@ -683,18 +683,18 @@ export default function EventDetailTabs({
                 <table className="w-full text-sm table-fixed">
                   <colgroup>
                     <col className="w-[130px]" /><col className="w-[220px]" /><col className="w-[150px]" />
-                    <col className="w-[150px]" /><col className="w-[180px]" /><col className="w-[80px]" />
+                    <col className="w-[150px]" /><col className="w-[140px]" /><col className="w-[180px]" /><col className="w-[80px]" />
                   </colgroup>
                   <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
                     <tr>
-                      {['Agent Code', 'Full Name', 'Branch', 'Team', 'Registered At', 'Actions'].map(h => (
+                      {['Agent Code', 'Full Name', 'Branch', 'Team', 'Agent Type', 'Registered At', 'Actions'].map(h => (
                         <th key={h} className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap text-left">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
                     {filteredRegistrants.length === 0 ? (
-                      <tr><td colSpan={6} className="text-center py-16 text-gray-400 dark:text-gray-500">No registrants found.</td></tr>
+                      <tr><td colSpan={7} className="text-center py-16 text-gray-400 dark:text-gray-500">No registrants found.</td></tr>
                     ) : pagedRegistrants.map(p => (
                       <tr key={p.participant_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
                         <td className="px-5 py-3.5">
@@ -718,6 +718,13 @@ export default function EventDetailTabs({
                           <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span>
                         </td>
                         <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs truncate max-w-0">{p.team_name}</td>
+                        <td className="px-5 py-3.5">
+                          {p.agent_type ? (
+                            <span className="inline-block px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-xs font-medium whitespace-nowrap">{p.agent_type}</span>
+                          ) : (
+                            <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                          )}
+                        </td>
                         <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">
                           {new Date(p.registered_at).toLocaleString('en-PH')}
                         </td>
@@ -788,19 +795,19 @@ export default function EventDetailTabs({
                 <table className="w-full text-sm table-fixed">
                   <colgroup>
                     <col className="w-[120px]" /><col className="w-[180px]" /><col className="w-[130px]" />
-                    <col className="w-[120px]" /><col className="w-[200px]" /><col className="w-[200px]" />
+                    <col className="w-[110px]" /><col className="w-[130px]" /><col className="w-[180px]" /><col className="w-[180px]" />
                     <col className="w-[110px]" />{isAdmin && <col className="w-[110px]" />}
                   </colgroup>
                   <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
                     <tr>
-                      {['Agent Code', 'Full Name', 'Branch', 'Team', 'Check In', 'Check Out', 'Status', ...(isAdmin ? ['Actions'] : [])].map(h => (
+                      {['Agent Code', 'Full Name', 'Branch', 'Team', 'Agent Type', 'Check In', 'Check Out', 'Status', ...(isAdmin ? ['Actions'] : [])].map(h => (
                         <th key={h} className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
                     {filteredAttendanceSorted.length === 0 ? (
-                      <tr><td colSpan={isAdmin ? 8 : 7} className="text-center py-16 text-gray-400 dark:text-gray-500">No attendance records found.</td></tr>
+                      <tr><td colSpan={isAdmin ? 9 : 8} className="text-center py-16 text-gray-400 dark:text-gray-500">No attendance records found.</td></tr>
                     ) : pagedAttendance.map((s, idx) => {
                       const isEditing = isAdmin && !s._isPending && editingSessionId === s.session_id
                       return (
@@ -828,6 +835,16 @@ export default function EventDetailTabs({
                             <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{s.branch_name}</span>
                           </td>
                           <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{s.team_name}</td>
+                          <td className="px-5 py-3.5">
+                            {(() => {
+                              const p = participants.find(p => p.agent_code === s.agent_code)
+                              return p?.agent_type ? (
+                                <span className="inline-block px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-xs font-medium whitespace-nowrap">{p.agent_type}</span>
+                              ) : (
+                                <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                              )
+                            })()}
+                          </td>
                           <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">
                             {isEditing ? (
                               <MaskedDateTimeInput value={editCheckIn} onChange={setEditCheckIn}
