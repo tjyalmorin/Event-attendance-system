@@ -15,32 +15,30 @@ import { getCancelledParticipantsByEvent } from '../participants/participants.co
 
 const router = Router()
 
-router.use(authenticate)
-
 // ── Static/named routes come FIRST — before /:event_id ───────
-router.get('/trash',    roleGuard('admin'), getTrashedEvents)
-router.get('/archived', roleGuard('admin'), getArchivedEvents)
+router.get('/trash',    authenticate, roleGuard('admin'), getTrashedEvents)
+router.get('/archived', authenticate, roleGuard('admin'), getArchivedEvents)
 
 // ── Standard routes ───────────────────────────────────────────
-router.get('/',    getAllEvents)
-router.post('/',   roleGuard('admin'), uploadPoster.any(), createEvent)
+router.get('/',    authenticate, getAllEvents)
+router.post('/',   authenticate, roleGuard('admin'), uploadPoster.any(), createEvent)
 
 // ── Event-specific routes ─────────────────────────────────────
-router.get('/:event_id',    getEventById)
-router.put('/:event_id',    roleGuard('admin'), validate(updateEventSchema), updateEvent)
-router.delete('/:event_id', roleGuard('admin'), deleteEvent)
+router.get('/:event_id',    getEventById)  // ← PUBLIC: used by RegistrationPage (no auth)
+router.put('/:event_id',    authenticate, roleGuard('admin'), validate(updateEventSchema), updateEvent)
+router.delete('/:event_id', authenticate, roleGuard('admin'), deleteEvent)
 
-router.post('/:event_id/restore',           roleGuard('admin'), restoreEvent)
-router.post('/:event_id/restore-archive',   roleGuard('admin'), restoreArchivedEvent)
-router.delete('/:event_id/permanent',       roleGuard('admin'), permanentDeleteEvent)
-router.post('/:event_id/permissions',       roleGuard('admin'), assignPermission)
-router.get('/:event_id/admin-grants',       roleGuard('admin'), getEventAdminGrants)
+router.post('/:event_id/restore',           authenticate, roleGuard('admin'), restoreEvent)
+router.post('/:event_id/restore-archive',   authenticate, roleGuard('admin'), restoreArchivedEvent)
+router.delete('/:event_id/permanent',       authenticate, roleGuard('admin'), permanentDeleteEvent)
+router.post('/:event_id/permissions',       authenticate, roleGuard('admin'), assignPermission)
+router.get('/:event_id/admin-grants',       authenticate, roleGuard('admin'), getEventAdminGrants)
 
 // ── Staff management ──────────────────────────────────────────
-router.get('/:event_id/staff',              roleGuard('admin'), getEventStaff)
-router.delete('/:event_id/staff/:user_id',  roleGuard('admin'), removeEventStaff)
+router.get('/:event_id/staff',              authenticate, roleGuard('admin'), getEventStaff)
+router.delete('/:event_id/staff/:user_id',  authenticate, roleGuard('admin'), removeEventStaff)
 
 // ── Cancelled participants (trash bin) ────────────────────────
-router.get('/:event_id/participants/cancelled', roleGuard('admin'), getCancelledParticipantsByEvent)
+router.get('/:event_id/participants/cancelled', authenticate, roleGuard('admin'), getCancelledParticipantsByEvent)
 
 export default router
