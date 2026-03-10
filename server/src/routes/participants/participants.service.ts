@@ -36,27 +36,26 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   )
   if (duplicate.rows.length > 0) throw new Error('This agent is already registered for this event')
 
-  const existingPhoto = await pool.query(
-    `SELECT photo_url FROM participants WHERE agent_code = $1 AND photo_url IS NOT NULL LIMIT 1`,
-    [agent_code.trim()]
-  )
-  const photo_url = existingPhoto.rows[0]?.photo_url || null
+  // ── Option 2: Resolve photo_url from agents table ──────
+  // We do NOT copy photo_url into participants.
+  // The agents table is the single source of truth for agent photos.
+  // At registration time, we only check if a photo exists — it will be
+  // resolved live via JOIN on agent_code whenever the participant is fetched.
+  // This is a read-only lookup; nothing is written to participants.photo_url.
 
   const result = await pool.query(
     `INSERT INTO participants
       (event_id, agent_code, full_name, branch_name, team_name,
-       registration_status, registered_at, photo_url)
-     VALUES ($1,$2,$3,$4,$5,'confirmed', NOW(), $6)
+       registration_status, registered_at)
+     VALUES ($1,$2,$3,$4,$5,'confirmed', NOW())
      RETURNING *`,
-    [event_id, agent_code.trim(), full_name.trim(), branch_name.trim(), team_name.trim(), photo_url]
+    [event_id, agent_code.trim(), full_name.trim(), branch_name.trim(), team_name.trim()]
   )
 
   // Invalidate participants cache and event detail (registered_count changes)
   await Promise.all([
     invalidateParticipantCache(event_id),
-    cacheGet(CK.EVENT_DETAIL(event_id)).then(() =>
-      import('../../utils/cache.js').then(m => m.cacheDel(CK.EVENT_DETAIL(event_id)))
-    ),
+    import('../../utils/cache.js').then(m => m.cacheDel(CK.EVENT_DETAIL(event_id))),
   ])
 
   return { participant: result.rows[0] }
@@ -65,21 +64,31 @@ export const registerParticipantService = async (event_id: number, payload: Regi
 export const getParticipantsByEventService = async (event_id: number, branch_name?: string) => {
   if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
 
-  // Only cache the unfiltered (admin) version
-  // Staff-filtered version is a subset computed in-memory from cache
   const cacheKey = CK.PARTICIPANTS_EVENT(event_id)
   let all = await cacheGet<any[]>(cacheKey)
 
   if (!all) {
+    // ── Option 2: JOIN agents table to resolve photo_url live ──
+    // photo_url is NOT stored on participants — it lives in the agents table.
+    // LEFT JOIN ensures participants without a photo still appear (photo_url = null).
     const result = await pool.query(
       `SELECT
-         participant_id, event_id, agent_code, full_name,
-         branch_name, team_name, registration_status,
-         registered_at, updated_at, photo_url,
-         label, label_description
-       FROM participants
-       WHERE event_id = $1 AND deleted_at IS NULL
-       ORDER BY registered_at DESC`,
+         p.participant_id,
+         p.event_id,
+         p.agent_code,
+         p.full_name,
+         p.branch_name,
+         p.team_name,
+         p.registration_status,
+         p.registered_at,
+         p.updated_at,
+         p.label,
+         p.label_description,
+         a.photo_url
+       FROM participants p
+       LEFT JOIN agents a ON a.agent_code = p.agent_code
+       WHERE p.event_id = $1 AND p.deleted_at IS NULL
+       ORDER BY p.registered_at DESC`,
       [event_id]
     )
     all = result.rows
@@ -88,33 +97,6 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
 
   // Filter in memory for staff — no extra DB round-trip
   return branch_name ? all.filter(p => p.branch_name === branch_name) : all
-  const result = branch_name
-    ? await pool.query(
-        `SELECT
-           participant_id, event_id, agent_code, full_name,
-           branch_name, team_name, registration_status,
-           registered_at, updated_at, photo_url,
-           label, label_description
-         FROM participants
-         WHERE event_id = $1 AND deleted_at IS NULL AND branch_name = $2
-           AND registration_status != 'cancelled'
-         ORDER BY registered_at DESC`,
-        [event_id, branch_name]
-      )
-    : await pool.query(
-        `SELECT
-           participant_id, event_id, agent_code, full_name,
-           branch_name, team_name, registration_status,
-           registered_at, updated_at, photo_url,
-           label, label_description
-         FROM participants
-         WHERE event_id = $1 AND deleted_at IS NULL
-           AND registration_status != 'cancelled'
-         ORDER BY registered_at DESC`,
-        [event_id]
-      )
-
-  return result.rows
 }
 
 export const cancelParticipantService = async (participant_id: number) => {
@@ -188,13 +170,24 @@ export const getCancelledParticipantsByEventService = async (event_id: number) =
 
   const result = await pool.query(
     `SELECT
-       participant_id, event_id, agent_code, full_name,
-       branch_name, team_name, registration_status,
-       registered_at, updated_at, photo_url,
-       label, label_description
-     FROM participants
-     WHERE event_id = $1 AND registration_status = 'cancelled' AND deleted_at IS NOT NULL
-     ORDER BY updated_at DESC`,
+       p.participant_id,
+       p.event_id,
+       p.agent_code,
+       p.full_name,
+       p.branch_name,
+       p.team_name,
+       p.registration_status,
+       p.registered_at,
+       p.updated_at,
+       p.label,
+       p.label_description,
+       a.photo_url
+     FROM participants p
+     LEFT JOIN agents a ON a.agent_code = p.agent_code
+     WHERE p.event_id = $1
+       AND p.registration_status = 'cancelled'
+       AND p.deleted_at IS NOT NULL
+     ORDER BY p.updated_at DESC`,
     [event_id]
   )
   return result.rows

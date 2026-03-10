@@ -31,9 +31,6 @@ const pool = new Pool({
 // ── Settings ──────────────────────────────────────────────────────────────────
 const photosDir = path.join(__dirname, '../../uploads/agents')
 
-//  Resize: max 400×400px (keeps aspect ratio, never stretches)
-//  Quality: 80% — sharp and clear, ~60-70% smaller file size
-//  Format:  auto — Cloudinary picks the best format (WebP for modern browsers)
 const UPLOAD_OPTIONS = {
   overwrite:     true,
   resource_type: 'image',
@@ -41,9 +38,9 @@ const UPLOAD_OPTIONS = {
     {
       width:        400,
       height:       400,
-      crop:         'limit',  // shrinks if larger, never upscales smaller photos
-      quality:      80,       // 80% quality = 20% reduction, still very sharp
-      fetch_format: 'auto'    // serves WebP to modern browsers automatically
+      crop:         'limit',
+      quality:      80,
+      fetch_format: 'auto'
     }
   ]
 }
@@ -60,11 +57,14 @@ const run = async () => {
   console.log('')
   console.log('╔══════════════════════════════════════════════════════╗')
   console.log('║     PrimeLog — Bulk Photo Upload to Cloudinary       ║')
+  console.log('╠══════════════════════════════════════════════════════╣')
+  console.log('║     Writing photo_url → agents table (Option 2)      ║')
   console.log('╚══════════════════════════════════════════════════════╝')
   console.log('')
   console.log('  📐 Resize  : max 400×400px (aspect ratio preserved)')
   console.log('  🗜️  Quality : 80% (sharp, ~60-70% smaller file size)')
   console.log('  📦 Format  : auto (WebP for modern browsers)')
+  console.log('  🗄️  Target  : agents table (independent of events)')
   console.log('')
 
   // ── Check folder exists ───────────────────────────────────────────────
@@ -99,8 +99,7 @@ const run = async () => {
   console.log('')
 
   // ── Track results ─────────────────────────────────────────────────────
-  let matched   = 0
-  let unmatched = 0
+  let uploaded  = 0
   let failed    = 0
   let totalOriginalBytes = 0
   let totalUploadedBytes = 0
@@ -115,7 +114,7 @@ const run = async () => {
     process.stdout.write(`  📸 ${file} (${formatBytes(fileSize)}) → `)
 
     try {
-      // Upload with auto-resize + compression
+      // ── Upload to Cloudinary ──────────────────────────────
       const uploadResult = await cloudinary.uploader.upload(filePath, {
         ...UPLOAD_OPTIONS,
         public_id: `agents/${agentCode}`,
@@ -130,29 +129,23 @@ const run = async () => {
 
       const photo_url = uploadResult.secure_url
 
-      // Update ALL participants with this agent code (across all events)
-      const result = await pool.query(
-        `UPDATE participants
-         SET photo_url = $1, updated_at = NOW()
-         WHERE agent_code = $2
-         RETURNING participant_id, full_name`,
-        [photo_url, agentCode]
+      // ── Upsert into agents table (Option 2) ───────────────
+      // INSERT if agent_code doesn't exist, UPDATE photo_url if it does.
+      // This is completely independent of any event or participant record.
+      await pool.query(
+        `INSERT INTO agents (agent_code, photo_url, created_at, updated_at)
+         VALUES ($1, $2, NOW(), NOW())
+         ON CONFLICT (agent_code)
+         DO UPDATE SET photo_url = EXCLUDED.photo_url, updated_at = NOW()`,
+        [agentCode, photo_url]
       )
 
-      if (result.rowCount && result.rowCount > 0) {
-        const names = result.rows.map(r => r.full_name).join(', ')
-        console.log(`✅ Matched`)
-        console.log(`     👤 ${names}`)
-        console.log(`     📉 ${formatBytes(fileSize)} → ${formatBytes(uploadedBytes)} (${savings}% smaller)`)
-        console.log(`     🔗 ${photo_url}`)
-        matched++
-      } else {
-        console.log(`⚠️  Uploaded but no DB match`)
-        console.log(`     agent_code "${agentCode}" not found in participants table`)
-        console.log(`     📉 ${formatBytes(fileSize)} → ${formatBytes(uploadedBytes)} (${savings}% smaller)`)
-        console.log(`     🔗 ${photo_url}`)
-        unmatched++
-      }
+      console.log(`✅ Uploaded`)
+      console.log(`     🔑 agent_code : ${agentCode}`)
+      console.log(`     📉 Size       : ${formatBytes(fileSize)} → ${formatBytes(uploadedBytes)} (${savings}% smaller)`)
+      console.log(`     🔗 URL        : ${photo_url}`)
+      uploaded++
+
     } catch (err) {
       console.log(`❌ Failed`)
       console.log(`     Error: ${err.message}`)
@@ -170,9 +163,8 @@ const run = async () => {
   console.log('─'.repeat(56))
   console.log('')
   console.log('  📊 Upload Summary')
-  console.log(`     ✅ Matched & uploaded   : ${matched}`)
-  console.log(`     ⚠️  Uploaded, no DB match: ${unmatched}`)
-  console.log(`     ❌ Failed               : ${failed}`)
+  console.log(`     ✅ Uploaded to agents table : ${uploaded}`)
+  console.log(`     ❌ Failed                  : ${failed}`)
   console.log('')
   console.log('  💾 Storage Savings')
   console.log(`     Original total : ${formatBytes(totalOriginalBytes)}`)
@@ -180,16 +172,15 @@ const run = async () => {
   console.log(`     Total saved    : ${totalSavings}% smaller`)
   console.log('')
 
-  if (unmatched > 0) {
-    console.log('  ⚠️  Unmatched photos were still uploaded to Cloudinary.')
-    console.log('     Check that filenames exactly match agent_code in the DB.')
-    console.log('     Example: if agent_code is "12345678", file must be "12345678.jpg"')
+  if (uploaded > 0) {
+    console.log('  ✅ Done! Photos stored in agents table.')
+    console.log('     They will appear on scanner screen for any event')
+    console.log('     the agent registers for — no re-upload needed.')
     console.log('')
-  }
-
-  if (matched > 0) {
-    console.log('  ✅ Done! Photos are live. No server restart needed.')
-    console.log('     They will appear on the scanner verify screen immediately.')
+    console.log('  💡 How it works:')
+    console.log('     • Registration queries agents table by agent_code')
+    console.log('     • photo_url is resolved live — no copy into participants')
+    console.log('     • Scanner joins agents table to show the photo')
     console.log('')
   }
 

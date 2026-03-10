@@ -39,6 +39,19 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
+    // ── agents ─────────────────────────────────────────────
+    // Stores agent photos independently of event participation.
+    // photo_url is resolved from here at registration time,
+    // instead of being stored/copied into participants.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS agents (
+        agent_code   VARCHAR(50)   PRIMARY KEY,
+        photo_url    VARCHAR(500),
+        created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      );
+    `);
+
     // ── events ─────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS events (
@@ -183,8 +196,6 @@ const migrate = async (): Promise<void> => {
     `);
 
     // ── event_branches ─────────────────────────────────────
-    // Stores which branches (and teams) are included in each event.
-    // Used by the registration form to show only the correct branches/teams.
     await pool.query(`
       CREATE TABLE IF NOT EXISTS event_branches (
         id          SERIAL        PRIMARY KEY,
@@ -202,7 +213,7 @@ const migrate = async (): Promise<void> => {
         ADD COLUMN IF NOT EXISTS photo_url          VARCHAR(500);
     `);
 
-    // Drop OLD column names if they still exist (renamed to label / label_description)
+    // Drop OLD column names if they still exist
     await pool.query(`
       ALTER TABLE participants
         DROP COLUMN IF EXISTS label,
@@ -216,7 +227,7 @@ const migrate = async (): Promise<void> => {
         ADD COLUMN IF NOT EXISTS label_description  TEXT;
     `);
 
-    // ── branch_name on events (safe add for existing DBs) ──
+    // ── branch_name on events (safe add) ──────────────────
     await pool.query(`
       ALTER TABLE events
         ADD COLUMN IF NOT EXISTS branch_name VARCHAR(255);
@@ -228,7 +239,7 @@ const migrate = async (): Promise<void> => {
         ADD COLUMN IF NOT EXISTS poster_url VARCHAR(500);
     `);
 
-    // ── OTP columns for forgot password (admin only) ───────
+    // ── OTP columns ────────────────────────────────────────
     await pool.query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS otp_code     VARCHAR(6),
@@ -236,13 +247,13 @@ const migrate = async (): Promise<void> => {
         ADD COLUMN IF NOT EXISTS otp_verified BOOLEAN DEFAULT FALSE;
     `);
 
-    // ── is_active column for account deactivation ─────────
+    // ── is_active column ───────────────────────────────────
     await pool.query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
     `);
 
-    // ── Original Indexes ───────────────────────────────────
+    // ── Indexes ────────────────────────────────────────────
     await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_users_agent_code              ON users(agent_code);
       CREATE INDEX IF NOT EXISTS idx_users_deleted_at              ON users(deleted_at);
@@ -269,55 +280,40 @@ const migrate = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_scan_logs_scanned_at          ON scan_logs(scanned_at);
       CREATE INDEX IF NOT EXISTS idx_teams_branch_id               ON teams(branch_id);
       CREATE INDEX IF NOT EXISTS idx_event_branches_event_id       ON event_branches(event_id);
+
+      -- agents table index
+      CREATE INDEX IF NOT EXISTS idx_agents_agent_code             ON agents(agent_code);
     `);
 
-    // ── New Performance Indexes ────────────────────────────
+    // ── Performance indexes ────────────────────────────────
     await pool.query(`
-
-      -- Composite index for scanning (most critical)
-      -- scan.service queries agent_code + event_id + deleted_at on EVERY scan
       CREATE INDEX IF NOT EXISTS idx_participants_agent_event
         ON participants(agent_code, event_id)
         WHERE deleted_at IS NULL;
 
-      -- Attendance session lookup during scanning
-      -- scan.service queries participant_id + event_id ordered by created_at DESC
       CREATE INDEX IF NOT EXISTS idx_attendance_participant_event
         ON attendance_sessions(participant_id, event_id, created_at DESC);
 
-      -- Scan logs ordered retrieval per event
-      -- getScanLogsByEventService orders by scanned_at DESC
       CREATE INDEX IF NOT EXISTS idx_scan_logs_event_scanned
         ON scan_logs(event_id, scanned_at DESC);
 
-      -- Override logs ordered retrieval per event
-      -- getOverrideLogsByEventService orders by created_at DESC
       CREATE INDEX IF NOT EXISTS idx_override_logs_event_created
         ON override_logs(event_id, created_at DESC);
 
-      -- Partial index for active events only
-      -- getAllEventsService always filters deleted_at IS NULL
       CREATE INDEX IF NOT EXISTS idx_events_status_deleted
         ON events(status, deleted_at)
         WHERE deleted_at IS NULL;
 
-      -- Admin grant validity check
-      -- adminGrantGuard middleware runs this on EVERY protected staff request
       CREATE INDEX IF NOT EXISTS idx_admin_grants_valid
         ON admin_grants(granted_to_user_id, event_id, expires_at)
         WHERE revoked_at IS NULL;
 
-      -- Login query optimization
-      -- loginService queries email + deleted_at + is_active on every login
       CREATE INDEX IF NOT EXISTS idx_users_email_active
         ON users(email)
         WHERE deleted_at IS NULL AND is_active = TRUE;
 
-      -- Full-text search for participant name lookup
-      -- lookupParticipantService uses ILIKE which cannot use B-tree indexes
       CREATE INDEX IF NOT EXISTS idx_participants_fullname_gin
         ON participants USING gin(to_tsvector('english', full_name));
-
     `);
 
     // ── Auto-update updated_at trigger ─────────────────────
@@ -331,7 +327,7 @@ const migrate = async (): Promise<void> => {
       $$ LANGUAGE plpgsql;
     `);
 
-    const triggerTables = ['users', 'events', 'participants', 'attendance_sessions', 'branches', 'teams'];
+    const triggerTables = ['users', 'events', 'participants', 'attendance_sessions', 'branches', 'teams', 'agents'];
     for (const table of triggerTables) {
       await pool.query(`
         DROP TRIGGER IF EXISTS set_updated_at_${table} ON ${table};
@@ -354,8 +350,6 @@ const migrate = async (): Promise<void> => {
         ['Kurt Russel Gliponeo', 'kurtrusselgliponeo@gmail.com', hash]
       )
       console.log('✅ SuperAdmin seeded!')
-      console.log('   Email   : kurtrusselgliponeo@gmail.com')
-      console.log('   Password: Admin@1234')
     } else {
       console.log('ℹ️  SuperAdmin already exists, skipping.')
     }
@@ -382,13 +376,14 @@ const migrate = async (): Promise<void> => {
         )
       }
     }
-    console.log('✅ Branches & Teams seeded!')
+    console.log('✅ Branches & Teams seeded!');
 
     console.log('');
     console.log('✅ Migration complete!');
     console.log('');
     console.log('  📋 Tables created/verified:');
     console.log('     • users');
+    console.log('     • agents             ← NEW (photo_url by agent_code)');
     console.log('     • events');
     console.log('     • event_permissions');
     console.log('     • admin_grants');
@@ -398,36 +393,14 @@ const migrate = async (): Promise<void> => {
     console.log('     • scan_logs');
     console.log('     • branches');
     console.log('     • teams');
-    console.log('     • event_branches  ← NEW');
-    console.log('');
-    console.log('  🔧 Also applied: indexes, triggers, column additions, performance indexes');
-    console.log('     • events.poster_url          ← NEW');
-    console.log('');
-    console.log('  📈 Performance indexes added:');
-    console.log('     • idx_participants_agent_event   (composite — scanning)');
-    console.log('     • idx_attendance_participant_event (composite — session lookup)');
-    console.log('     • idx_scan_logs_event_scanned    (composite — log retrieval)');
-    console.log('     • idx_override_logs_event_created (composite — override logs)');
-    console.log('     • idx_events_status_deleted      (partial — active events)');
-    console.log('     • idx_admin_grants_valid         (partial — grant checks)');
-    console.log('     • idx_users_email_active         (partial — login)');
-    console.log('     • idx_participants_fullname_gin  (GIN — name search)');
-    console.log('     • idx_event_branches_event_id    (event branches lookup)');
+    console.log('     • event_branches');
     console.log('');
     console.log('  💡 Next: npm run db:migrate   (re-run safe — all idempotent)');
     console.log('          npm run dev            (start the server)');
     console.log('');
     process.exit(0);
   } catch (error) {
-    console.error('');
-    console.error('❌ Migration failed!');
-    console.error('');
-    console.error('  Common fixes:');
-    console.error('  1. Make sure PostgreSQL is running');
-    console.error('  2. Check your .env file (copy from .env.example)');
-    console.error('  3. Create the database: CREATE DATABASE primelog_local;');
-    console.error('');
-    console.error('  Error details:', error);
+    console.error('❌ Migration failed:', error);
     process.exit(1);
   }
 };

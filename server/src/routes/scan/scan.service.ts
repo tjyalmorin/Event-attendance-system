@@ -11,9 +11,6 @@ export const lookupParticipantService = async (query: string, event_id: number) 
   )
   const event = eventResult.rows[0]
   if (!event) throw new Error('Event not found.')
-  // ── NOTE: status check intentionally removed here ──
-  // Lookup is used for search suggestions and should work regardless of registration status.
-  // The status check is enforced at the actual scan step (scanAgentCodeService).
 
   const now = new Date()
   const currentTime = now.toTimeString().split(' ')[0]
@@ -23,19 +20,24 @@ export const lookupParticipantService = async (query: string, event_id: number) 
   let participantRows: any[] = []
 
   if (isNumeric) {
-    // Contains match so suggestions appear immediately as user types any part of the code
+    // ── Option 2: JOIN agents table to get photo_url ──────
     const partial = await pool.query(
-      `SELECT * FROM participants
-       WHERE agent_code ILIKE $1 AND event_id = $2 AND deleted_at IS NULL`,
+      `SELECT p.*, a.photo_url
+       FROM participants p
+       LEFT JOIN agents a ON a.agent_code = p.agent_code
+       WHERE p.agent_code ILIKE $1 AND p.event_id = $2 AND p.deleted_at IS NULL`,
       [`%${query.trim()}%`, event_id]
     )
     participantRows = partial.rows
   }
 
   if (participantRows.length === 0) {
+    // ── Option 2: JOIN agents table to get photo_url ──────
     const byName = await pool.query(
-      `SELECT * FROM participants
-       WHERE event_id = $1 AND deleted_at IS NULL AND full_name ILIKE $2`,
+      `SELECT p.*, a.photo_url
+       FROM participants p
+       LEFT JOIN agents a ON a.agent_code = p.agent_code
+       WHERE p.event_id = $1 AND p.deleted_at IS NULL AND p.full_name ILIKE $2`,
       [event_id, `%${query.trim()}%`]
     )
     participantRows = byName.rows
@@ -59,7 +61,7 @@ export const lookupParticipantService = async (query: string, event_id: number) 
         agent_code: p.agent_code,
         branch_name: p.branch_name,
         team_name: p.team_name,
-        photo_url: p.photo_url || null,
+        photo_url: p.photo_url || null,   // from agents table via JOIN
       }))
     }
   }
@@ -87,9 +89,9 @@ export const lookupParticipantService = async (query: string, event_id: number) 
       agent_code: participant.agent_code,
       branch_name: participant.branch_name,
       team_name: participant.team_name,
-      photo_url: participant.photo_url || null,
-      label: participant.label || null,                          // ← ADDED
-      label_description: participant.label_description || null,  // ← ADDED
+      photo_url: participant.photo_url || null,   // from agents table via JOIN
+      label: participant.label || null,
+      label_description: participant.label_description || null,
     },
     next_action: nextAction
   }
@@ -106,16 +108,17 @@ export const resolveParticipantService = async (participant_id: number, event_id
   )
   const event = eventResult.rows[0]
   if (!event) throw new Error('Event not found.')
-  // ── NOTE: status check intentionally removed here ──
-  // Resolve is used for the verify screen and should work regardless of registration status.
-  // The status check is enforced at the actual scan step (scanAgentCodeService).
 
   const now = new Date()
   const currentTime = now.toTimeString().split(' ')[0]
   if (currentTime > event.checkin_cutoff) throw new Error('Check-in time has already passed.')
 
+  // ── Option 2: JOIN agents table to get photo_url ──────────────────────
   const pResult = await pool.query(
-    `SELECT * FROM participants WHERE participant_id = $1 AND event_id = $2 AND deleted_at IS NULL`,
+    `SELECT p.*, a.photo_url
+     FROM participants p
+     LEFT JOIN agents a ON a.agent_code = p.agent_code
+     WHERE p.participant_id = $1 AND p.event_id = $2 AND p.deleted_at IS NULL`,
     [participant_id, event_id]
   )
   const participant = pResult.rows[0]
@@ -144,9 +147,9 @@ export const resolveParticipantService = async (participant_id: number, event_id
       agent_code: participant.agent_code,
       branch_name: participant.branch_name,
       team_name: participant.team_name,
-      photo_url: participant.photo_url || null,
-      label: participant.label || null,                          // ← ADDED
-      label_description: participant.label_description || null,  // ← ADDED
+      photo_url: participant.photo_url || null,   // from agents table via JOIN
+      label: participant.label || null,
+      label_description: participant.label_description || null,
     },
     next_action: nextAction
   }
@@ -163,9 +166,12 @@ export const scanAgentCodeService = async (
   if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
   if (agent_code.length > 50) throw new Error('Invalid agent code')
 
+  // ── Option 2: JOIN agents table to get photo_url ──────────────────────
   const participantResult = await pool.query(
-    `SELECT * FROM participants
-     WHERE agent_code = $1 AND event_id = $2 AND deleted_at IS NULL`,
+    `SELECT p.*, a.photo_url
+     FROM participants p
+     LEFT JOIN agents a ON a.agent_code = p.agent_code
+     WHERE p.agent_code = $1 AND p.event_id = $2 AND p.deleted_at IS NULL`,
     [agent_code, event_id]
   )
   const participant = participantResult.rows[0]
@@ -194,8 +200,6 @@ export const scanAgentCodeService = async (
   )
   const event = eventResult.rows[0]
   if (!event) { await logScan('denied', 'Event not found'); throw new Error('Event not found.') }
-  // NOTE: Registration open/closed status does not block check-in/out.
-  // open/closed only controls the public registration form.
 
   const now = new Date()
   const currentTime = now.toTimeString().split(' ')[0]
@@ -204,12 +208,13 @@ export const scanAgentCodeService = async (
     throw new Error('Check-in time has already passed.')
   }
 
+  // photo_url comes from the agents JOIN above — no copy needed
   const participantPayload = {
     full_name: participant.full_name,
     agent_code: participant.agent_code,
     branch_name: participant.branch_name,
     team_name: participant.team_name,
-    photo_url: participant.photo_url || null
+    photo_url: participant.photo_url || null   // from agents table via JOIN
   }
 
   const existingSession = await pool.query(
@@ -350,14 +355,12 @@ export const updateSessionTimesService = async (
   return result.rows[0]
 }
 
-// ── Bulk check-out all currently checked-in attendees (admin only) ────────────
+// ── Bulk check-out ────────────────────────────────────────────────────────────
 export const bulkCheckOutService = async (event_id: number, session_ids: number[]) => {
   if (!Array.isArray(session_ids) || session_ids.length === 0) {
     throw new Error('session_ids must be a non-empty array')
   }
 
-  // Scopes update to the given event_id to prevent cross-event tampering.
-  // Only touches sessions that are checked-in but not yet checked-out.
   const result = await pool.query(
     `UPDATE attendance_sessions
      SET check_out_time   = NOW(),
