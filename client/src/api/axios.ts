@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 
 const api: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: '/api',  // ← change this, proxy will handle it
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -22,11 +22,17 @@ api.interceptors.request.use(
   }
 );
 
+// Public routes that should never trigger an auth redirect
+const PUBLIC_PATHS = ['/register', '/confirmation'];
+
+const isPublicRoute = () =>
+  PUBLIC_PATHS.some((path) => window.location.pathname.startsWith(path));
+
 // Response interceptor
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !isPublicRoute()) {
       localStorage.removeItem('authToken');
       window.location.href = '/admin/login';
     }

@@ -1,0 +1,73 @@
+import { Request, Response } from 'express'
+import asyncHandler from '../../middlewares/asyncHandler.js'
+import { AppError } from '../../errors/AppError.js'
+import {
+  lookupParticipantService,
+  resolveParticipantService,
+  scanAgentCodeService,
+  logDenialService,
+  getSessionsByEventService,
+  getScanLogsByEventService,
+  updateSessionTimesService,
+  bulkCheckOutService,
+} from './scan.service.js'
+
+export const lookupParticipant = asyncHandler(async (req: Request, res: Response) => {
+  const query = (req.body.query || req.body.agent_code || '').trim()
+  const { event_id } = req.body
+  if (!query || !event_id) throw new AppError('query and event_id are required', 400)
+  const result = await lookupParticipantService(query, Number(event_id))
+  res.json(result)
+})
+
+export const resolveParticipant = asyncHandler(async (req: Request, res: Response) => {
+  const { participant_id, event_id } = req.body
+  if (!participant_id || !event_id) throw new AppError('participant_id and event_id are required', 400)
+  const result = await resolveParticipantService(Number(participant_id), Number(event_id))
+  res.json(result)
+})
+
+export const scanAgentCode = asyncHandler(async (req: Request, res: Response) => {
+  const { agent_code, event_id, is_early_out, early_out_reason } = req.body
+  if (!agent_code || !event_id) throw new AppError('agent_code and event_id are required', 400)
+  const result = await scanAgentCodeService(
+    agent_code.trim(),
+    Number(event_id),
+    is_early_out === true,
+    early_out_reason || null
+  )
+  res.json(result)
+})
+
+export const logDenial = asyncHandler(async (req: Request, res: Response) => {
+  const { agent_code, event_id, reason } = req.body
+  if (!agent_code || !event_id) throw new AppError('agent_code and event_id are required', 400)
+  await logDenialService(agent_code.trim(), Number(event_id), reason || 'Staff denied — identity mismatch')
+  res.json({ message: 'Denial logged' })
+})
+
+export const getSessionsByEvent = asyncHandler(async (req: Request, res: Response) => {
+  const sessions = await getSessionsByEventService(Number(req.params.event_id))
+  res.json(sessions)
+})
+
+export const getScanLogsByEvent = asyncHandler(async (req: Request, res: Response) => {
+  const logs = await getScanLogsByEventService(Number(req.params.event_id))
+  res.json(logs)
+})
+
+export const updateSessionTimes = asyncHandler(async (req: Request, res: Response) => {
+  const session_id = Number(req.params.session_id)
+  if (!session_id || isNaN(session_id)) throw new AppError('Valid session_id is required', 400)
+  const { check_in_time, check_out_time } = req.body
+  const updated = await updateSessionTimesService(session_id, check_in_time, check_out_time ?? null)
+  res.json(updated)
+})
+
+export const bulkCheckOut = asyncHandler(async (req: Request, res: Response) => {
+  const event_id = Number(req.params.event_id)
+  if (!event_id || isNaN(event_id)) throw new AppError('Valid event_id is required', 400)
+  const { session_ids } = req.body
+  const result = await bulkCheckOutService(event_id, session_ids.map(Number))
+  res.json(result)
+})

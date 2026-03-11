@@ -1,152 +1,159 @@
-# Setup Guide - QR Event Attendance System
+# Setup Guide — PrimeLog (Local Dev)
 
 ## Prerequisites
 
-- **Node.js** (v18 or higher) - https://nodejs.org/
-- **PostgreSQL** (v14 or higher) - https://postgresql.org/download/
-- **Git** - https://git-scm.com/
-- **VS Code** (recommended) - https://code.visualstudio.com/
+- **Node.js** v18 or higher — https://nodejs.org/
+- **PostgreSQL** v14 or higher — https://postgresql.org/download/
+- **pgAdmin 4** — https://pgadmin.org/download/ (comes with PostgreSQL installer)
+- **Git** — https://git-scm.com/
+- **VS Code** (recommended) — https://code.visualstudio.com/
 
 ---
 
-## Step-by-Step Setup
+## Step 1 — Clone the repo
 
-### 1. Clone or Extract Project
-
-If from GitHub:
 ```bash
 git clone <your-repo-url>
 cd QR-event-attendance-system
 ```
 
-If from zip/tar.gz:
-- Extract to your workspace folder
-- Open folder in VS Code
+---
 
-### 2. Install Dependencies
+## Step 2 — Install dependencies
 
-**Backend:**
+Open two terminals:
+
 ```bash
+# Terminal 1 — Backend
 cd server
 npm install
-```
 
-**Frontend (new terminal):**
-```bash
+# Terminal 2 — Frontend
 cd client
 npm install
 ```
 
-### 3. Install & Setup PostgreSQL
+---
 
-**Windows:**
-1. Download from https://postgresql.org/download/windows/
-2. Install with default settings
-3. Remember the password you set!
-4. Default port: 5432
+## Step 3 — Create the local database in pgAdmin
 
-**Mac:**
-```bash
-brew install postgresql@14
-brew services start postgresql@14
-```
+1. Open **pgAdmin 4**
+2. Connect to your local PostgreSQL server
+3. Right-click **Databases** → **Create** → **Database**
+4. Name it: `primelog_local` → click **Save**
 
-**Linux:**
-```bash
-sudo apt update
-sudo apt install postgresql postgresql-contrib
-sudo systemctl start postgresql
-```
+---
 
-### 4. Create Database
+## Step 4 — Configure environment variables
 
-Open terminal:
-```bash
-psql -U postgres
-```
-
-Enter password, then:
-```sql
-CREATE DATABASE event_attendance;
-\q
-```
-
-### 5. Configure Environment Variables
-
-**Server .env:**
 ```bash
 cd server
 cp .env.example .env
 ```
 
-Edit `server/.env`:
+Open `server/.env` and fill in your PostgreSQL password:
+
 ```env
 PORT=5000
 NODE_ENV=development
 
 DB_USER=postgres
 DB_HOST=localhost
-DB_NAME=event_attendance
-DB_PASSWORD=YOUR_POSTGRES_PASSWORD
+DB_NAME=primelog_local
+DB_PASSWORD=YOUR_POSTGRES_PASSWORD_HERE
 DB_PORT=5432
 
-JWT_SECRET=change_this_to_random_string
+JWT_SECRET=change_this_to_a_long_random_string
 CLIENT_URL=http://localhost:5173
 ```
+cd .cd..
+> ⚠️ Never commit your `.env` file. It's already in `.gitignore`.
 
-**Client .env:**
-```bash
-cd client
-cp .env.example .env
-```
+---
 
-(Default values are fine)
+## Step 5 — Run the database migration
 
-### 6. Run Database Migration
+This creates all the tables, indexes, and triggers automatically:
 
 ```bash
 cd server
 npm run db:migrate
 ```
 
-Should see: "✅ All tables created successfully!"
-
-### 7. Start Development Servers
-
-**Terminal 1 - Backend:**
-```bash
-cd server
-npm run dev
+Expected output:
+```
+🚀 Running database migration...
+✅ Connected to PostgreSQL database
+✅ Migration complete! All tables and indexes created.
 ```
 
-**Terminal 2 - Frontend:**
+### Verify in pgAdmin (optional)
+- Expand `primelog_local` → **Schemas** → **public** → **Tables**
+- Right-click **Tables** → **Refresh**
+- You should see 6 tables:
+  - `attendance_sessions`
+  - `event_permissions`
+  - `events`
+  - `participants`
+  - `scan_logs`
+  - `users`
+
+---
+
+## Step 6 — Start the dev servers
+
 ```bash
+# Terminal 1 — Backend (runs on http://localhost:5000)
+cd server
+npm run dev
+
+# Terminal 2 — Frontend (runs on http://localhost:5173)
 cd client
 npm run dev
 ```
 
-### 8. Verify Setup
-
+### Health check
 - Backend: http://localhost:5000/api/health
 - Frontend: http://localhost:5173
+
+---
+
+## Common Commands
+
+```bash
+# Run migration (create/update tables)
+cd server && npm run db:migrate
+
+# Start backend dev server
+cd server && npm run dev
+
+# Start frontend dev server
+cd client && npm run dev
+```
 
 ---
 
 ## Troubleshooting
 
 **"Cannot connect to database"**
-- Check PostgreSQL is running
-- Verify password in .env
-- Check database exists: `psql -U postgres -l`
+- Make sure PostgreSQL is running (check pgAdmin — server should show a green icon)
+- Double-check `DB_PASSWORD` in your `.env`
+- Make sure the database `primelog_local` exists in pgAdmin
 
 **"Port already in use"**
-- Change PORT in server/.env
-- Or kill process: `lsof -ti:5000 | xargs kill`
+- Change `PORT` in `server/.env`
+- Or kill the process:
+  ```bash
+  # Mac/Linux
+  lsof -ti:5000 | xargs kill
+  # Windows
+  netstat -ano | findstr :5000
+  taskkill /PID <PID> /F
+  ```
 
 **TypeScript errors**
 - Restart VS Code
-- Run `npm install` again
-- Check tsconfig.json exists
+- Run `npm install` again in the affected folder
 
 ---
 
@@ -154,59 +161,18 @@ npm run dev
 
 ```
 QR-event-attendance-system/
-├── client/              # Frontend (React + TypeScript)
-│   ├── src/
-│   │   ├── api/        # API calls
-│   │   ├── pages/      # Page components
-│   │   ├── types/      # TypeScript types
-│   │   ├── App.tsx
-│   │   └── main.tsx
-│   └── package.json
+├── client/              # Frontend — React + TypeScript + Vite
+│   └── src/
+│       ├── api/         # Axios API calls
+│       ├── pages/       # Page components
+│       └── types/       # TypeScript types
 │
-├── server/              # Backend (Node.js + TypeScript)
-│   ├── src/
-│   │   ├── config/     # Configuration
-│   │   ├── database/   # Migrations
-│   │   ├── routes/     # API routes
-│   │   ├── types/      # TypeScript types
-│   │   └── server.ts
-│   └── package.json
+├── server/              # Backend — Node.js + Express + TypeScript
+│   └── src/
+│       ├── config/      # DB connection (database.ts)
+│       ├── database/    # Migration script (migrate.ts)
+│       ├── routes/      # API route handlers
+│       └── types/       # TypeScript types
 │
-└── docs/               # Documentation
+└── docs/                # Documentation
 ```
-
----
-
-## Next Steps
-
-1. ✅ Setup complete
-2. 📚 Read TYPESCRIPT_MIGRATION.md for TypeScript guide
-3. 🎨 Start Sprint 0 (planning, wireframes)
-4. 💻 Begin Sprint 1 development
-
----
-
-## Common Commands
-
-**Development:**
-```bash
-# Backend
-cd server && npm run dev
-
-# Frontend
-cd client && npm run dev
-```
-
-**Database:**
-```bash
-npm run db:migrate    # Create tables
-```
-
-**Build:**
-```bash
-npm run build         # TypeScript → JavaScript
-```
-
----
-
-For detailed TypeScript usage, see `TYPESCRIPT_MIGRATION.md`

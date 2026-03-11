@@ -47,3 +47,6 @@ Thumbs.db
 .parcel-cache/
 .next/
 out/
+
+# Ignore database seed files with real information
+server/src/database/seed.*.ts
