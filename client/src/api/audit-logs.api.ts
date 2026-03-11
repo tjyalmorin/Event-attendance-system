@@ -28,3 +28,21 @@ export const createAuditLogApi = async (payload: {
   const res = await api.post('/audit-logs', payload)
   return res.data
 }
+
+// Delete specific logs by ID
+export const deleteAuditLogsByIdsApi = async (log_ids: number[]): Promise<{ deleted: number }> => {
+  const res = await api.delete('/audit-logs/bulk', { data: { log_ids } })
+  return res.data
+}
+
+// Auto-retention: delete all logs older than X days
+export const deleteAuditLogsOlderThanApi = async (days: number): Promise<{ deleted: number }> => {
+  const res = await api.delete('/audit-logs/retention', { data: { days } })
+  return res.data
+}
+
+// Clear all logs
+export const clearAllAuditLogsApi = async (): Promise<{ deleted: number }> => {
+  const res = await api.delete('/audit-logs/clear')
+  return res.data
+}

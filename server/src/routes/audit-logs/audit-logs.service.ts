@@ -34,7 +34,7 @@ export const createAuditLogService = async (payload: {
   return result.rows[0]
 }
 
-export const getAuditLogsService = async (limit = 200): Promise<AuditLogEntry[]> => {
+export const getAuditLogsService = async (limit = 500): Promise<AuditLogEntry[]> => {
   const result = await pool.query(
     `SELECT * FROM account_audit_logs
      ORDER BY created_at DESC
@@ -42,4 +42,40 @@ export const getAuditLogsService = async (limit = 200): Promise<AuditLogEntry[]>
     [limit]
   )
   return result.rows
+}
+
+// Delete specific logs by ID array
+export const deleteAuditLogsByIdsService = async (logIds: number[]): Promise<number> => {
+  if (!logIds.length) return 0
+  const result = await pool.query(
+    `DELETE FROM account_audit_logs WHERE log_id = ANY($1::int[])`,
+    [logIds]
+  )
+  return result.rowCount ?? 0
+}
+
+// Delete all logs older than X days (auto-retention)
+export const deleteAuditLogsOlderThanService = async (days: number): Promise<number> => {
+  const result = await pool.query(
+    `DELETE FROM account_audit_logs
+     WHERE created_at < NOW() - INTERVAL '1 day' * $1`,
+    [days]
+  )
+  return result.rowCount ?? 0
+}
+
+// Delete all logs within a date range (inclusive)
+export const deleteAuditLogsByDateRangeService = async (from: string, to: string): Promise<number> => {
+  const result = await pool.query(
+    `DELETE FROM account_audit_logs
+     WHERE created_at::date BETWEEN $1::date AND $2::date`,
+    [from, to]
+  )
+  return result.rowCount ?? 0
+}
+
+// Delete ALL logs
+export const clearAllAuditLogsService = async (): Promise<number> => {
+  const result = await pool.query(`DELETE FROM account_audit_logs`)
+  return result.rowCount ?? 0
 }

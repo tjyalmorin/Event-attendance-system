@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
 import Sidebar from '../../components/Sidebar'
 import { getAllUsersApi, createUserApi, deleteUserApi, updateUserApi, toggleUserActiveApi } from '../../api/users.api'
-import { getAuditLogsApi, createAuditLogApi, AuditLogEntry } from '../../api/audit-logs.api'
+import { getAuditLogsApi, createAuditLogApi, AuditLogEntry, deleteAuditLogsByIdsApi, deleteAuditLogsOlderThanApi, clearAllAuditLogsApi } from '../../api/audit-logs.api'
 import { User } from '../../types'
 import { getAllBranchesApi, BranchItem } from '../../api/branches.api'
 
@@ -98,6 +100,7 @@ const HistoryIcon = () => (
 )
 
 // ── Scrollbar styles ───────────────────────────────────────
+
 const SCROLLBAR_STYLES = `
   [data-custom-select-list]::-webkit-scrollbar { width: 6px; }
   [data-custom-select-list]::-webkit-scrollbar-track { background: transparent; }
@@ -118,10 +121,6 @@ const formatDate = (iso: string) => {
 const formatTime = (iso: string) => {
   if (!iso) return ''
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-}
-const formatDateTime = (iso: string) => {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
 // ── Password validation ────────────────────────────────────
@@ -182,7 +181,7 @@ interface CustomSelectProps {
   centered?: boolean
 }
 
-const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, placeholder = 'Select...', required, centered = false }) => {
+const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, placeholder = 'Select...', centered = false }) => {
   const [open, setOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 })
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -205,12 +204,16 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
 
   useEffect(() => {
     if (!open) return
-    const handler = () => setOpen(false)
-    window.addEventListener('resize', handler)
-    window.addEventListener('scroll', handler, true)
+    const onResize = () => setOpen(false)
+    const onScroll = (e: Event) => {
+      if (dropRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
-      window.removeEventListener('resize', handler)
-      window.removeEventListener('scroll', handler, true)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [open])
 
@@ -300,6 +303,193 @@ const CancelBtn: React.FC<{ onClick: () => void }> = ({ onClick }) => (
     Cancel
   </button>
 )
+
+// ── Filter Dropdown (Sort-By style) ───────────────────────
+interface FilterDropdownProps {
+  value: string
+  onChange: (val: string) => void
+  options: { value: string; label: string }[]
+  label?: string
+}
+const FilterDropdown: React.FC<FilterDropdownProps> = ({ value, onChange, options, label }) => {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const selected = options.find(o => o.value === value)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(p => !p)}
+        className="flex items-center justify-between gap-2 px-3.5 py-2 h-9 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-[#333] transition-all shadow-sm min-w-[148px]"
+      >
+        <span className="flex items-center gap-1.5">
+          {label && <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{label}:</span>}
+          <span className={value !== options[0]?.value ? 'text-[#DC143C]' : ''}>{selected?.label ?? 'All'}</span>
+        </span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          className={`w-3 h-3 text-gray-400 transition-transform duration-200 flex-shrink-0 ${open ? 'rotate-180' : ''}`}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 min-w-full bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden z-30">
+          {options.map(opt => (
+            <button key={opt.value} type="button"
+              onClick={() => { onChange(opt.value); setOpen(false) }}
+              className={`w-full text-left px-4 py-2.5 text-sm transition-colors whitespace-nowrap
+                ${opt.value === value ? 'bg-[#DC143C]/10 text-[#DC143C] font-semibold' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525]'}`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Date Range Picker ──────────────────────────────────────
+const DATE_RANGE_STYLES = `
+  .dtrp .react-datepicker { font-family: inherit; border: none; box-shadow: none; background: transparent; }
+  .dtrp .react-datepicker__month-container { background: transparent; }
+  .dtrp .react-datepicker__header { background: transparent; border-bottom: 1px solid #f3f4f6; padding: 0 0 10px 0; }
+  .dark .dtrp .react-datepicker__header { border-bottom-color: #2a2a2a; }
+  .dtrp .react-datepicker__current-month { font-size: 13px; font-weight: 700; color: #111827; margin-bottom: 8px; }
+  .dark .dtrp .react-datepicker__current-month { color: #fff; }
+  .dtrp .react-datepicker__day-name { color: #9ca3af; font-size: 11px; font-weight: 600; width: 2rem; line-height: 2rem; }
+  .dtrp .react-datepicker__day { width: 2rem; line-height: 2rem; border-radius: 8px; font-size: 13px; color: #374151; transition: all 0.15s; margin: 1px; }
+  .dark .dtrp .react-datepicker__day { color: #e5e7eb; }
+  .dtrp .react-datepicker__day:hover { background: #fee2e2; color: #DC143C; }
+  .dark .dtrp .react-datepicker__day:hover { background: rgba(220,20,60,0.15); color: #DC143C; }
+  .dtrp .react-datepicker__day--selected, .dtrp .react-datepicker__day--keyboard-selected { background: #DC143C !important; color: #fff !important; font-weight: 700; border-radius: 8px !important; }
+  .dtrp .react-datepicker__day--keyboard-selected:not(.react-datepicker__day--selected) { background: transparent !important; color: inherit !important; font-weight: normal !important; }
+  .dtrp .react-datepicker__day--today { font-weight: 700; color: #DC143C; }
+  .dark .dtrp .react-datepicker__day--today { color: #ff6b6b; }
+  .dtrp .react-datepicker__day--outside-month { color: #d1d5db; }
+  .dark .dtrp .react-datepicker__day--outside-month { color: #4b5563; }
+  .dtrp .react-datepicker__day--disabled { color: #d1d5db !important; cursor: not-allowed !important; background: transparent !important; }
+  .dark .dtrp .react-datepicker__day--disabled { color: #3a3a3a !important; }
+  .dtrp .react-datepicker__navigation-icon::before { border-color: #9ca3af; }
+  .dtrp .react-datepicker__navigation:hover .react-datepicker__navigation-icon::before { border-color: #DC143C; }
+  .dtrp .react-datepicker__navigation { top: 0; }
+  .dtrp .react-datepicker__triangle { display: none; }
+`
+
+interface DateRangePickerProps {
+  from: Date | null
+  to: Date | null
+  onChange: (from: Date | null, to: Date | null) => void
+}
+const DateRangePicker: React.FC<DateRangePickerProps> = ({ from, to, onChange }) => {
+  const [open, setOpen] = useState(false)
+  const [tempFrom, setTempFrom] = useState<Date | null>(from)
+  const [tempTo, setTempTo] = useState<Date | null>(to)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open) { setTempFrom(from); setTempTo(to) }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const fmt = (d: Date | null) => d
+    ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null
+
+  const hasRange = from || to
+  const label = from && to
+    ? `${fmt(from)} → ${fmt(to)}`
+    : from ? fmt(from)!
+    : 'Select dates'
+
+  return (
+    <div className="relative" ref={ref}>
+      <style>{DATE_RANGE_STYLES}</style>
+
+      {/* Single trigger button */}
+      <button type="button" onClick={() => setOpen(p => !p)}
+        className={`flex items-center gap-2 h-9 px-3.5 rounded-xl text-sm font-semibold border transition-all shadow-sm focus:outline-none
+          ${hasRange
+            ? 'bg-[#DC143C]/5 border-[#DC143C]/30 text-[#DC143C]'
+            : open
+              ? 'border-[#DC143C] bg-white dark:bg-[#1c1c1c] ring-2 ring-[#DC143C]/20 text-gray-700 dark:text-gray-300'
+              : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-[#333]'
+          }`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        <span>{label}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 flex-shrink-0 opacity-60 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      {/* Shared popover with two inline calendars */}
+      {open && (
+        <div className="absolute left-0 top-full mt-2 z-50 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-2xl shadow-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] p-5">
+          <div className="dtrp flex gap-6">
+            {/* From calendar */}
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-3">From</p>
+              <DatePicker
+                selected={tempFrom}
+                onChange={(d: Date | null) => { setTempFrom(d) }}
+                inline
+                dateFormat="MMM d, yyyy"
+              />
+            </div>
+            <div className="w-px bg-gray-100 dark:bg-[#2a2a2a]" />
+            {/* To calendar */}
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-3">To</p>
+              <DatePicker
+                selected={tempTo}
+                onChange={(d: Date | null) => { setTempTo(d) }}
+                inline
+                dateFormat="MMM d, yyyy"
+                minDate={tempFrom ?? undefined}
+              />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between pt-4 mt-2 border-t border-gray-100 dark:border-[#2a2a2a]">
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {tempFrom && tempTo
+                ? `${fmt(tempFrom)} → ${fmt(tempTo)}`
+                : tempFrom ? `From ${fmt(tempFrom)}` : 'Select a start date'
+              }
+            </span>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setOpen(false)}
+                className="px-4 py-1.5 text-sm font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-all">
+                Cancel
+              </button>
+              <button type="button" onClick={() => { onChange(tempFrom, tempTo); setOpen(false) }}
+                className="px-4 py-1.5 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Shared Modal Shell ─────────────────────────────────────
 interface ModalShellProps {
@@ -430,9 +620,22 @@ export default function AccountManagement() {
   const [currentPage, setCurrentPage] = useState(1)
   const [pageView, setPageView] = useState<PageView>('accounts')
 
-  // History — DB-backed, fetched from Supabase on mount and after each action
+  // History — DB-backed
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  // History table state
+  const [histPage, setHistPage] = useState(1)
+  const [histSelected, setHistSelected] = useState<Set<number>>(new Set())
+  const [histDateFrom, setHistDateFrom] = useState<Date | null>(null)
+  const [histDateTo, setHistDateTo] = useState<Date | null>(null)
+  const [histActionFilter, setHistActionFilter] = useState<string>('all')
+  const [histSearchQuery, setHistSearchQuery] = useState('')
+  // Modals for history
+  const [showClearModal, setShowClearModal] = useState(false)
+  const [showDeleteSelectedModal, setShowDeleteSelectedModal] = useState(false)
+  const [showRetentionModal, setShowRetentionModal] = useState(false)
+  const [retentionDays, setRetentionDays] = useState(90)
+  const [histActionLoading, setHistActionLoading] = useState(false)
 
   const loadHistory = async () => {
     setHistoryLoading(true)
@@ -450,8 +653,6 @@ export default function AccountManagement() {
 
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
   const userRole = storedUser?.role || 'staff'
-  const actorName = storedUser?.full_name || 'Admin'
-  const actorRole = storedUser?.role || 'admin'
   const [BRANCHES, setBRANCHES] = useState<BranchItem[]>([])
 
   useEffect(() => { getAllBranchesApi().then(setBRANCHES).catch(() => {}) }, [])
@@ -908,97 +1109,357 @@ export default function AccountManagement() {
             )}
 
             {/* ── HISTORY VIEW ── */}
-            {pageView === 'history' && (
-              <div className="p-5">
-                {historyLoading ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-8 h-8 border-2 border-[#DC143C] border-t-transparent rounded-full animate-spin mb-3" />
-                    <p className="text-sm text-gray-400 dark:text-gray-500">Loading history...</p>
+            {pageView === 'history' && (() => {
+              const HIST_PER_PAGE = 10
+              const filteredHist = history.filter(e => {
+                const d = new Date(e.created_at)
+                if (histDateFrom) { const f = new Date(histDateFrom); f.setHours(0,0,0,0); if (d < f) return false }
+                if (histDateTo)   { const t = new Date(histDateTo); t.setHours(23,59,59,999); if (d > t) return false }
+                if (histActionFilter !== 'all' && e.action !== histActionFilter) return false
+                if (histSearchQuery) {
+                  const q = histSearchQuery.toLowerCase()
+                  if (!e.target_name.toLowerCase().includes(q) && !e.actor_name.toLowerCase().includes(q) && !(e.details || '').toLowerCase().includes(q)) return false
+                }
+                return true
+              })
+              const histTotalPages = Math.max(1, Math.ceil(filteredHist.length / HIST_PER_PAGE))
+              const histPaginated  = filteredHist.slice((histPage - 1) * HIST_PER_PAGE, histPage * HIST_PER_PAGE)
+              const allPageSelected = histPaginated.length > 0 && histPaginated.every(e => histSelected.has(e.log_id))
+              const getHistPageNums = () => {
+                if (histTotalPages <= 5) return Array.from({ length: histTotalPages }, (_, i) => i + 1)
+                if (histPage <= 3) return [1, 2, 3, '...', histTotalPages]
+                if (histPage >= histTotalPages - 2) return [1, '...', histTotalPages - 2, histTotalPages - 1, histTotalPages]
+                return [1, '...', histPage, '...', histTotalPages]
+              }
+              const toggleSelectAll = () => {
+                if (allPageSelected) {
+                  setHistSelected(prev => { const n = new Set(prev); histPaginated.forEach(e => n.delete(e.log_id)); return n })
+                } else {
+                  setHistSelected(prev => { const n = new Set(prev); histPaginated.forEach(e => n.add(e.log_id)); return n })
+                }
+              }
+
+              return (
+                <div>
+                  {/* Toolbar */}
+                  <div className="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/60 dark:bg-[#161616]">
+                    {/* Search */}
+                    <div className="relative w-52">
+                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
+                      <input className="w-full h-9 pl-9 pr-3 rounded-lg border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#0f0f0f] text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 focus:border-[#DC143C] transition-all"
+                        placeholder="Search name, actor..."
+                        value={histSearchQuery}
+                        onChange={e => { setHistSearchQuery(e.target.value); setHistPage(1) }} />
+                    </div>
+
+                    {/* Action filter */}
+                    <FilterDropdown
+                      value={histActionFilter}
+                      onChange={v => { setHistActionFilter(v); setHistPage(1) }}
+                      label="Action"
+                      options={[
+                        { value: 'all', label: 'All Actions' },
+                        { value: 'created', label: 'Created' },
+                        { value: 'edited', label: 'Edited' },
+                        { value: 'deactivated', label: 'Deactivated' },
+                        { value: 'reactivated', label: 'Reactivated' },
+                        { value: 'deleted', label: 'Deleted' },
+                        { value: 'password_changed', label: 'Password Changed' },
+                      ]}
+                    />
+
+                    {/* Date range */}
+                    <DateRangePicker
+                      from={histDateFrom}
+                      to={histDateTo}
+                      onChange={(f, t) => { setHistDateFrom(f); setHistDateTo(t); setHistPage(1) }}
+                    />
+                    {(histDateFrom || histDateTo || histActionFilter !== 'all' || histSearchQuery) && (
+                      <button onClick={() => { setHistDateFrom(null); setHistDateTo(null); setHistActionFilter('all'); setHistSearchQuery(''); setHistPage(1) }}
+                        className="h-9 px-3 rounded-lg text-xs font-semibold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-[#2a2a2a] hover:border-[#DC143C] hover:text-[#DC143C] transition-all bg-white dark:bg-[#0f0f0f]">
+                        Clear filters
+                      </button>
+                    )}
+
+                    <div className="flex-1" />
+
+                    {/* Delete selected */}
+                    {histSelected.size > 0 && (
+                      <button onClick={() => setShowDeleteSelectedModal(true)}
+                        className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-[#DC143C] border border-red-200 dark:border-red-800/40 hover:bg-red-100 dark:hover:bg-red-900/30 transition-all">
+                        <TrashIcon />Delete {histSelected.size} selected
+                      </button>
+                    )}
+
+                    {/* Auto-retention */}
+                    <button onClick={() => setShowRetentionModal(true)}
+                      className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-[#2a2a2a] hover:border-gray-300 dark:hover:border-[#3a3a3a] transition-all bg-white dark:bg-[#1c1c1c]">
+                      <ClockIcon />Auto-Delete
+                    </button>
+
+                    {/* Clear all */}
+                    <button onClick={() => setShowClearModal(true)}
+                      className="flex items-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-semibold text-[#DC143C] border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20 transition-all">
+                      <TrashIcon />Clear All
+                    </button>
                   </div>
-                ) : history.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-[#2a2a2a] flex items-center justify-center text-gray-400 mb-3">
-                      <HistoryIcon />
-                    </div>
-                    <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">No modifications yet</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">All account changes are permanently recorded here</p>
+
+                  {/* Record count */}
+                  <div className="flex items-center gap-2 px-5 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      {filteredHist.length} record{filteredHist.length !== 1 ? 's' : ''}
+                      {histSelected.size > 0 && <span className="ml-2 text-[#DC143C] font-semibold">· {histSelected.size} selected</span>}
+                    </span>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {/* Record count */}
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-gray-400 dark:text-gray-500">{history.length} record{history.length !== 1 ? 's' : ''}</span>
+
+                  {/* Table */}
+                  {historyLoading ? (
+                    <div className="flex flex-col items-center justify-center py-20">
+                      <div className="w-8 h-8 border-2 border-[#DC143C] border-t-transparent rounded-full animate-spin mb-3" />
+                      <p className="text-sm text-gray-400">Loading history...</p>
                     </div>
-                    {/* Divider */}
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="h-px flex-1 bg-gray-100 dark:bg-[#2a2a2a]" />
-                      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-2">All Records</span>
-                      <div className="h-px flex-1 bg-gray-100 dark:bg-[#2a2a2a]" />
+                  ) : filteredHist.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-center">
+                      <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-[#2a2a2a] flex items-center justify-center text-gray-400 mb-3"><HistoryIcon /></div>
+                      <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">No records found</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Try adjusting your filters</p>
                     </div>
-
-                    {history.map(entry => (
-                      <div key={entry.log_id}
-                        className="flex gap-4 p-4 rounded-xl border border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#181818] hover:border-gray-200 dark:hover:border-[#333] transition-all"
-                      >
-                        {/* Timeline dot */}
-                        <div className="flex flex-col items-center gap-1 pt-0.5">
-                          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                            entry.action === 'created'          ? 'bg-green-500'  :
-                            entry.action === 'edited'           ? 'bg-blue-500'   :
-                            entry.action === 'deactivated'      ? 'bg-orange-500' :
-                            entry.action === 'reactivated'      ? 'bg-teal-500'   :
-                            entry.action === 'deleted'          ? 'bg-[#DC143C]'  :
-                            entry.action === 'password_changed' ? 'bg-purple-500' : 'bg-gray-400'
-                          }`} />
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-3 flex-wrap">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {/* Action badge */}
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${actionBadge(entry.action)}`}>
-                                {actionLabel(entry.action)}
-                              </span>
-                              {/* Target */}
-                              <span className="text-sm font-semibold text-gray-900 dark:text-white">{entry.target_name}</span>
-                              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
-                                entry.target_role === 'admin'
-                                  ? 'bg-[#DC143C]/10 text-[#DC143C]'
-                                  : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                              }`}>{entry.target_role}</span>
-                            </div>
-                            <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap flex-shrink-0">
-                              {formatDateTime(entry.created_at)}
-                            </span>
-                          </div>
-
-                          {/* Details */}
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">{entry.details}</p>
-
-                          {/* Actor */}
-                          <div className="flex items-center gap-1.5 mt-2">
-                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0
-                              ${entry.actor_role === 'admin'
-                                ? 'bg-[#DC143C]/10 text-[#DC143C]'
-                                : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600'
-                              }`}>
-                              {entry.actor_name.charAt(0).toUpperCase()}
-                            </div>
-                            <span className="text-[11px] text-gray-400 dark:text-gray-500">
-                              by <span className="font-semibold text-gray-600 dark:text-gray-300">{entry.actor_name}</span>
-                            </span>
-                          </div>
-                        </div>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/70 dark:bg-[#161616]">
+                              <th className="pl-5 pr-3 py-3 w-10">
+                                <button
+                                  onClick={toggleSelectAll}
+                                  className={`w-4.5 h-4.5 w-[18px] h-[18px] rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                                    allPageSelected
+                                      ? 'border-[#DC143C] bg-[#DC143C]'
+                                      : 'border-gray-300 dark:border-[#3a3a3a] hover:border-[#DC143C]'
+                                  }`}
+                                >
+                                  {allPageSelected && (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
+                                      <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                  )}
+                                </button>
+                              </th>
+                              {['Action', 'Target', 'Details', 'Performed By', 'Date & Time'].map(h => (
+                                <th key={h} className="px-3 py-3 text-[11px] font-bold uppercase tracking-[1px] text-gray-400 dark:text-gray-500 text-left last:pr-5">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {histPaginated.map(entry => {
+                              const isSelected = histSelected.has(entry.log_id)
+                              return (
+                                <tr key={entry.log_id}
+                                  onClick={() => setHistSelected(prev => { const n = new Set(prev); isSelected ? n.delete(entry.log_id) : n.add(entry.log_id); return n })}
+                                  className={`border-b border-gray-50 dark:border-[#1e1e1e] last:border-b-0 transition-colors cursor-pointer
+                                    ${isSelected ? 'bg-[#DC143C]/5 dark:bg-[#DC143C]/10' : 'hover:bg-gray-50/80 dark:hover:bg-[#1a1a1a]'}`}>
+                                  <td className="pl-5 pr-3 py-3.5" onClick={e => e.stopPropagation()}>
+                                    <button
+                                      onClick={() => setHistSelected(prev => { const n = new Set(prev); isSelected ? n.delete(entry.log_id) : n.add(entry.log_id); return n })}
+                                      className={`w-[18px] h-[18px] rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                                        isSelected
+                                          ? 'border-[#DC143C] bg-[#DC143C]'
+                                          : 'border-gray-300 dark:border-[#3a3a3a] hover:border-[#DC143C]'
+                                      }`}
+                                    >
+                                      {isSelected && (
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
+                                          <polyline points="20 6 9 17 4 12"/>
+                                        </svg>
+                                      )}
+                                    </button>
+                                  </td>
+                                  <td className="px-3 py-3.5">
+                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border whitespace-nowrap ${actionBadge(entry.action)}`}>
+                                      {actionLabel(entry.action)}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-3.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">{entry.target_name}</span>
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
+                                        entry.target_role === 'admin' ? 'bg-[#DC143C]/10 text-[#DC143C]' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                                      }`}>{entry.target_role}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-3.5 max-w-[260px]">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2">
+                                      {entry.details || <span className="italic text-gray-300 dark:text-gray-600">—</span>}
+                                    </p>
+                                  </td>
+                                  <td className="px-3 py-3.5">
+                                    <div className="flex items-center gap-2">
+                                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0
+                                        ${entry.actor_role === 'admin' ? 'bg-[#DC143C]/10 text-[#DC143C]' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>
+                                        {entry.actor_name.charAt(0).toUpperCase()}
+                                      </div>
+                                      <span className="text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">{entry.actor_name}</span>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-3.5 pr-5 whitespace-nowrap">
+                                    <div className="text-xs font-medium text-gray-700 dark:text-gray-300">{formatDate(entry.created_at)}</div>
+                                    <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">{formatTime(entry.created_at)}</div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+
+                      {/* Pagination */}
+                      <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#161616] rounded-b-xl">
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          Showing {(histPage - 1) * HIST_PER_PAGE + 1}–{Math.min(histPage * HIST_PER_PAGE, filteredHist.length)} of {filteredHist.length}
+                        </span>
+                        {histTotalPages > 1 && (
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => setHistPage(p => Math.max(1, p - 1))} disabled={histPage === 1}
+                              className="w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] flex items-center justify-center text-gray-500 hover:border-[#DC143C] hover:text-[#DC143C] transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                              <ChevronLeftIcon />
+                            </button>
+                            {getHistPageNums().map((p, i) => p === '...'
+                              ? <span key={`d${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-gray-400">…</span>
+                              : <button key={p} onClick={() => setHistPage(p as number)}
+                                  className={`w-7 h-7 rounded-lg border text-xs font-semibold transition-all ${histPage === p ? 'bg-[#DC143C] border-[#DC143C] text-white' : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-500 hover:border-[#DC143C] hover:text-[#DC143C]'}`}>
+                                  {p}
+                                </button>
+                            )}
+                            <button onClick={() => setHistPage(p => Math.min(histTotalPages, p + 1))} disabled={histPage === histTotalPages}
+                              className="w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] flex items-center justify-center text-gray-500 hover:border-[#DC143C] hover:text-[#DC143C] transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                              <ChevronRightIcon />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })()}
+
           </div>
         </div>
       </div>
+
+
+      {/* ── HISTORY: Clear All Modal ── */}
+      {showClearModal && (
+        <ModalShell onClose={() => setShowClearModal(false)} icon={<TrashIcon />} iconClass="text-red-500"
+          title="Clear All History"
+          footer={
+            <>
+              <CancelBtn onClick={() => setShowClearModal(false)} />
+              <button disabled={histActionLoading} onClick={async () => {
+                setHistActionLoading(true)
+                try {
+                  await clearAllAuditLogsApi()
+                  setHistory([])
+                  setHistSelected(new Set())
+                  setHistPage(1)
+                  setShowClearModal(false)
+                  setToast('Modification history cleared')
+                } catch { setToast('Failed to clear history') }
+                finally { setHistActionLoading(false) }
+              }} className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 flex items-center gap-2">
+                {histActionLoading ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Clearing...</> : 'Clear All History'}
+              </button>
+            </>
+          }>
+          <p>Are you sure you want to delete <strong>all {history.length} modification records</strong>?</p>
+          <p className="mt-2 text-xs text-red-500 font-medium">This action cannot be undone.</p>
+        </ModalShell>
+      )}
+
+      {/* ── HISTORY: Delete Selected Modal ── */}
+      {showDeleteSelectedModal && (
+        <ModalShell onClose={() => setShowDeleteSelectedModal(false)} icon={<TrashIcon />} iconClass="text-red-500"
+          title="Delete Selected Records"
+          footer={
+            <>
+              <CancelBtn onClick={() => setShowDeleteSelectedModal(false)} />
+              <button disabled={histActionLoading} onClick={async () => {
+                setHistActionLoading(true)
+                try {
+                  const ids = Array.from(histSelected)
+                  await deleteAuditLogsByIdsApi(ids)
+                  setHistory(prev => prev.filter(e => !histSelected.has(e.log_id)))
+                  setHistSelected(new Set())
+                  setShowDeleteSelectedModal(false)
+                  setToast(`Deleted ${ids.length} record${ids.length !== 1 ? 's' : ''}`)
+                } catch { setToast('Failed to delete records') }
+                finally { setHistActionLoading(false) }
+              }} className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 flex items-center gap-2">
+                {histActionLoading ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Deleting...</> : `Delete ${histSelected.size} record${histSelected.size !== 1 ? 's' : ''}`}
+              </button>
+            </>
+          }>
+          <p>Delete <strong>{histSelected.size} selected record{histSelected.size !== 1 ? 's' : ''}</strong> from modification history?</p>
+          <p className="mt-2 text-xs text-red-500 font-medium">This action cannot be undone.</p>
+        </ModalShell>
+      )}
+
+      {/* ── HISTORY: Auto-Retention Modal ── */}
+      {showRetentionModal && (
+        <ModalShell onClose={() => setShowRetentionModal(false)} icon={<ClockIcon />} iconClass="text-blue-500"
+          title="Auto-Delete Old Records"
+          subtitle="Remove records older than a set number of days"
+          footer={
+            <>
+              <CancelBtn onClick={() => setShowRetentionModal(false)} />
+              <button disabled={histActionLoading} onClick={async () => {
+                setHistActionLoading(true)
+                try {
+                  const result = await deleteAuditLogsOlderThanApi(retentionDays)
+                  await loadHistory()
+                  setHistSelected(new Set())
+                  setShowRetentionModal(false)
+                  setToast(`Deleted ${result.deleted} record${result.deleted !== 1 ? 's' : ''} older than ${retentionDays} days`)
+                } catch { setToast('Failed to run auto-delete') }
+                finally { setHistActionLoading(false) }
+              }} className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 flex items-center gap-2">
+                {histActionLoading ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Deleting...</> : 'Run Auto-Delete'}
+              </button>
+            </>
+          }>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Delete all modification history records older than:</p>
+
+          {/* Quick preset chips */}
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            {[30, 60, 90, 180, 365].map(d => (
+              <button key={d} type="button" onClick={() => setRetentionDays(d)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${retentionDays === d ? 'bg-[#DC143C] border-[#DC143C] text-white shadow-sm' : 'border-gray-200 dark:border-[#3a3a3a] text-gray-600 dark:text-gray-300 hover:border-[#DC143C] hover:text-[#DC143C] bg-white dark:bg-[#1c1c1c]'}`}>
+                {d} days
+              </button>
+            ))}
+          </div>
+
+          {/* Custom input */}
+          <div className="flex items-center gap-3 bg-gray-50 dark:bg-[#141414] border border-gray-200 dark:border-[#2a2a2a] rounded-xl px-4 py-3">
+            <span className="text-xs font-bold uppercase tracking-wide text-gray-400">Custom</span>
+            <input type="number" min={1} max={3650} value={retentionDays}
+              onChange={e => setRetentionDays(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-20 h-9 px-3 rounded-lg border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#0f0f0f] text-sm text-gray-800 dark:text-white outline-none focus:border-[#DC143C] transition-all text-center font-semibold" />
+            <span className="text-sm text-gray-500 dark:text-gray-400">days</span>
+          </div>
+
+          {/* Warning */}
+          <div className="mt-3 flex items-start gap-2 rounded-xl bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800/40 px-4 py-3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-orange-500 flex-shrink-0 mt-0.5">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <p className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+              Records older than <strong>{retentionDays} day{retentionDays !== 1 ? 's' : ''}</strong> will be permanently deleted and cannot be recovered.
+            </p>
+          </div>
+        </ModalShell>
+      )}
 
       {/* ── TOAST ── */}
       {toast && (
@@ -1111,33 +1572,33 @@ export default function AccountManagement() {
       )}
 
       {/* Toggle Active */}
-      {modalType === 'toggle' && selectedUser && (
-        <ModalShell onClose={closeModal} icon={selectedUser.is_active ? <BanIcon /> : <CheckCircleIcon />}
-          iconClass={selectedUser.is_active ? 'text-orange-500' : 'text-green-500'}
-          title={selectedUser.is_active ? 'Deactivate Account' : 'Reactivate Account'}
-          subtitle={selectedUser.full_name}
+      {modalType === 'toggle' && selectedUser && (() => { const u = selectedUser; return (
+        <ModalShell onClose={closeModal} icon={u.is_active ? <BanIcon /> : <CheckCircleIcon />}
+          iconClass={u.is_active ? 'text-orange-500' : 'text-green-500'}
+          title={u.is_active ? 'Deactivate Account' : 'Reactivate Account'}
+          subtitle={u.full_name}
           footer={
             <>
               <CancelBtn onClick={closeModal} />
               <button onClick={handleToggle} disabled={modalLoading}
-                className={`px-4 py-2 text-sm font-semibold text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${selectedUser.is_active ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700'}`}>
-                {modalLoading ? 'Updating...' : selectedUser.is_active ? 'Deactivate' : 'Reactivate'}
+                className={`px-4 py-2 text-sm font-semibold text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${u.is_active ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700'}`}>
+                {modalLoading ? 'Updating...' : u.is_active ? 'Deactivate' : 'Reactivate'}
               </button>
             </>
           }
         >
-          {selectedUser.is_active
+          {u.is_active
             ? <><p>Are you sure you want to <strong>deactivate</strong> this account?</p><p className="mt-2 text-xs text-orange-500">This user will be blocked from logging in.</p></>
             : <><p>Are you sure you want to <strong>reactivate</strong> this account?</p><p className="mt-2 text-xs text-green-600">This user will be able to log in again.</p></>
           }
           {modalError && <div className="mt-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">{modalError}</div>}
         </ModalShell>
-      )}
+      )})()}
 
       {/* Delete */}
-      {modalType === 'delete' && selectedUser && (
+      {modalType === 'delete' && selectedUser && (() => { const u = selectedUser; return (
         <ModalShell onClose={closeModal} icon={<TrashIcon />} iconClass="text-red-500"
-          title="Delete Account" subtitle={selectedUser.full_name}
+          title="Delete Account" subtitle={u.full_name}
           footer={
             <>
               <CancelBtn onClick={closeModal} />
@@ -1148,11 +1609,11 @@ export default function AccountManagement() {
             </>
           }
         >
-          <p>Are you sure you want to permanently delete <strong>{selectedUser.full_name}</strong>'s account?</p>
+          <p>Are you sure you want to permanently delete <strong>{u.full_name}</strong>'s account?</p>
           <p className="mt-2 text-xs text-red-500">This action cannot be undone.</p>
           {modalError && <div className="mt-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">{modalError}</div>}
         </ModalShell>
-      )}
+      )})()}
     </div>
   )
 }

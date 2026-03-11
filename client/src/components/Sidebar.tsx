@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDarkMode } from '../contexts/DarkModeContext';
 import { useSidebar } from '../contexts/SidebarContext';
@@ -80,6 +81,8 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   const { isCollapsed, toggleCollapsed } = useSidebar();
   const [dropupOpen, setDropupOpen] = useState(false);
   const dropupRef = useRef<HTMLDivElement>(null);
+  const avatarBtnRef = useRef<HTMLButtonElement>(null);
+  const [dropupPos, setDropupPos] = useState({ bottom: 0, left: 0, width: 192 });
 
   // Get user info from localStorage
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -95,13 +98,22 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   // Close dropup when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropupRef.current && !dropupRef.current.contains(e.target as Node)) {
+      if (dropupRef.current && !dropupRef.current.contains(e.target as Node)
+        && avatarBtnRef.current && !avatarBtnRef.current.contains(e.target as Node)) {
         setDropupOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  const openDropup = () => {
+    if (avatarBtnRef.current) {
+      const rect = avatarBtnRef.current.getBoundingClientRect();
+      setDropupPos({ bottom: window.innerHeight - rect.top + 8, left: rect.left, width: Math.max(rect.width, 192) });
+    }
+    setDropupOpen(p => !p);
+  };
 
   const mainItems = [
     {
@@ -130,7 +142,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   };
 
   const btnBase = (active: boolean) =>
-    `w-full flex items-center rounded-lg transition-all ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'} ${
+    `w-full flex items-center rounded-lg transition-all ${isCollapsed ? 'justify-center px-1.5 py-2.5' : 'gap-3 px-3 py-2.5'} ${
       active
         ? 'bg-[#DC143C] text-white shadow-lg'
         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333]'
@@ -143,9 +155,9 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   const avatarBg = userRole === 'admin' ? 'bg-[#DC143C]' : 'bg-blue-600';
 
   return (
-    <div className={`${isCollapsed ? 'w-[80px]' : 'w-[260px]'} sticky top-0 h-screen bg-white dark:bg-[#1c1c1c] border-r border-gray-200 dark:border-[#2a2a2a] flex flex-col transition-all duration-300 flex-shrink-0`}>
+    <div className={`${isCollapsed ? 'w-[60px]' : 'w-[260px]'} sticky top-0 h-screen bg-white dark:bg-[#1c1c1c] border-r border-gray-200 dark:border-[#2a2a2a] flex flex-col transition-all duration-300 flex-shrink-0`}>
       {/* Header */}
-      <div className={`h-[77px] border-b border-gray-200 dark:border-[#2a2a2a] flex items-center ${isCollapsed ? 'justify-center p-4' : 'justify-between p-5'}`}>
+      <div className={`h-[77px] border-b border-gray-200 dark:border-[#2a2a2a] flex items-center ${isCollapsed ? 'justify-center p-2' : 'justify-between p-5'}`}>
         {!isCollapsed && (
           <div className="text-xl font-bold text-gray-900 dark:text-white">PrimeLog</div>
         )}
@@ -169,7 +181,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
       <div className="p-3 border-t border-gray-200 dark:border-[#2a2a2a] space-y-1">
         {/* Dark Mode */}
         <button onClick={toggleDarkMode}
-          className={`w-full flex items-center rounded-lg text-gray-600 dark:text-gray-400 transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'}`}>
+          className={`w-full flex items-center rounded-lg text-gray-600 dark:text-gray-400 transition-colors ${isCollapsed ? 'justify-center px-1.5 py-2.5' : 'gap-3 px-3 py-2.5'}`}>
           <span className="text-gray-400 dark:text-gray-500 transition-transform duration-300 ease-in-out"
             style={{ transform: isDarkMode ? 'rotate(0deg)' : 'rotate(-20deg)' }}>
             {isDarkMode ? <SunIcon /> : <MoonIcon />}
@@ -195,9 +207,12 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
 
         {/* User Card with Dropup */}
         <div className="relative" ref={dropupRef}>
-          {/* Dropup Menu */}
-          {dropupOpen && (
-            <div className={`absolute bottom-full mb-2 bg-white dark:bg-[#252525] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden z-50 ${isCollapsed ? 'left-0 w-44' : 'left-0 right-0'}`}>
+          {/* Dropup Menu — rendered via portal so it's always on top */}
+          {dropupOpen && createPortal(
+            <div
+              style={{ position: 'fixed', bottom: dropupPos.bottom, left: dropupPos.left, width: dropupPos.width, zIndex: 9999 }}
+              className="bg-white dark:bg-[#252525] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden"
+            >
               <button
                 onClick={() => { setDropupOpen(false); navigate('/admin/settings/profile'); }}
                 className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors"
@@ -213,36 +228,44 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
                 <LogOutIcon />
                 Logout
               </button>
-            </div>
+            </div>,
+            document.body
           )}
 
-          {/* User Card Button */}
-          <button
-            onClick={() => setDropupOpen(p => !p)}
-            className={`w-full flex items-center rounded-xl border transition-all
-              ${dropupOpen
-                ? 'border-gray-300 dark:border-[#3a3a3a] bg-gray-50 dark:bg-[#252525]'
-                : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] hover:border-gray-300 dark:hover:border-[#3a3a3a] hover:bg-gray-50 dark:hover:bg-[#252525]'}
-              ${isCollapsed ? 'justify-center p-2' : 'gap-3 p-2.5'}`}
-          >
-            {/* Avatar */}
-            <div className={`flex-shrink-0 w-9 h-9 rounded-lg ${avatarBg} flex items-center justify-center text-white text-sm font-bold`}>
-              {userInitial}
-            </div>
-
-            {/* Name + Role */}
-            {!isCollapsed && (
-              <>
-                <div className="flex-1 min-w-0 text-left">
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white truncate leading-tight">{userName}</p>
-                  <p className={`text-xs font-medium mt-0.5 ${userRole === 'admin' ? 'text-[#DC143C]' : 'text-blue-600'}`}>
-                    {userRole === 'admin' ? 'Admin' : 'Staff'}
-                  </p>
-                </div>
-                <ChevronUpIcon />
-              </>
-            )}
-          </button>
+          {/* Collapsed: avatar button only, no card */}
+          {isCollapsed ? (
+            <button
+              ref={avatarBtnRef}
+              onClick={openDropup}
+              className="w-full flex justify-center py-1"
+            >
+              <div className={`w-9 h-9 rounded-lg ${avatarBg} flex items-center justify-center text-white text-sm font-bold hover:opacity-80 transition-opacity`}>
+                {userInitial}
+              </div>
+            </button>
+          ) : (
+            /* Expanded: full user card */
+            <button
+              ref={avatarBtnRef}
+              onClick={openDropup}
+              className={`w-full flex items-center gap-3 p-2.5 rounded-xl border transition-all
+                ${dropupOpen
+                  ? 'border-gray-300 dark:border-[#3a3a3a] bg-gray-50 dark:bg-[#252525]'
+                  : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] hover:border-gray-300 dark:hover:border-[#3a3a3a] hover:bg-gray-50 dark:hover:bg-[#252525]'
+                }`}
+            >
+              <div className={`flex-shrink-0 w-9 h-9 rounded-lg ${avatarBg} flex items-center justify-center text-white text-sm font-bold`}>
+                {userInitial}
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate leading-tight">{userName}</p>
+                <p className={`text-xs font-medium mt-0.5 ${userRole === 'admin' ? 'text-[#DC143C]' : 'text-blue-600'}`}>
+                  {userRole === 'admin' ? 'Admin' : 'Staff'}
+                </p>
+              </div>
+              <ChevronUpIcon />
+            </button>
+          )}
         </div>
       </div>
     </div>

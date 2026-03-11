@@ -5,6 +5,7 @@ import Sidebar from '../../components/Sidebar'
 import { updateProfileApi, changePasswordApi } from '../../api/users.api'
 import { getMeApi } from '../../api/auth.api'
 import { getAllBranchesApi, BranchItem } from '../../api/branches.api'
+import { createAuditLogApi } from '../../api/audit-logs.api'
 import { User } from '../../types'
 
 // ── Icons ──────────────────────────────────────────────────
@@ -79,9 +80,17 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
 
   useEffect(() => {
     if (!open) return
-    const handler = () => setOpen(false)
-    window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
+    const onResize = () => setOpen(false)
+    const onScroll = (e: Event) => {
+      if (dropRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('scroll', onScroll, true)
+    }
   }, [open])
 
   const handleOpen = () => {
@@ -222,10 +231,29 @@ export default function ProfileSettingsPage() {
     setProfileError('')
     setProfileSuccess('')
     try {
+      const prev = user as any
       await updateProfileApi({ full_name: fullName, email, branch_name: branchName, team_name: teamName })
+
+      // Build change details
+      const changes: string[] = []
+      if (fullName !== prev?.full_name) changes.push(`Name: "${prev?.full_name || '—'}" → "${fullName}"`)
+      if (email !== prev?.email) changes.push('Email changed')
+      if (branchName !== (prev?.branch_name || '')) changes.push(`Branch: "${prev?.branch_name || '—'}" → "${branchName || '—'}"`)
+      if (teamName !== (prev?.team_name || '')) changes.push(`Team: "${prev?.team_name || '—'}" → "${teamName || '—'}"`)
+
+      // Log to audit trail (best-effort — don't block on failure)
+      createAuditLogApi({
+        action: 'edited',
+        target_id: storedUser.user_id,
+        target_name: fullName,
+        target_role: userRole,
+        details: changes.length > 0 ? changes.join(' · ') : 'Profile updated',
+      }).catch(err => console.error('[ProfileSettingsPage] audit log failed:', err))
+
       // Update localStorage user
       const stored = JSON.parse(localStorage.getItem('user') || '{}')
       localStorage.setItem('user', JSON.stringify({ ...stored, full_name: fullName, email, branch_name: branchName, team_name: teamName }))
+      setUser(prev => prev ? { ...prev, full_name: fullName, email } as any : prev)
       setProfileSuccess('Profile updated successfully!')
       setTimeout(() => setProfileSuccess(''), 3000)
     } catch (err: any) {
@@ -253,6 +281,16 @@ export default function ProfileSettingsPage() {
     }
     try {
       await changePasswordApi({ currentPassword, newPassword })
+
+      // Log to audit trail (best-effort)
+      createAuditLogApi({
+        action: 'password_changed',
+        target_id: storedUser.user_id,
+        target_name: user?.full_name || storedUser.full_name || 'Unknown',
+        target_role: userRole,
+        details: 'Changed own password via Profile Settings',
+      }).catch(err => console.error('[ProfileSettingsPage] audit log failed:', err))
+
       setPasswordSuccess('Password changed successfully!')
       setCurrentPassword('')
       setNewPassword('')
@@ -373,7 +411,6 @@ export default function ProfileSettingsPage() {
                         onChange={setTeamName}
                         options={teamOptions}
                         placeholder={branchName ? '— Select team —' : '— Select branch first —'}
-                        disabled={!branchName}
                       />
                     ) : (
                       <div className={`${inputClass} flex items-center cursor-not-allowed opacity-60`}>
@@ -381,13 +418,6 @@ export default function ProfileSettingsPage() {
                       </div>
                     )}
                   </div>
-
-                  {/* Info note for staff */}
-                  {!isAdmin && (
-                    <div className="col-span-2 rounded-xl bg-blue-50 dark:bg-blue-900/15 border border-blue-200 dark:border-blue-800/40 px-4 py-3 text-sm text-blue-600 dark:text-blue-400">
-                      Branch and team can only be changed by an administrator.
-                    </div>
-                  )}
                 </div>
 
                 {profileError && (
@@ -454,11 +484,7 @@ export default function ProfileSettingsPage() {
                   </div>
                   {newPassword.length > 0 && (
                     <div className="flex gap-3 mt-1">
-                      {[
-                        { ok: pwCheck.length, label: '8+ chars' },
-                        { ok: pwCheck.uppercase, label: 'Uppercase' },
-                        { ok: pwCheck.number, label: 'Number' },
-                      ].map(c => (
+                      {[{ ok: pwCheck.length, label: '8+ chars' }, { ok: pwCheck.uppercase, label: 'Uppercase' }, { ok: pwCheck.number, label: 'Number' }].map(c => (
                         <span key={c.label} className={`text-[11px] font-semibold flex items-center gap-1 ${c.ok ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
                           <span>{c.ok ? '✓' : '○'}</span> {c.label}
                         </span>
@@ -471,7 +497,8 @@ export default function ProfileSettingsPage() {
                 <div className="flex flex-col gap-1.5">
                   <label className={labelClass}>Confirm New Password</label>
                   <div className="relative">
-                    <input className={`${inputClass} pr-11`} type={showConfirmPw ? 'text' : 'password'}
+                    <input className={`${inputClass} pr-11`}
+                      type={showConfirmPw ? 'text' : 'password'}
                       value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
                       placeholder="Repeat new password" required />
                     <button type="button" onClick={() => setShowConfirmPw(p => !p)}
