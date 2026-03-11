@@ -190,6 +190,28 @@ export default function ResetPasswordPage() {
                   </div>
                 </div>
 
+                {/* Password requirements checklist */}
+                {newPassword.length > 0 && (() => {
+                  const rules = [
+                    { label: 'At least 8 characters', met: newPassword.length >= 8 },
+                    { label: 'One uppercase letter', met: /[A-Z]/.test(newPassword) },
+                    { label: 'One number', met: /[0-9]/.test(newPassword) },
+                  ]
+                  const allMet = rules.every(r => r.met)
+                  return (
+                    <div className={`rounded-xl border px-4 py-3 flex flex-col gap-1.5 transition-all ${allMet ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10' : 'border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#1c1c1c]'}`}>
+                      {rules.map(({ label, met }) => (
+                        <div key={label} className="flex items-center gap-2">
+                          <span className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${met ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-[#3a3a3a] text-gray-400'}`}>
+                            {met ? '✓' : '·'}
+                          </span>
+                          <span className={`text-xs ${met ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-400 dark:text-gray-500'}`}>{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+
                 {/* Confirm Password */}
                 <div className="flex flex-col gap-1.5">
                   <label htmlFor="confirm" className="text-[11px] font-bold uppercase tracking-[1px] text-gray-600 dark:text-gray-400">

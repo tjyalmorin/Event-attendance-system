@@ -92,6 +92,7 @@ export const lookupParticipantService = async (query: string, event_id: number) 
       photo_url: participant.photo_url || null,   // from agents table via JOIN
       label: participant.label || null,
       label_description: participant.label_description || null,
+      agent_type: participant.agent_type || null,
     },
     next_action: nextAction
   }
@@ -150,6 +151,7 @@ export const resolveParticipantService = async (participant_id: number, event_id
       photo_url: participant.photo_url || null,   // from agents table via JOIN
       label: participant.label || null,
       label_description: participant.label_description || null,
+      agent_type: participant.agent_type || null,
     },
     next_action: nextAction
   }
@@ -214,7 +216,8 @@ export const scanAgentCodeService = async (
     agent_code: participant.agent_code,
     branch_name: participant.branch_name,
     team_name: participant.team_name,
-    photo_url: participant.photo_url || null   // from agents table via JOIN
+    photo_url: participant.photo_url || null,   // from agents table via JOIN
+    agent_type: participant.agent_type || null
   }
 
   const existingSession = await pool.query(

@@ -34,7 +34,7 @@ export const createEvent = asyncHandler(async (req: Request, res: Response) => {
     registration_end:   req.body.registration_end    || null,
     poster_url:         posterFile
                           ? `/uploads/posters/${posterFile.filename}`
-                          : null,
+                          : req.body.poster_url || null,
   }
   const event = await createEventService(req.user!.user_id, body)
   res.status(201).json(event)

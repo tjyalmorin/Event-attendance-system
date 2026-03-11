@@ -29,6 +29,7 @@ interface LookupResult {
     photo_url?: string | null
     label?: string | null
     label_description?: string | null
+    agent_type?: string | null
   }
   next_action: 'check_in' | 'check_out' | 'blocked'
 }
@@ -460,7 +461,20 @@ export default function ScannerPage() {
 
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px 60px', overflowY: 'auto' }}>
-          <div style={{ width: '100%', maxWidth: pageState === 'verify' || pageState === 'result' ? 820 : 520, display: 'flex', flexDirection: 'column', gap: 16, transition: 'max-width 0.2s' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, width: '100%', maxWidth: (pageState === 'verify' || pageState === 'result' ? 820 : 520) + 60, transition: 'max-width 0.2s' }}>
+            {/* ── Back button on the left ── */}
+            <div style={{ flexShrink: 0, paddingTop: 4 }}>
+              <button
+                onClick={() => navigate(-1)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: `1px solid ${border}`, background: card, color: textSecondary, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = textPrimary; (e.currentTarget as HTMLElement).style.borderColor = '#DC143C' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = textSecondary; (e.currentTarget as HTMLElement).style.borderColor = border }}
+              >
+                <ArrowLeftIcon />
+                Back
+              </button>
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
             {/* ── INPUT STATE ── */}
             {pageState === 'input' && (
@@ -643,6 +657,7 @@ export default function ScannerPage() {
                       <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', animation: 'pulse 1.8s infinite' }} />
                       {lookup.next_action === 'check_in' ? 'Not Yet Checked In' : lookup.next_action === 'check_out' ? 'Currently Inside' : 'Blocked'}
                     </div>
+
                   </div>
 
                   {/* RIGHT: name + info rows + actions */}
@@ -682,7 +697,14 @@ export default function ScannerPage() {
                       })()}
                     </div>
 
-                    <div style={{ fontSize: 13, color: '#DC143C', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 24 }}>Agent Profile</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+                      <div style={{ fontSize: 13, color: '#DC143C', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Agent Profile</div>
+                      {lookup.participant.agent_type && (
+                        <div style={{ padding: '3px 10px', borderRadius: 8, background: isDarkMode ? '#1a1a1a' : '#f3f4f6', border: `1px solid ${border}`, fontSize: 11, fontWeight: 700, color: textSecondary, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                          {lookup.participant.agent_type}
+                        </div>
+                      )}
+                    </div>
 
                     <div style={{ border: `1px solid ${border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 28 }}>
                       {[
@@ -831,6 +853,7 @@ export default function ScannerPage() {
               </div>
             )}
 
+            </div>
           </div>
         </div>
       </div>
