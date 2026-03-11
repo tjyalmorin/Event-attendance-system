@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDarkMode } from '../contexts/DarkModeContext';
 import { useSidebar } from '../contexts/SidebarContext';
@@ -81,8 +80,6 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   const { isCollapsed, toggleCollapsed } = useSidebar();
   const [dropupOpen, setDropupOpen] = useState(false);
   const dropupRef = useRef<HTMLDivElement>(null);
-  const avatarBtnRef = useRef<HTMLButtonElement>(null);
-  const [dropupPos, setDropupPos] = useState({ bottom: 0, left: 0, width: 192 });
 
   // Get user info from localStorage
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -98,22 +95,13 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   // Close dropup when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropupRef.current && !dropupRef.current.contains(e.target as Node)
-        && avatarBtnRef.current && !avatarBtnRef.current.contains(e.target as Node)) {
+      if (dropupRef.current && !dropupRef.current.contains(e.target as Node)) {
         setDropupOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-
-  const openDropup = () => {
-    if (avatarBtnRef.current) {
-      const rect = avatarBtnRef.current.getBoundingClientRect();
-      setDropupPos({ bottom: window.innerHeight - rect.top + 8, left: rect.left, width: Math.max(rect.width, 192) });
-    }
-    setDropupOpen(p => !p);
-  };
 
   const mainItems = [
     {
@@ -207,12 +195,9 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
 
         {/* User Card with Dropup */}
         <div className="relative" ref={dropupRef}>
-          {/* Dropup Menu — rendered via portal so it's always on top */}
-          {dropupOpen && createPortal(
-            <div
-              style={{ position: 'fixed', bottom: dropupPos.bottom, left: dropupPos.left, width: dropupPos.width, zIndex: 9999 }}
-              className="bg-white dark:bg-[#252525] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden"
-            >
+          {/* Dropup Menu */}
+          {dropupOpen && (
+            <div className="absolute bottom-full left-0 mb-2 w-48 bg-white dark:bg-[#252525] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden z-50">
               <button
                 onClick={() => { setDropupOpen(false); navigate('/admin/settings/profile'); }}
                 className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors"
@@ -228,15 +213,13 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
                 <LogOutIcon />
                 Logout
               </button>
-            </div>,
-            document.body
+            </div>
           )}
 
           {/* Collapsed: avatar button only, no card */}
           {isCollapsed ? (
             <button
-              ref={avatarBtnRef}
-              onClick={openDropup}
+              onClick={() => setDropupOpen(p => !p)}
               className="w-full flex justify-center py-1"
             >
               <div className={`w-9 h-9 rounded-lg ${avatarBg} flex items-center justify-center text-white text-sm font-bold hover:opacity-80 transition-opacity`}>
@@ -246,8 +229,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
           ) : (
             /* Expanded: full user card */
             <button
-              ref={avatarBtnRef}
-              onClick={openDropup}
+              onClick={() => setDropupOpen(p => !p)}
               className={`w-full flex items-center gap-3 p-2.5 rounded-xl border transition-all
                 ${dropupOpen
                   ? 'border-gray-300 dark:border-[#3a3a3a] bg-gray-50 dark:bg-[#252525]'
