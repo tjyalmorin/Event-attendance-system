@@ -1,7 +1,6 @@
-# PrimeLog — Full System Context README
-> **For AI Assistants:** This document gives you complete context on the PrimeLog system — a QR-based event attendance tracking system for PRU Life UK (A1 Prime Branch). Read every section to understand the full codebase, all pages, all backend functionality, and all DB tables before responding. This is the single source of truth — attach this instead of individual files.
+# Event Attendance System
 
----
+Event attendance tracking system for A1 Prime Branch - PRU Life UK
 
 ## 🧭 Project Overview
 
