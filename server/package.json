@@ -14,6 +14,7 @@
     "db:seed:mini": "tsx src/database/seed.mini.ts",
     "db:seed:staff": "tsx src/database/seed.staff.ts",
     "db:seed:prime": "tsx src/database/seed.prime.ts",
+    "db:seed:adsc": "tsx src/database/seed.adsc.ts",
     "db:migrate:branches": "tsx src/database/migrate_branches.ts"
   },
   "keywords": [

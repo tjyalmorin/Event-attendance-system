@@ -6,23 +6,23 @@ const { Pool } = pg;
 
 const pool = new Pool({
   // ── Local Database ─────────────────────────────────────────
-  /*
+  
   user:     process.env.DB_USER     || 'postgres',
   host:     process.env.DB_HOST     || 'localhost',
   database: process.env.DB_NAME     || 'primelog_local',
   password: process.env.DB_PASSWORD,
   port:     parseInt(process.env.DB_PORT || '5432'),
-  */
+  
 
   // ── Supabase Database ──────────────────────────────────────
-  
+  /*
   user:     'postgres.sxuvmzgjpnncekdmrtmj',
   host:     'aws-1-ap-south-1.pooler.supabase.com',
   database: 'postgres',
   password: 'Primeloga1prime',
   port:     6543,
   ssl:      { rejectUnauthorized: false },
-  
+  */
 
   // ── Connection Pool Tuning ─────────────────────────────────
   max:                     10,

@@ -28,8 +28,9 @@ export const updateUserSchema = z.object({
 
 export const updateProfileSchema = z.object({
   full_name:   z.string().min(1).max(255).optional(),
+  email:       z.string().email('Invalid email').toLowerCase().optional(),
   branch_name: z.string().min(1).max(255).optional(),
-  team_name:   z.string().min(1).max(255).optional(),
+  team_name:   z.string().max(255).optional().nullable(),
 })
 
 export const changePasswordSchema = z.object({

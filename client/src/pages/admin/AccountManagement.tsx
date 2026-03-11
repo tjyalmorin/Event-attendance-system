@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../../components/Sidebar'
 import { getAllUsersApi, createUserApi, deleteUserApi, updateUserApi, toggleUserActiveApi } from '../../api/users.api'
+import { getAuditLogsApi, createAuditLogApi, AuditLogEntry } from '../../api/audit-logs.api'
 import { User } from '../../types'
 import { getAllBranchesApi, BranchItem } from '../../api/branches.api'
 
@@ -36,12 +37,22 @@ const CheckCircleIcon = () => (
 )
 const DotsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/>
+    <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
   </svg>
 )
 const XIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+)
+const SearchIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+)
+const UsersIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
   </svg>
 )
 const ShieldIcon = () => (
@@ -49,15 +60,9 @@ const ShieldIcon = () => (
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
   </svg>
 )
-const UsersIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
-    <path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-  </svg>
-)
 const UserIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
   </svg>
 )
 const ClockIcon = () => (
@@ -65,9 +70,14 @@ const ClockIcon = () => (
     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
   </svg>
 )
-const SearchIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+const ChevronLeftIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <polyline points="15 18 9 12 15 6"/>
+  </svg>
+)
+const ChevronRightIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <polyline points="9 18 15 12 9 6"/>
   </svg>
 )
 const EyeIcon = () => (
@@ -77,30 +87,19 @@ const EyeIcon = () => (
 )
 const EyeOffIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
-    <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
-    <line x1="1" y1="1" x2="23" y2="23"/>
+    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
   </svg>
 )
-const ChevronLeftIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-    <polyline points="15 18 9 12 15 6"/>
-  </svg>
-)
-const ChevronRightIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-    <polyline points="9 18 15 12 9 6"/>
-  </svg>
-)
-const CheckIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <polyline points="20 6 9 17 4 12"/>
+const HistoryIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
+    <line x1="12" y1="7" x2="12" y2="12"/><line x1="12" y1="12" x2="15" y2="14"/>
   </svg>
 )
 
-// ── Scrollbar styles injected once ────────────────────────
+// ── Scrollbar styles ───────────────────────────────────────
 const SCROLLBAR_STYLES = `
-  [data-custom-select-list]::-webkit-scrollbar { width: 4px; }
+  [data-custom-select-list]::-webkit-scrollbar { width: 6px; }
   [data-custom-select-list]::-webkit-scrollbar-track { background: transparent; }
   [data-custom-select-list]::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
   [data-custom-select-list]::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
@@ -108,7 +107,6 @@ const SCROLLBAR_STYLES = `
   .dark [data-custom-select-list]::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 999px; }
   .dark [data-custom-select-list]::-webkit-scrollbar-thumb:hover { background: #DC143C; }
 `
-// scrollbarColor uses light-mode values; dark mode overridden via CSS above
 const SCROLLBAR_COLOR_LIGHT = '#d1d5db transparent'
 const SCROLLBAR_COLOR_DARK  = '#3a3a3a #1c1c1c'
 
@@ -121,6 +119,10 @@ const formatTime = (iso: string) => {
   if (!iso) return ''
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
+const formatDateTime = (iso: string) => {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+}
 
 // ── Password validation ────────────────────────────────────
 const pwChecks = (pw: string) => ({
@@ -131,15 +133,42 @@ const pwChecks = (pw: string) => ({
 
 // ── Types ──────────────────────────────────────────────────
 type ModalType = 'create' | 'edit' | 'delete' | 'toggle' | null
+type PageView = 'accounts' | 'history'
 
 interface UserFormState {
   agent_code: string; full_name: string; email: string; password: string
   branch_name: string; role: 'admin' | 'staff'; team_name: string
 }
 
+// ── History Entry — backed by DB via AuditLogEntry ────────
+type HistoryEntry = AuditLogEntry
+
 const ITEMS_PER_PAGE = 10
 const EMPTY_FORM: UserFormState = {
   agent_code: '', full_name: '', email: '', password: '', branch_name: '', role: 'staff', team_name: ''
+}
+
+// ── Action badge colors ────────────────────────────────────
+const actionBadge = (action: HistoryEntry['action']) => {
+  switch (action) {
+    case 'created':          return 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 border-green-200 dark:border-green-800/40'
+    case 'edited':           return 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 border-blue-200 dark:border-blue-800/40'
+    case 'deactivated':      return 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400 border-orange-200 dark:border-orange-800/40'
+    case 'reactivated':      return 'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-400 border-teal-200 dark:border-teal-800/40'
+    case 'deleted':          return 'bg-red-50 text-[#DC143C] dark:bg-red-900/20 dark:text-red-400 border-red-200 dark:border-red-800/40'
+    case 'password_changed': return 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400 border-purple-200 dark:border-purple-800/40'
+    default:                 return 'bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+  }
+}
+const actionLabel = (action: HistoryEntry['action']) => {
+  switch (action) {
+    case 'created':          return 'Created'
+    case 'edited':           return 'Edited'
+    case 'deactivated':      return 'Deactivated'
+    case 'reactivated':      return 'Reactivated'
+    case 'deleted':          return 'Deleted'
+    case 'password_changed': return 'Password Changed'
+  }
 }
 
 // ── Custom Select Dropdown ─────────────────────────────────
@@ -157,26 +186,18 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
   const [open, setOpen] = useState(false)
   const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 })
   const btnRef = useRef<HTMLButtonElement>(null)
-  // FIX: use a ref to track open state for the mousedown handler closure
   const openRef = useRef(false)
   const dropRef = useRef<HTMLDivElement>(null)
   const selected = options.find(o => o.value === value)
 
-  // FIX: keep openRef in sync with open state
-  useEffect(() => {
-    openRef.current = open
-  }, [open])
+  useEffect(() => { openRef.current = open }, [open])
 
-  // FIX: listen on the button AND the portal dropdown div — not just a wrapper ref
-  // (the dropdown is rendered in document.body via portal, outside any wrapper ref)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       const target = e.target as Node
       const clickedBtn = btnRef.current?.contains(target)
       const clickedDrop = dropRef.current?.contains(target)
-      if (!clickedBtn && !clickedDrop) {
-        setOpen(false)
-      }
+      if (!clickedBtn && !clickedDrop) setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -186,14 +207,15 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
     if (!open) return
     const handler = () => setOpen(false)
     window.addEventListener('resize', handler)
-    return () => window.removeEventListener('resize', handler)
+    window.addEventListener('scroll', handler, true)
+    return () => {
+      window.removeEventListener('resize', handler)
+      window.removeEventListener('scroll', handler, true)
+    }
   }, [open])
 
   const handleOpen = () => {
     if (btnRef.current) {
-      // FIX: use requestAnimationFrame so getBoundingClientRect() runs AFTER
-      // document.body.style.overflow = 'hidden' has been applied by the modal's
-      // useEffect, preventing position offset bugs
       requestAnimationFrame(() => {
         if (!btnRef.current) return
         const rect = btnRef.current.getBoundingClientRect()
@@ -226,28 +248,17 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
         onTouchMove={e => e.stopPropagation()}
         style={{ scrollbarWidth: 'thin', scrollbarColor: document.documentElement.classList.contains('dark') ? SCROLLBAR_COLOR_DARK : SCROLLBAR_COLOR_LIGHT }}
       >
-        {options.map((opt, i) => (
+        {options.map(opt => (
           <button
             key={opt.value}
-            type="button"
-            // FIX: preventDefault stops the modal form from losing focus / blur
-            // FIX: stopPropagation stops the document mousedown handler from
-            // firing and closing the dropdown before onClick registers
-            onMouseDown={e => { e.preventDefault(); e.stopPropagation() }}
             onClick={() => { onChange(opt.value); setOpen(false) }}
-            className={`w-full flex items-center justify-between px-4 py-2.5 text-sm text-left transition-colors
-              ${i === 0 ? '' : 'border-t border-gray-50 dark:border-[#2a2a2a]'}
-              ${value === opt.value
-                ? 'bg-[#DC143C]/5 dark:bg-[#DC143C]/10 text-[#DC143C] font-semibold'
-                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525]'
+            className={`w-full text-left px-4 py-2.5 text-sm transition-colors
+              ${opt.value === value
+                ? 'bg-[#DC143C]/10 text-[#DC143C] font-semibold'
+                : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
               }`}
           >
             {opt.label}
-            {value === opt.value && (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-[#DC143C] flex-shrink-0">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            )}
           </button>
         ))}
       </div>
@@ -256,21 +267,15 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
   ) : null
 
   return (
-    // FIX: removed wrapper <div ref={ref}> — the old ref was useless for portal
-    // click-outside detection. Now handled via btnRef + dropRef in the useEffect above.
-    <div className="relative">
-      {required && (
-        <input tabIndex={-1} required value={value} onChange={() => {}}
-          className="absolute inset-0 opacity-0 pointer-events-none w-full" />
-      )}
+    <>
       <button
         ref={btnRef}
         type="button"
         onClick={handleOpen}
-        className={`h-[44px] w-full rounded-xl border-[1.5px] bg-gray-50 dark:bg-[#0f0f0f] px-4 text-sm outline-none transition-all flex items-center justify-between gap-2
+        className={`h-[44px] w-full rounded-xl border-[1.5px] bg-gray-50 dark:bg-[#0f0f0f] px-4 text-sm outline-none transition-all flex items-center justify-between
           ${open
-            ? 'border-[#DC143C] bg-white dark:bg-[#1c1c1c] shadow-[0_0_0_3px_rgba(220,20,60,0.08)]'
-            : 'border-gray-200 dark:border-[#2a2a2a] hover:border-gray-300 dark:hover:border-[#3a3a3a]'
+            ? 'border-[#DC143C] bg-white dark:bg-[#0f0f0f] shadow-[0_0_0_3px_rgba(220,20,60,0.08)]'
+            : 'border-gray-200 dark:border-[#2a2a2a] hover:border-gray-300 dark:hover:border-[#3a3a3a] cursor-pointer'
           }`}
       >
         <span className={selected ? 'text-gray-800 dark:text-white' : 'text-gray-400'}>
@@ -285,16 +290,13 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
         </svg>
       </button>
       {dropdown}
-    </div>
+    </>
   )
 }
 
 // ── Shared Cancel Button ───────────────────────────────────
 const CancelBtn: React.FC<{ onClick: () => void }> = ({ onClick }) => (
-  <button
-    onClick={onClick}
-    className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all"
-  >
+  <button onClick={onClick} className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-[#3a3a3a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#333] transition-all">
     Cancel
   </button>
 )
@@ -316,12 +318,7 @@ const ModalShell: React.FC<ModalShellProps> = ({
   title, subtitle, children, footer, wide = false,
 }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-    {/* FIX: removed overflow-clip — it was clipping the portal-rendered CustomSelect
-        dropdown even though the dropdown is attached to document.body. Chromium's
-        paint/hit-test layer still respects the clipping context of the stacking
-        ancestor, causing pointer events on the dropdown to be swallowed. */}
     <div className={`bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full mx-4 ${wide ? 'max-w-lg' : 'max-w-md'}`}>
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424] rounded-t-2xl">
         <div className="flex items-center gap-3">
           <span className={iconClass}>{icon}</span>
@@ -330,78 +327,53 @@ const ModalShell: React.FC<ModalShellProps> = ({
             {subtitle && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{subtitle}</p>}
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors"
-        >
+        <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors">
           <XIcon />
         </button>
       </div>
       <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
-      {/* Body */}
-      <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-        {children}
-      </div>
+      <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{children}</div>
       <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
-      {/* Footer */}
-      <div className="flex items-center justify-end gap-2 px-5 py-4">
-        {footer}
-      </div>
+      <div className="flex justify-end gap-2.5 px-5 py-4 bg-gray-50 dark:bg-[#242424] rounded-b-2xl">{footer}</div>
     </div>
   </div>
 )
 
-// ── Success Toast ──────────────────────────────────────────
-const SuccessToast: React.FC<{ message: string }> = ({ message }) => (
-  <div className="fixed bottom-6 right-6 z-50 flex items-stretch bg-white dark:bg-[#1c1c1c] rounded-xl shadow-2xl border border-gray-100 dark:border-[#2a2a2a] overflow-hidden min-w-[280px]">
-    <div className="w-3 bg-green-500 flex-shrink-0" />
-    <div className="flex items-center gap-3 px-4 py-4">
-      <div className="w-8 h-8 rounded-full border-2 border-green-500 flex items-center justify-center flex-shrink-0 text-green-500">
-        <CheckIcon />
-      </div>
-      <div>
-        <p className="text-sm font-bold text-gray-800 dark:text-white">Success</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">{message}</p>
-      </div>
-    </div>
-  </div>
-)
-
-// ── ActionDropdown ─────────────────────────────────────────
-function ActionDropdown({ user, isSelf, onEdit, onToggle, onDelete }: {
+// ── Action Dropdown ────────────────────────────────────────
+interface ActionDropdownProps {
   user: User & { is_active: boolean }
   isSelf: boolean
   onEdit: () => void
   onToggle: () => void
   onDelete: () => void
-}) {
+}
+
+const ActionDropdown: React.FC<ActionDropdownProps> = ({ user, isSelf, onEdit, onToggle, onDelete }) => {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0, dropUp: false })
   const btnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (btnRef.current && !btnRef.current.closest('[data-dropdown]')?.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  useEffect(() => {
     if (!open) return
-    const handler = () => setOpen(false)
-    window.addEventListener('scroll', handler, true)
-    return () => window.removeEventListener('scroll', handler, true)
+    const clickHandler = (e: MouseEvent) => {
+      const el = e.target as HTMLElement
+      if (!el.closest('[data-dropdown]')) setOpen(false)
+    }
+    const scrollHandler = () => setOpen(false)
+    document.addEventListener('mousedown', clickHandler)
+    window.addEventListener('scroll', scrollHandler, true)
+    return () => {
+      document.removeEventListener('mousedown', clickHandler)
+      window.removeEventListener('scroll', scrollHandler, true)
+    }
   }, [open])
 
   const handleOpen = () => {
     if (btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect()
-      const dropUp = window.innerHeight - rect.bottom < 160
+      const dropUp = rect.bottom + 160 > window.innerHeight
       setPos({
-        top:  dropUp ? rect.top - 8 : rect.bottom + 4,
+        top: dropUp ? rect.top - 8 : rect.bottom + 4,
         left: rect.right - 176,
         dropUp,
       })
@@ -411,14 +383,9 @@ function ActionDropdown({ user, isSelf, onEdit, onToggle, onDelete }: {
 
   return (
     <div data-dropdown>
-      <button
-        ref={btnRef}
-        onClick={handleOpen}
-        className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors rounded"
-      >
+      <button ref={btnRef} onClick={handleOpen} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors rounded">
         <DotsIcon />
       </button>
-
       {open && (
         <div
           style={{
@@ -430,34 +397,19 @@ function ActionDropdown({ user, isSelf, onEdit, onToggle, onDelete }: {
           }}
           className="w-44 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden"
         >
-          <button
-            onClick={() => { setOpen(false); onEdit() }}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors"
-          >
-            <EditIcon />
-            Edit Account
+          <button onClick={() => { setOpen(false); onEdit() }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+            <EditIcon />Edit Account
           </button>
-
           <div className="h-px bg-gray-100 dark:bg-[#2a2a2a] mx-2" />
-
-          <button
-            onClick={() => { setOpen(false); onToggle() }}
-            disabled={isSelf}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
+          <button onClick={() => { setOpen(false); onToggle() }} disabled={isSelf}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             {user.is_active ? <BanIcon /> : <CheckCircleIcon />}
             {user.is_active ? 'Deactivate' : 'Reactivate'}
           </button>
-
           <div className="h-px bg-gray-100 dark:bg-[#2a2a2a] mx-2" />
-
-          <button
-            onClick={() => { setOpen(false); onDelete() }}
-            disabled={isSelf}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <TrashIcon />
-            Delete Account
+          <button onClick={() => { setOpen(false); onDelete() }} disabled={isSelf}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <TrashIcon />Delete Account
           </button>
         </div>
       )}
@@ -476,6 +428,17 @@ export default function AccountManagement() {
   const [openSortDropdown, setOpenSortDropdown] = useState(false)
   const sortDropdownRef = useRef<HTMLDivElement>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [pageView, setPageView] = useState<PageView>('accounts')
+
+  // History — DB-backed, fetched from Supabase on mount and after each action
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  const loadHistory = async () => {
+    setHistoryLoading(true)
+    try { setHistory(await getAuditLogsApi()) } catch {}
+    finally { setHistoryLoading(false) }
+  }
 
   const [modalType, setModalType] = useState<ModalType>(null)
   const [selectedUser, setSelectedUser] = useState<(User & { is_active: boolean }) | null>(null)
@@ -487,40 +450,34 @@ export default function AccountManagement() {
 
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
   const userRole = storedUser?.role || 'staff'
+  const actorName = storedUser?.full_name || 'Admin'
+  const actorRole = storedUser?.role || 'admin'
   const [BRANCHES, setBRANCHES] = useState<BranchItem[]>([])
 
-  useEffect(() => {
-    getAllBranchesApi().then(setBRANCHES).catch(() => {})
-  }, [])
-
+  useEffect(() => { getAllBranchesApi().then(setBRANCHES).catch(() => {}) }, [])
   useEffect(() => {
     if (userRole !== 'admin') { navigate('/admin/settings/profile'); return }
     loadUsers()
+    loadHistory()
   }, [])
-
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target as Node)) {
-        setOpenSortDropdown(false)
-      }
+    const clickHandler = (e: MouseEvent) => {
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target as Node)) setOpenSortDropdown(false)
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    const scrollHandler = () => setOpenSortDropdown(false)
+    document.addEventListener('mousedown', clickHandler)
+    window.addEventListener('scroll', scrollHandler, true)
+    return () => {
+      document.removeEventListener('mousedown', clickHandler)
+      window.removeEventListener('scroll', scrollHandler, true)
+    }
   }, [])
-
   useEffect(() => {
-    if (toast) {
-      const t = setTimeout(() => setToast(null), 3000)
-      return () => clearTimeout(t)
-    }
+    if (toast) { const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t) }
   }, [toast])
-
   useEffect(() => {
-    if (modalType === 'create' || modalType === 'edit') {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
+    if (modalType === 'create' || modalType === 'edit') document.body.style.overflow = 'hidden'
+    else document.body.style.overflow = ''
     return () => { document.body.style.overflow = '' }
   }, [modalType])
 
@@ -528,6 +485,22 @@ export default function AccountManagement() {
     try { setUsers(await getAllUsersApi() as any) }
     catch { navigate('/admin/login') }
     finally { setLoading(false) }
+  }
+
+  // ── Add history entry — saved to DB ───────────────────
+  const addHistory = async (entry: {
+    action: HistoryEntry['action']
+    target_id: string
+    target_name: string
+    target_role: string
+    details?: string | null
+  }) => {
+    try {
+      const log = await createAuditLogApi(entry)
+      setHistory(prev => [log, ...prev])
+    } catch (err) {
+      console.error('Failed to save audit log:', err)
+    }
   }
 
   const openModal = (type: ModalType, user?: User & { is_active: boolean }) => {
@@ -552,16 +525,19 @@ export default function AccountManagement() {
     if (form.agent_code && form.agent_code.length !== 8) { setModalError('Agent code must be exactly 8 digits'); setModalLoading(false); return }
     try {
       const payload: any = {
-        full_name: form.full_name,
-        email: form.email,
-        password: form.password,
-        branch_name: form.branch_name,
-        role: form.role,
-        agent_code: form.agent_code.trim() || '',
-        team_name: form.team_name.trim() || null,
+        full_name: form.full_name, email: form.email, password: form.password,
+        branch_name: form.branch_name, role: form.role,
+        agent_code: form.agent_code.trim() || '', team_name: form.team_name.trim() || null,
       }
       const created = await createUserApi(payload)
       setUsers(prev => [created as any, ...prev])
+      await addHistory({
+        action: 'created',
+        target_id: (created as any).user_id,
+        target_name: form.full_name,
+        target_role: form.role,
+        details: `Created ${form.role} account for ${form.full_name}${form.branch_name ? ` · Branch: ${form.branch_name}` : ''}${form.team_name ? ` · Team: ${form.team_name}` : ''}`,
+      })
       closeModal()
       setToast('Account created successfully')
     } catch (err: any) { setModalError(err.response?.data?.error || 'Failed to create account') }
@@ -576,6 +552,22 @@ export default function AccountManagement() {
       if (form.password.trim()) payload.password = form.password
       const updated = await updateUserApi(selectedUser!.user_id, payload)
       setUsers(prev => prev.map(u => u.user_id === updated.user_id ? { ...u, ...updated } : u))
+      // Build change details
+      const changes: string[] = []
+      const prev = selectedUser!
+      if (form.full_name !== prev.full_name) changes.push(`Name: "${prev.full_name}" → "${form.full_name}"`)
+      if (form.email !== prev.email) changes.push(`Email changed`)
+      if (form.branch_name !== (prev as any).branch_name) changes.push(`Branch: "${(prev as any).branch_name || '—'}" → "${form.branch_name || '—'}"`)
+      if (form.team_name !== (prev as any).team_name) changes.push(`Team: "${(prev as any).team_name || '—'}" → "${form.team_name || '—'}"`)
+      if (form.role !== prev.role) changes.push(`Role: "${prev.role}" → "${form.role}"`)
+      if (form.password.trim()) changes.push('Password changed')
+      await addHistory({
+        action: form.password.trim() && changes.length === 1 ? 'password_changed' : 'edited',
+        target_id: selectedUser!.user_id,
+        target_name: form.full_name,
+        target_role: form.role,
+        details: changes.length > 0 ? changes.join(' · ') : 'Account details updated',
+      })
       closeModal()
       setToast('Account updated successfully')
     } catch (err: any) { setModalError(err.response?.data?.error || 'Failed to update account') }
@@ -587,6 +579,13 @@ export default function AccountManagement() {
     try {
       const updated = await toggleUserActiveApi(selectedUser!.user_id)
       setUsers(prev => prev.map(u => u.user_id === updated.user_id ? { ...u, ...updated } : u))
+      await addHistory({
+        action: updated.is_active ? 'reactivated' : 'deactivated',
+        target_id: selectedUser!.user_id,
+        target_name: selectedUser!.full_name,
+        target_role: selectedUser!.role,
+        details: `Account ${updated.is_active ? 'reactivated' : 'deactivated'} for ${selectedUser!.full_name}`,
+      })
       closeModal()
       setToast(updated.is_active ? 'Account reactivated successfully' : 'Account deactivated successfully')
     } catch (err: any) { setModalError(err.response?.data?.error || 'Failed to update account') }
@@ -598,6 +597,13 @@ export default function AccountManagement() {
     try {
       await deleteUserApi(selectedUser!.user_id)
       setUsers(prev => prev.filter(u => u.user_id !== selectedUser!.user_id))
+      await addHistory({
+        action: 'deleted',
+        target_id: selectedUser!.user_id,
+        target_name: selectedUser!.full_name,
+        target_role: selectedUser!.role,
+        details: `Deleted account for ${selectedUser!.full_name} (${selectedUser!.role})`,
+      })
       closeModal()
       setToast('Account deleted successfully')
     } catch (err: any) { setModalError(err.response?.data?.error || 'Failed to delete account') }
@@ -703,194 +709,308 @@ export default function AccountManagement() {
             ))}
           </div>
 
-          {/* ── FILTER ROW ── */}
-          <div className="flex items-center gap-3 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl px-4 py-3 shadow-sm">
-            <span className="text-[11px] font-bold uppercase tracking-[1px] text-gray-400 whitespace-nowrap">Role</span>
-            {(['all', 'admin', 'staff'] as const).map(r => (
-              <button key={r} onClick={() => { setRoleFilter(r); setCurrentPage(1) }}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${roleFilter === r ? 'bg-[#DC143C] border-[#DC143C] text-white' : 'border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'}`}>
-                {r === 'all' ? 'All' : r.charAt(0).toUpperCase() + r.slice(1)}
+          {/* ── TAB SWITCHER + FILTER ROW ── */}
+          <div className="bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-sm">
+            {/* Tab bar */}
+            <div className="flex items-center gap-1 px-4 pt-3 border-b border-gray-100 dark:border-[#2a2a2a]">
+              <button
+                onClick={() => setPageView('accounts')}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-all -mb-px
+                  ${pageView === 'accounts'
+                    ? 'border-[#DC143C] text-[#DC143C]'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+              >
+                <UsersIcon />
+                Accounts
               </button>
-            ))}
-
-            <div className="w-px h-5 bg-gray-200 dark:bg-[#2a2a2a] mx-1" />
-            <div className="flex-1" />
-
-            {/* Search */}
-            <div className="relative w-72">
-              <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400">
-                <SearchIcon />
-              </div>
-              <input
-                className="w-full h-9 pl-9 pr-3 rounded-lg border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f] text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 focus:border-[#DC143C] transition-all"
-                placeholder="Search name, agent code, branch…"
-                value={search}
-                onChange={e => { setSearch(e.target.value); setCurrentPage(1) }}
-              />
+              <button
+                onClick={() => { setPageView('history'); loadHistory() }}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-all -mb-px
+                  ${pageView === 'history'
+                    ? 'border-[#DC143C] text-[#DC143C]'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+              >
+                <HistoryIcon />
+                Modification History
+                {history.length > 0 && (
+                  <span className="ml-1 min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold flex items-center justify-center bg-[#DC143C]/10 text-[#DC143C]">
+                    {history.length}
+                  </span>
+                )}
+              </button>
             </div>
 
-            {/* Sort dropdown */}
-            <div className="relative" ref={sortDropdownRef}>
-              <button
-                onClick={() => setOpenSortDropdown(prev => !prev)}
-                className="flex items-center justify-between gap-2 px-4 py-2 w-[160px] bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-[#333333] transition-all shadow-sm"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400">
-                  <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="9" y2="18"/>
-                </svg>
-                <span className="flex-1 text-left">{sortLabels[sortBy]}</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                  className={`w-3 h-3 text-gray-400 transition-transform duration-200 ${openSortDropdown ? 'rotate-180' : ''}`}>
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
-
-              {openSortDropdown && (
-                <div className="absolute right-0 top-11 z-50 w-44 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden">
-                  <div className="px-3 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
-                    <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Sort by</p>
-                  </div>
-                  {([
-                    { key: 'date',       label: 'Date Created' },
-                    { key: 'name',       label: 'Name A–Z'     },
-                    { key: 'agent_code', label: 'Agent Code'   },
-                  ] as const).map(({ key, label }) => (
-                    <button key={key}
-                      onClick={() => { setSortBy(key); setOpenSortDropdown(false) }}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
-                        sortBy === key
-                          ? 'text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10 font-semibold'
-                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
-                      }`}
-                    >
-                      {label}
-                      {sortBy === key && (
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-[#DC143C]">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                      )}
+            {/* ── ACCOUNTS VIEW ── */}
+            {pageView === 'accounts' && (
+              <>
+                {/* Filter row */}
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <span className="text-[11px] font-bold uppercase tracking-[1px] text-gray-400 whitespace-nowrap">Role</span>
+                  {(['all', 'admin', 'staff'] as const).map(r => (
+                    <button key={r} onClick={() => { setRoleFilter(r); setCurrentPage(1) }}
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all ${roleFilter === r ? 'bg-[#DC143C] border-[#DC143C] text-white' : 'border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'}`}>
+                      {r === 'all' ? 'All' : r.charAt(0).toUpperCase() + r.slice(1)}
                     </button>
                   ))}
-                </div>
-              )}
-            </div>
-          </div>
 
-          {/* ── TABLE ── */}
-          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm overflow-hidden flex flex-col">
-            <div className="overflow-x-auto flex-1">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 dark:bg-[#161616] border-b border-gray-200 dark:border-[#2a2a2a]">
-                    {['Agent Code', 'Full Name', 'Branch Name', 'Team', 'Role', 'Date Created', 'Actions'].map((h, i) => (
-                      <th key={h} className={`px-5 py-3.5 text-[11px] font-bold uppercase tracking-[0.9px] text-gray-400 whitespace-nowrap ${i === 0 ? 'pl-7' : ''} ${h === 'Actions' ? 'pr-7 text-center' : 'text-left'}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr><td colSpan={7} className="py-20 text-center text-gray-400 text-sm">Loading...</td></tr>
-                  ) : paginated.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-center text-gray-400 text-sm">No accounts found</td></tr>
-                  ) : paginated.map(u => {
-                    const inactive = !u.is_active
-                    const createdAt = (u as any).created_at || ''
-                    return (
-                      <tr key={u.user_id} className={`border-b border-gray-50 dark:border-[#2a2a2a] last:border-b-0 transition-colors ${inactive ? 'bg-gray-50 dark:bg-[#161616]' : 'hover:bg-[#fdf5f7] dark:hover:bg-[#1f1416]'}`}>
-                        <td className={`pl-7 pr-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
-                          <span className={`font-bold text-xs tracking-wide ${inactive ? 'text-gray-400' : 'text-[#DC143C]'}`}>{u.agent_code || '—'}</span>
-                        </td>
-                        <td className={`px-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#2a2a2a] border border-gray-200 dark:border-[#333] flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400 flex-shrink-0">
-                              {u.full_name.slice(0, 2).toUpperCase()}
-                            </div>
-                            <div>
-                              <div className="font-semibold text-gray-900 dark:text-white text-sm">{u.full_name}</div>
-                              <div className="text-xs text-gray-400">{u.email}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className={`px-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
-                          <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-300 text-xs font-medium">
-                            {(u as any).branch_name || '—'}
-                          </span>
-                        </td>
-                        <td className={`px-5 py-3.5 text-gray-600 dark:text-gray-400 text-sm ${inactive ? 'opacity-40' : ''}`}>
-                          {(u as any).team_name || '—'}
-                        </td>
-                        <td className={`px-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
-                          <span className={`inline-block px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide ${
-                            u.role === 'admin'
-                              ? 'bg-[#DC143C]/10 text-[#DC143C] dark:bg-[#DC143C]/20'
-                              : 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
-                          }`}>{u.role}</span>
-                        </td>
-                        <td className={`px-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
-                          <div className="group relative w-fit">
-                            <span className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap cursor-default">
-                              {formatDate(createdAt)}
-                            </span>
-                            {createdAt && (
-                              <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-20 pointer-events-none">
-                                <div className="bg-gray-900 dark:bg-gray-700 text-white text-[11px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
-                                  {formatTime(createdAt)}
-                                </div>
-                                <div className="w-2 h-2 bg-gray-900 dark:bg-gray-700 rotate-45 ml-3 -mt-1" />
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="pr-7 px-5 py-3.5">
-                          <div className="flex justify-center">
-                            <ActionDropdown
-                              user={u}
-                              isSelf={u.user_id === storedUser?.user_id}
-                              onEdit={() => openModal('edit', u)}
-                              onToggle={() => openModal('toggle', u)}
-                              onDelete={() => openModal('delete', u)}
-                            />
-                          </div>
-                        </td>
+                  <div className="w-px h-5 bg-gray-200 dark:bg-[#2a2a2a] mx-1" />
+                  <div className="flex-1" />
+
+                  {/* Search */}
+                  <div className="relative w-72">
+                    <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
+                    <input
+                      className="w-full h-9 pl-9 pr-3 rounded-lg border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f] text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 focus:border-[#DC143C] transition-all"
+                      placeholder="Search name, agent code, branch…"
+                      value={search}
+                      onChange={e => { setSearch(e.target.value); setCurrentPage(1) }}
+                    />
+                  </div>
+
+                  {/* Sort dropdown */}
+                  <div className="relative" ref={sortDropdownRef}>
+                    <button
+                      onClick={() => setOpenSortDropdown(prev => !prev)}
+                      className="flex items-center justify-between gap-2 px-4 py-2 w-[160px] bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-[#333333] transition-all shadow-sm"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400">
+                        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="9" y2="18"/>
+                      </svg>
+                      <span className="flex-1 text-left">{sortLabels[sortBy]}</span>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                        className={`w-3 h-3 text-gray-400 transition-transform duration-200 ${openSortDropdown ? 'rotate-180' : ''}`}>
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
+                    </button>
+                    {openSortDropdown && (
+                      <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden z-30">
+                        {(['date', 'name', 'agent_code'] as const).map(s => (
+                          <button key={s} onClick={() => { setSortBy(s); setOpenSortDropdown(false) }}
+                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${sortBy === s ? 'bg-[#DC143C]/10 text-[#DC143C] font-semibold' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525]'}`}>
+                            {sortLabels[s]}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-y border-gray-100 dark:border-[#2a2a2a] bg-gray-50/70 dark:bg-[#161616]">
+                        {['Agent Code', 'Name / Email', 'Branch', 'Team', 'Role', 'Date Created', 'Actions'].map((h, i) => (
+                          <th key={h} className={`py-3 text-[11px] font-bold uppercase tracking-[1px] text-gray-400 dark:text-gray-500 ${i === 0 ? 'pl-7 pr-5' : 'px-5'} ${h === 'Actions' ? 'pr-7 text-center' : 'text-left'}`}>{h}</th>
+                        ))}
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* ── PAGINATION ── */}
-            <div className="flex items-center justify-between px-7 py-3.5 border-t border-gray-100 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#161616]">
-              <span className="text-xs text-gray-400">
-                {filtered.length === 0 ? 'No accounts' : `Showing ${(currentPage - 1) * ITEMS_PER_PAGE + 1}–${Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} of ${filtered.length} account${filtered.length !== 1 ? 's' : ''}`}
-              </span>
-              {totalPages > 1 && (
-                <div className="flex items-center gap-1.5">
-                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                    className="w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] flex items-center justify-center text-gray-500 hover:border-[#DC143C] hover:text-[#DC143C] transition-all disabled:opacity-30 disabled:cursor-not-allowed">
-                    <ChevronLeftIcon />
-                  </button>
-                  {getPageNums().map((p, i) => p === '...'
-                    ? <span key={`d${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-gray-400">…</span>
-                    : <button key={p} onClick={() => setCurrentPage(p as number)}
-                        className={`w-7 h-7 rounded-lg border text-xs font-semibold transition-all ${currentPage === p ? 'bg-[#DC143C] border-[#DC143C] text-white' : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-500 hover:border-[#DC143C] hover:text-[#DC143C]'}`}>
-                        {p}
-                      </button>
-                  )}
-                  <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                    className="w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] flex items-center justify-center text-gray-500 hover:border-[#DC143C] hover:text-[#DC143C] transition-all disabled:opacity-30 disabled:cursor-not-allowed">
-                    <ChevronRightIcon />
-                  </button>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        <tr><td colSpan={7} className="py-20 text-center text-gray-400 text-sm">Loading...</td></tr>
+                      ) : paginated.length === 0 ? (
+                        <tr><td colSpan={7} className="py-20 text-center text-gray-400 text-sm">No accounts found</td></tr>
+                      ) : paginated.map(u => {
+                        const inactive = !u.is_active
+                        const createdAt = (u as any).created_at || ''
+                        return (
+                          <tr key={u.user_id} className={`border-b border-gray-50 dark:border-[#2a2a2a] last:border-b-0 transition-colors ${inactive ? 'bg-gray-50 dark:bg-[#161616]' : 'hover:bg-[#fdf5f7] dark:hover:bg-[#1f1416]'}`}>
+                            <td className={`pl-7 pr-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
+                              <span className={`font-bold text-xs tracking-wide ${inactive ? 'text-gray-400' : 'text-[#DC143C]'}`}>{u.agent_code || '—'}</span>
+                            </td>
+                            <td className={`px-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
+                              <div className="flex items-center gap-2.5">
+                                <div className={`w-8 h-8 rounded-full border flex items-center justify-center text-xs font-bold flex-shrink-0
+                                  ${u.role === 'admin'
+                                    ? 'bg-[#DC143C]/10 border-[#DC143C]/20 text-[#DC143C]'
+                                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/40 text-blue-600 dark:text-blue-400'
+                                  }`}>
+                                  {u.full_name.slice(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-gray-900 dark:text-white text-sm">{u.full_name}</div>
+                                  <div className="text-xs text-gray-400">{u.email}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className={`px-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
+                              <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-300 text-xs font-medium">
+                                {(u as any).branch_name || '—'}
+                              </span>
+                            </td>
+                            <td className={`px-5 py-3.5 text-gray-600 dark:text-gray-400 text-sm ${inactive ? 'opacity-40' : ''}`}>
+                              {(u as any).team_name || '—'}
+                            </td>
+                            <td className={`px-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
+                              <span className={`inline-block px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide ${
+                                u.role === 'admin'
+                                  ? 'bg-[#DC143C]/10 text-[#DC143C] dark:bg-[#DC143C]/20'
+                                  : 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                              }`}>{u.role}</span>
+                            </td>
+                            <td className={`px-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
+                              <div className="group relative w-fit">
+                                <span className="text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap cursor-default">{formatDate(createdAt)}</span>
+                                {createdAt && (
+                                  <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-20 pointer-events-none">
+                                    <div className="bg-gray-900 dark:bg-gray-700 text-white text-[11px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">{formatTime(createdAt)}</div>
+                                    <div className="w-2 h-2 bg-gray-900 dark:bg-gray-700 rotate-45 ml-3 -mt-1" />
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="pr-7 px-5 py-3.5">
+                              <div className="flex justify-center">
+                                <ActionDropdown
+                                  user={u}
+                                  isSelf={u.user_id === storedUser?.user_id}
+                                  onEdit={() => openModal('edit', u)}
+                                  onToggle={() => openModal('toggle', u)}
+                                  onDelete={() => openModal('delete', u)}
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </div>
+
+                {/* Pagination */}
+                <div className="flex items-center justify-between px-7 py-3.5 border-t border-gray-100 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#161616] rounded-b-xl">
+                  <span className="text-xs text-gray-400">
+                    {filtered.length === 0 ? 'No accounts' : `Showing ${(currentPage - 1) * ITEMS_PER_PAGE + 1}–${Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} of ${filtered.length} account${filtered.length !== 1 ? 's' : ''}`}
+                  </span>
+                  {totalPages > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
+                        className="w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] flex items-center justify-center text-gray-500 hover:border-[#DC143C] hover:text-[#DC143C] transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                        <ChevronLeftIcon />
+                      </button>
+                      {getPageNums().map((p, i) => p === '...'
+                        ? <span key={`d${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-gray-400">…</span>
+                        : <button key={p} onClick={() => setCurrentPage(p as number)}
+                            className={`w-7 h-7 rounded-lg border text-xs font-semibold transition-all ${currentPage === p ? 'bg-[#DC143C] border-[#DC143C] text-white' : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-500 hover:border-[#DC143C] hover:text-[#DC143C]'}`}>
+                            {p}
+                          </button>
+                      )}
+                      <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+                        className="w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] flex items-center justify-center text-gray-500 hover:border-[#DC143C] hover:text-[#DC143C] transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                        <ChevronRightIcon />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* ── HISTORY VIEW ── */}
+            {pageView === 'history' && (
+              <div className="p-5">
+                {historyLoading ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="w-8 h-8 border-2 border-[#DC143C] border-t-transparent rounded-full animate-spin mb-3" />
+                    <p className="text-sm text-gray-400 dark:text-gray-500">Loading history...</p>
+                  </div>
+                ) : history.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-[#2a2a2a] flex items-center justify-center text-gray-400 mb-3">
+                      <HistoryIcon />
+                    </div>
+                    <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">No modifications yet</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">All account changes are permanently recorded here</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Record count */}
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-gray-400 dark:text-gray-500">{history.length} record{history.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    {/* Divider */}
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="h-px flex-1 bg-gray-100 dark:bg-[#2a2a2a]" />
+                      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-2">All Records</span>
+                      <div className="h-px flex-1 bg-gray-100 dark:bg-[#2a2a2a]" />
+                    </div>
+
+                    {history.map(entry => (
+                      <div key={entry.log_id}
+                        className="flex gap-4 p-4 rounded-xl border border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#181818] hover:border-gray-200 dark:hover:border-[#333] transition-all"
+                      >
+                        {/* Timeline dot */}
+                        <div className="flex flex-col items-center gap-1 pt-0.5">
+                          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                            entry.action === 'created'          ? 'bg-green-500'  :
+                            entry.action === 'edited'           ? 'bg-blue-500'   :
+                            entry.action === 'deactivated'      ? 'bg-orange-500' :
+                            entry.action === 'reactivated'      ? 'bg-teal-500'   :
+                            entry.action === 'deleted'          ? 'bg-[#DC143C]'  :
+                            entry.action === 'password_changed' ? 'bg-purple-500' : 'bg-gray-400'
+                          }`} />
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {/* Action badge */}
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${actionBadge(entry.action)}`}>
+                                {actionLabel(entry.action)}
+                              </span>
+                              {/* Target */}
+                              <span className="text-sm font-semibold text-gray-900 dark:text-white">{entry.target_name}</span>
+                              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
+                                entry.target_role === 'admin'
+                                  ? 'bg-[#DC143C]/10 text-[#DC143C]'
+                                  : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                              }`}>{entry.target_role}</span>
+                            </div>
+                            <span className="text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap flex-shrink-0">
+                              {formatDateTime(entry.created_at)}
+                            </span>
+                          </div>
+
+                          {/* Details */}
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">{entry.details}</p>
+
+                          {/* Actor */}
+                          <div className="flex items-center gap-1.5 mt-2">
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0
+                              ${entry.actor_role === 'admin'
+                                ? 'bg-[#DC143C]/10 text-[#DC143C]'
+                                : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600'
+                              }`}>
+                              {entry.actor_name.charAt(0).toUpperCase()}
+                            </div>
+                            <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                              by <span className="font-semibold text-gray-600 dark:text-gray-300">{entry.actor_name}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
+      {/* ── TOAST ── */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-5 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-semibold rounded-2xl shadow-2xl animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <CheckCircleIcon />
+          {toast}
+        </div>
+      )}
+
       {/* ── MODALS ── */}
 
-      {/* Create / Edit — wider modal with form */}
+      {/* Create / Edit */}
       {(modalType === 'create' || modalType === 'edit') && (
         <ModalShell
           onClose={closeModal}
@@ -901,12 +1021,8 @@ export default function AccountManagement() {
           footer={
             <>
               <CancelBtn onClick={closeModal} />
-              <button
-                form="account-form"
-                type="submit"
-                disabled={modalLoading}
-                className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
+              <button form="account-form" type="submit" disabled={modalLoading}
+                className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
                 {modalLoading
                   ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>{isEdit ? 'Saving...' : 'Creating...'}</>
                   : isEdit ? 'Save Changes' : 'Create Account'
@@ -927,17 +1043,9 @@ export default function AccountManagement() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}>Agent Code <span className="normal-case font-normal text-gray-400">(optional)</span></label>
-                <input
-                  className={inputClass}
-                  value={form.agent_code}
-                  onChange={e => {
-                    const digits = e.target.value.replace(/\D/g, '').slice(0, 8)
-                    setForm(p => ({ ...p, agent_code: digits }))
-                  }}
-                  placeholder="8-digit code"
-                  maxLength={8}
-                  inputMode="numeric"
-                />
+                <input className={inputClass} value={form.agent_code}
+                  onChange={e => { const digits = e.target.value.replace(/\D/g, '').slice(0, 8); setForm(p => ({ ...p, agent_code: digits })) }}
+                  placeholder="8-digit code" maxLength={8} inputMode="numeric" />
                 {form.agent_code.length > 0 && form.agent_code.length !== 8 && (
                   <span className="text-[11px] text-red-500">Must be exactly 8 digits</span>
                 )}
@@ -947,10 +1055,7 @@ export default function AccountManagement() {
                 <CustomSelect
                   value={form.role}
                   onChange={val => setForm(p => ({ ...p, role: val as 'admin' | 'staff' }))}
-                  options={[
-                    { value: 'staff', label: 'Staff' },
-                    { value: 'admin', label: 'Admin' },
-                  ]}
+                  options={[{ value: 'staff', label: 'Staff' }, { value: 'admin', label: 'Admin' }]}
                   required
                 />
               </div>
@@ -982,106 +1087,72 @@ export default function AccountManagement() {
                 <div className="relative">
                   <input className={`${inputClass} pr-11`} type={showPassword ? 'text' : 'password'} value={form.password}
                     onChange={e => setForm(p => ({...p, password: e.target.value}))}
-                    placeholder={isEdit ? 'Enter new password to change' : 'Min. 8 characters'} required={!isEdit} />
-                  <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                    placeholder={isEdit ? 'Enter new password to change' : 'Min. 8 chars, 1 uppercase, 1 number'}
+                    required={!isEdit} />
+                  <button type="button" onClick={() => setShowPassword(p => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                     {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                   </button>
                 </div>
                 {showPwHints && (
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5">
-                    <span className={`text-[11px] font-medium ${checks.length ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>{checks.length ? '✓' : '○'} 8+ characters</span>
-                    <span className={`text-[11px] font-medium ${checks.uppercase ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>{checks.uppercase ? '✓' : '○'} Uppercase letter</span>
-                    <span className={`text-[11px] font-medium ${checks.number ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>{checks.number ? '✓' : '○'} Number</span>
+                  <div className="flex gap-3 mt-1">
+                    {[{ ok: checks.length, label: '8+ chars' }, { ok: checks.uppercase, label: 'Uppercase' }, { ok: checks.number, label: 'Number' }].map(c => (
+                      <span key={c.label} className={`text-[11px] font-semibold flex items-center gap-1 ${c.ok ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
+                        <span>{c.ok ? '✓' : '○'}</span> {c.label}
+                      </span>
+                    ))}
                   </div>
                 )}
               </div>
             </div>
-            {modalError && (
-              <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-                {modalError}
-              </div>
-            )}
+            {modalError && <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">{modalError}</div>}
           </form>
         </ModalShell>
       )}
 
-      {/* Deactivate / Reactivate */}
+      {/* Toggle Active */}
       {modalType === 'toggle' && selectedUser && (
-        <ModalShell
-          onClose={closeModal}
-          icon={selectedUser.is_active ? <BanIcon /> : <CheckCircleIcon />}
-          iconClass={selectedUser.is_active ? 'text-yellow-500 dark:text-yellow-400' : 'text-green-600 dark:text-green-400'}
+        <ModalShell onClose={closeModal} icon={selectedUser.is_active ? <BanIcon /> : <CheckCircleIcon />}
+          iconClass={selectedUser.is_active ? 'text-orange-500' : 'text-green-500'}
           title={selectedUser.is_active ? 'Deactivate Account' : 'Reactivate Account'}
           subtitle={selectedUser.full_name}
           footer={
             <>
               <CancelBtn onClick={closeModal} />
-              <button
-                onClick={handleToggle}
-                disabled={modalLoading}
-                className={`px-4 py-2 text-sm font-semibold text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${
-                  selectedUser.is_active ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
-                }`}
-              >
-                {modalLoading
-                  ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Updating...</>
-                  : selectedUser.is_active ? 'Deactivate' : 'Reactivate'
-                }
+              <button onClick={handleToggle} disabled={modalLoading}
+                className={`px-4 py-2 text-sm font-semibold text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed ${selectedUser.is_active ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700'}`}>
+                {modalLoading ? 'Updating...' : selectedUser.is_active ? 'Deactivate' : 'Reactivate'}
               </button>
             </>
           }
         >
-          <p>
-            {selectedUser.is_active
-              ? <>Are you sure you want to deactivate <span className="font-semibold text-gray-800 dark:text-gray-200">"{selectedUser.full_name}"</span>? They will no longer be able to log in.</>
-              : <>Are you sure you want to reactivate <span className="font-semibold text-gray-800 dark:text-gray-200">"{selectedUser.full_name}"</span>? They will be able to log in again.</>
-            }
-          </p>
-          {modalError && (
-            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-              {modalError}
-            </div>
-          )}
+          {selectedUser.is_active
+            ? <><p>Are you sure you want to <strong>deactivate</strong> this account?</p><p className="mt-2 text-xs text-orange-500">This user will be blocked from logging in.</p></>
+            : <><p>Are you sure you want to <strong>reactivate</strong> this account?</p><p className="mt-2 text-xs text-green-600">This user will be able to log in again.</p></>
+          }
+          {modalError && <div className="mt-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">{modalError}</div>}
         </ModalShell>
       )}
 
       {/* Delete */}
       {modalType === 'delete' && selectedUser && (
-        <ModalShell
-          onClose={closeModal}
-          icon={<TrashIcon />}
-          iconClass="text-red-500 dark:text-red-400"
-          title="Delete Account"
-          subtitle={selectedUser.full_name}
+        <ModalShell onClose={closeModal} icon={<TrashIcon />} iconClass="text-red-500"
+          title="Delete Account" subtitle={selectedUser.full_name}
           footer={
             <>
               <CancelBtn onClick={closeModal} />
-              <button
-                onClick={handleDelete}
-                disabled={modalLoading}
-                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {modalLoading
-                  ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Deleting...</>
-                  : 'Delete Account'
-                }
+              <button onClick={handleDelete} disabled={modalLoading}
+                className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                {modalLoading ? 'Deleting...' : 'Delete Account'}
               </button>
             </>
           }
         >
-          <p>
-            Delete <span className="font-semibold text-gray-800 dark:text-gray-200">"{selectedUser.full_name}"</span>? This action cannot be undone.
-          </p>
-          {modalError && (
-            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-              {modalError}
-          </div>
-          )}
+          <p>Are you sure you want to permanently delete <strong>{selectedUser.full_name}</strong>'s account?</p>
+          <p className="mt-2 text-xs text-red-500">This action cannot be undone.</p>
+          {modalError && <div className="mt-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">{modalError}</div>}
         </ModalShell>
       )}
-
-      {/* ── SUCCESS TOAST ── */}
-      {toast && <SuccessToast message={toast} />}
     </div>
   )
 }
