@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useDarkMode } from '../contexts/DarkModeContext';
 import { useSidebar } from '../contexts/SidebarContext';
@@ -26,7 +26,7 @@ const CalendarIcon = () => (
 );
 
 const LogOutIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
   </svg>
 );
@@ -50,7 +50,7 @@ const SunIcon = () => (
 );
 
 const GearIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <circle cx="12" cy="12" r="3"/>
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
   </svg>
@@ -63,6 +63,12 @@ const GitBranchIcon = () => (
   </svg>
 );
 
+const ChevronUpIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <polyline points="18 15 12 9 6 15"/>
+  </svg>
+);
+
 interface SidebarProps {
   userRole?: 'admin' | 'staff';
 }
@@ -72,12 +78,30 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   const location = useLocation();
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const { isCollapsed, toggleCollapsed } = useSidebar();
+  const [dropupOpen, setDropupOpen] = useState(false);
+  const dropupRef = useRef<HTMLDivElement>(null);
+
+  // Get user info from localStorage
+  const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const userName = storedUser?.full_name || 'User';
+  const userInitial = userName.charAt(0).toUpperCase();
 
   const handleLogout = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('user');
     navigate('/admin/login');
   };
+
+  // Close dropup when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropupRef.current && !dropupRef.current.contains(e.target as Node)) {
+        setDropupOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const mainItems = [
     {
@@ -101,12 +125,12 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   ];
 
   const isActive = (path: string) => {
-    if (path === '/admin/events') return location.pathname.startsWith('/admin/events');
+    if (path === '/admin/events') return location.pathname.startsWith('/admin/events') || location.pathname.startsWith('/staff/events');
     return location.pathname === path;
   };
 
   const btnBase = (active: boolean) =>
-    `w-full flex items-center rounded-lg transition-all ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'} ${
+    `w-full flex items-center rounded-lg transition-all ${isCollapsed ? 'justify-center px-1.5 py-2.5' : 'gap-3 px-3 py-2.5'} ${
       active
         ? 'bg-[#DC143C] text-white shadow-lg'
         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333]'
@@ -115,11 +139,13 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   const iconColor = (active: boolean) =>
     active ? 'text-white' : 'text-gray-400 dark:text-gray-500';
 
-  return (
-    <div className={`${isCollapsed ? 'w-[80px]' : 'w-[260px]'} sticky top-0 h-screen bg-white dark:bg-[#1c1c1c] border-r border-gray-200 dark:border-[#2a2a2a] flex flex-col transition-all duration-300 flex-shrink-0`}>
+  // Avatar color: red for admin, blue for staff
+  const avatarBg = userRole === 'admin' ? 'bg-[#DC143C]' : 'bg-blue-600';
 
+  return (
+    <div className={`${isCollapsed ? 'w-[60px]' : 'w-[260px]'} sticky top-0 h-screen bg-white dark:bg-[#1c1c1c] border-r border-gray-200 dark:border-[#2a2a2a] flex flex-col transition-all duration-300 flex-shrink-0`}>
       {/* Header */}
-      <div className={`h-[77px] border-b border-gray-200 dark:border-[#2a2a2a] flex items-center ${isCollapsed ? 'justify-center p-4' : 'justify-between p-5'}`}>
+      <div className={`h-[77px] border-b border-gray-200 dark:border-[#2a2a2a] flex items-center ${isCollapsed ? 'justify-center p-2' : 'justify-between p-5'}`}>
         {!isCollapsed && (
           <div className="text-xl font-bold text-gray-900 dark:text-white">PrimeLog</div>
         )}
@@ -139,28 +165,90 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
         ))}
       </div>
 
-      {/* Bottom */}
+      {/* Bottom: Dark Mode + User Card */}
       <div className="p-3 border-t border-gray-200 dark:border-[#2a2a2a] space-y-1">
         {/* Dark Mode */}
         <button onClick={toggleDarkMode}
-          className={`w-full flex items-center rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333] transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'}`}>
-          <span className="text-gray-400 dark:text-gray-500">{isDarkMode ? <SunIcon /> : <MoonIcon />}</span>
-          {!isCollapsed && <span className="text-sm font-medium">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>}
+          className={`w-full flex items-center rounded-lg text-gray-600 dark:text-gray-400 transition-colors ${isCollapsed ? 'justify-center px-1.5 py-2.5' : 'gap-3 px-3 py-2.5'}`}>
+          <span className="text-gray-400 dark:text-gray-500 transition-transform duration-300 ease-in-out"
+            style={{ transform: isDarkMode ? 'rotate(0deg)' : 'rotate(-20deg)' }}>
+            {isDarkMode ? <SunIcon /> : <MoonIcon />}
+          </span>
+          {!isCollapsed && (
+            <>
+              <span className="text-sm font-medium flex-1 text-left">
+                {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+              </span>
+              {/* Toggle switch */}
+              <span
+                className={`relative flex-shrink-0 inline-flex items-center h-[22px] w-[40px] rounded-full transition-colors duration-300 ease-in-out
+                  ${isDarkMode ? 'bg-[#DC143C]' : 'bg-gray-300 dark:bg-[#444]'}`}
+              >
+                <span
+                  className={`inline-block h-[16px] w-[16px] rounded-full bg-white shadow transition-transform duration-300 ease-in-out
+                    ${isDarkMode ? 'translate-x-[20px]' : 'translate-x-[3px]'}`}
+                />
+              </span>
+            </>
+          )}
         </button>
 
-        {/* Profile Settings */}
-        <button onClick={() => navigate('/admin/settings/profile')}
-          className={btnBase(isActive('/admin/settings/profile'))}>
-          <span className={iconColor(isActive('/admin/settings/profile'))}><GearIcon /></span>
-          {!isCollapsed && <span className="text-sm font-medium">Profile Settings</span>}
-        </button>
+        {/* User Card with Dropup */}
+        <div className="relative" ref={dropupRef}>
+          {/* Dropup Menu */}
+          {dropupOpen && (
+            <div className="absolute bottom-full left-0 mb-2 w-48 bg-white dark:bg-[#252525] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden z-50">
+              <button
+                onClick={() => { setDropupOpen(false); navigate('/admin/settings/profile'); }}
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors"
+              >
+                <GearIcon />
+                Profile Settings
+              </button>
+              <div className="h-px bg-gray-100 dark:bg-[#2a2a2a]" />
+              <button
+                onClick={() => { setDropupOpen(false); handleLogout(); }}
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-[#DC143C] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                <LogOutIcon />
+                Logout
+              </button>
+            </div>
+          )}
 
-        {/* Logout */}
-        <button onClick={handleLogout}
-          className={`group w-full flex items-center rounded-lg text-gray-600 dark:text-gray-400 hover:bg-red-100 dark:hover:bg-red-900/40 hover:text-[#DC143C] dark:hover:text-[#DC143C] transition-colors ${isCollapsed ? 'justify-center px-2 py-3' : 'gap-3 px-3 py-2.5'}`}>
-          <span className="text-gray-400 dark:text-gray-500 group-hover:text-[#DC143C] dark:group-hover:text-[#DC143C] transition-colors"><LogOutIcon /></span>
-          {!isCollapsed && <span className="text-sm font-medium">Logout</span>}
-        </button>
+          {/* Collapsed: avatar button only, no card */}
+          {isCollapsed ? (
+            <button
+              onClick={() => setDropupOpen(p => !p)}
+              className="w-full flex justify-center py-1"
+            >
+              <div className={`w-9 h-9 rounded-lg ${avatarBg} flex items-center justify-center text-white text-sm font-bold hover:opacity-80 transition-opacity`}>
+                {userInitial}
+              </div>
+            </button>
+          ) : (
+            /* Expanded: full user card */
+            <button
+              onClick={() => setDropupOpen(p => !p)}
+              className={`w-full flex items-center gap-3 p-2.5 rounded-xl border transition-all
+                ${dropupOpen
+                  ? 'border-gray-300 dark:border-[#3a3a3a] bg-gray-50 dark:bg-[#252525]'
+                  : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] hover:border-gray-300 dark:hover:border-[#3a3a3a] hover:bg-gray-50 dark:hover:bg-[#252525]'
+                }`}
+            >
+              <div className={`flex-shrink-0 w-9 h-9 rounded-lg ${avatarBg} flex items-center justify-center text-white text-sm font-bold`}>
+                {userInitial}
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate leading-tight">{userName}</p>
+                <p className={`text-xs font-medium mt-0.5 ${userRole === 'admin' ? 'text-[#DC143C]' : 'text-blue-600'}`}>
+                  {userRole === 'admin' ? 'Admin' : 'Staff'}
+                </p>
+              </div>
+              <ChevronUpIcon />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

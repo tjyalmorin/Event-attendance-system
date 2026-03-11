@@ -176,6 +176,22 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
+    // ── account_audit_logs ─────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS account_audit_logs (
+        log_id        SERIAL        PRIMARY KEY,
+        actor_id      UUID          REFERENCES users(user_id) ON DELETE SET NULL,
+        actor_name    VARCHAR(255)  NOT NULL,
+        actor_role    VARCHAR(50)   NOT NULL,
+        action        VARCHAR(50)   NOT NULL,
+        target_id     UUID          REFERENCES users(user_id) ON DELETE SET NULL,
+        target_name   VARCHAR(255)  NOT NULL,
+        target_role   VARCHAR(50)   NOT NULL,
+        details       TEXT,
+        created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      );
+    `);
+
     // ── branches ───────────────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS branches (
@@ -283,6 +299,8 @@ const migrate = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_teams_branch_id               ON teams(branch_id);
       CREATE INDEX IF NOT EXISTS idx_event_branches_event_id       ON event_branches(event_id);
       CREATE INDEX IF NOT EXISTS idx_agents_agent_code             ON agents(agent_code);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at         ON account_audit_logs(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_id           ON account_audit_logs(actor_id);
     `);
 
     // ── Performance indexes ────────────────────────────────────────
@@ -394,6 +412,7 @@ const migrate = async (): Promise<void> => {
     console.log('     • branches');
     console.log('     • teams');
     console.log('     • event_branches');
+    console.log('     • account_audit_logs');
     console.log('');
     console.log('  💡 Next: npm run db:migrate   (re-run safe — all idempotent)');
     console.log('          npm run dev            (start the server)');
