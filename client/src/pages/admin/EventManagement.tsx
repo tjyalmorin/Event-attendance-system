@@ -643,7 +643,7 @@ const EventManagement: React.FC = () => {
                 { key: 'upcoming', label: 'Upcoming' },
                 { key: 'ongoing', label: 'Ongoing' },
                 { key: 'completed', label: 'Completed' },
-                { key: 'draft', label: 'Draft' },
+                ...(user.role === 'admin' ? [{ key: 'draft', label: 'Draft' }] : []),
               ].map(({ key, label }) => (
                 <button key={key} onClick={() => setFilter(key)}
                   className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all ${

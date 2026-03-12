@@ -3,7 +3,8 @@ import { z } from 'zod'
 export const lookupSchema = z.object({
   query: z.string().min(1, 'Agent code or surname is required').optional(),
   agent_code: z.string().min(1).optional(),
-  event_id: z.number({ error: 'event_id is required' }).int().positive()
+  event_id: z.number({ error: 'event_id is required' }).int().positive(),
+  branch_name: z.string().max(255).optional().nullable()
 }).refine(data => data.query || data.agent_code, {
   message: 'query or agent_code is required'
 })

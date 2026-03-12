@@ -1,7 +1,7 @@
 import api from './axios'
 import { ScanResponse } from '../types'
 
-export const lookupParticipantApi = async (payload: { query: string; event_id: number }) => {
+export const lookupParticipantApi = async (payload: { query: string; event_id: number; branch_name?: string | null }) => {
   const res = await api.post('/attendance/lookup', payload)
   return res.data
 }

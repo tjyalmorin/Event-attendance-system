@@ -1,7 +1,7 @@
 import pool from '../../config/database.js'
 
 // ── Lookup by agent code OR surname ──────────────────────────────────────────
-export const lookupParticipantService = async (query: string, event_id: number) => {
+export const lookupParticipantService = async (query: string, event_id: number, branch_name?: string | null) => {
   if (!query?.trim()) throw new Error('Agent code or surname is required')
   if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
 
@@ -20,25 +20,25 @@ export const lookupParticipantService = async (query: string, event_id: number) 
   let participantRows: any[] = []
 
   if (isNumeric) {
-    // ── Option 2: JOIN agents table to get photo_url ──────
     const partial = await pool.query(
       `SELECT p.*, a.photo_url
        FROM participants p
        LEFT JOIN agents a ON a.agent_code = p.agent_code
-       WHERE p.agent_code ILIKE $1 AND p.event_id = $2 AND p.deleted_at IS NULL`,
-      [`%${query.trim()}%`, event_id]
+       WHERE p.agent_code ILIKE $1 AND p.event_id = $2 AND p.deleted_at IS NULL
+         ${branch_name ? 'AND p.branch_name = $3' : ''}`,
+      branch_name ? [`%${query.trim()}%`, event_id, branch_name] : [`%${query.trim()}%`, event_id]
     )
     participantRows = partial.rows
   }
 
   if (participantRows.length === 0) {
-    // ── Option 2: JOIN agents table to get photo_url ──────
     const byName = await pool.query(
       `SELECT p.*, a.photo_url
        FROM participants p
        LEFT JOIN agents a ON a.agent_code = p.agent_code
-       WHERE p.event_id = $1 AND p.deleted_at IS NULL AND p.full_name ILIKE $2`,
-      [event_id, `%${query.trim()}%`]
+       WHERE p.event_id = $1 AND p.deleted_at IS NULL AND p.full_name ILIKE $2
+         ${branch_name ? 'AND p.branch_name = $3' : ''}`,
+      branch_name ? [event_id, `%${query.trim()}%`, branch_name] : [event_id, `%${query.trim()}%`]
     )
     participantRows = byName.rows
   }
@@ -61,7 +61,7 @@ export const lookupParticipantService = async (query: string, event_id: number) 
         agent_code: p.agent_code,
         branch_name: p.branch_name,
         team_name: p.team_name,
-        photo_url: p.photo_url || null,   // from agents table via JOIN
+        photo_url: p.photo_url || null,
       }))
     }
   }
@@ -89,7 +89,7 @@ export const lookupParticipantService = async (query: string, event_id: number) 
       agent_code: participant.agent_code,
       branch_name: participant.branch_name,
       team_name: participant.team_name,
-      photo_url: participant.photo_url || null,   // from agents table via JOIN
+      photo_url: participant.photo_url || null,
       label: participant.label || null,
       label_description: participant.label_description || null,
       agent_type: participant.agent_type || null,
@@ -114,7 +114,6 @@ export const resolveParticipantService = async (participant_id: number, event_id
   const currentTime = now.toTimeString().split(' ')[0]
   if (currentTime > event.checkin_cutoff) throw new Error('Check-in time has already passed.')
 
-  // ── Option 2: JOIN agents table to get photo_url ──────────────────────
   const pResult = await pool.query(
     `SELECT p.*, a.photo_url
      FROM participants p
@@ -148,7 +147,7 @@ export const resolveParticipantService = async (participant_id: number, event_id
       agent_code: participant.agent_code,
       branch_name: participant.branch_name,
       team_name: participant.team_name,
-      photo_url: participant.photo_url || null,   // from agents table via JOIN
+      photo_url: participant.photo_url || null,
       label: participant.label || null,
       label_description: participant.label_description || null,
       agent_type: participant.agent_type || null,
@@ -168,7 +167,6 @@ export const scanAgentCodeService = async (
   if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
   if (agent_code.length > 50) throw new Error('Invalid agent code')
 
-  // ── Option 2: JOIN agents table to get photo_url ──────────────────────
   const participantResult = await pool.query(
     `SELECT p.*, a.photo_url
      FROM participants p
@@ -210,13 +208,12 @@ export const scanAgentCodeService = async (
     throw new Error('Check-in time has already passed.')
   }
 
-  // photo_url comes from the agents JOIN above — no copy needed
   const participantPayload = {
     full_name: participant.full_name,
     agent_code: participant.agent_code,
     branch_name: participant.branch_name,
     team_name: participant.team_name,
-    photo_url: participant.photo_url || null,   // from agents table via JOIN
+    photo_url: participant.photo_url || null,
     agent_type: participant.agent_type || null
   }
 
@@ -333,9 +330,9 @@ export const updateSessionTimesService = async (
   const checkIn  = new Date(check_in_time)
   const checkOut = check_out_time ? new Date(check_out_time) : null
 
-  if (isNaN(checkIn.getTime()))                    throw new Error('check_in_time is not a valid date')
-  if (checkOut && isNaN(checkOut.getTime()))        throw new Error('check_out_time is not a valid date')
-  if (checkOut && checkOut <= checkIn)              throw new Error('check_out_time must be after check_in_time')
+  if (isNaN(checkIn.getTime()))              throw new Error('check_in_time is not a valid date')
+  if (checkOut && isNaN(checkOut.getTime())) throw new Error('check_out_time is not a valid date')
+  if (checkOut && checkOut <= checkIn)       throw new Error('check_out_time must be after check_in_time')
 
   const existing = await pool.query(
     `SELECT session_id FROM attendance_sessions WHERE session_id = $1`,

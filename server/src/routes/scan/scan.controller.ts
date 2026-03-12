@@ -14,9 +14,9 @@ import {
 
 export const lookupParticipant = asyncHandler(async (req: Request, res: Response) => {
   const query = (req.body.query || req.body.agent_code || '').trim()
-  const { event_id } = req.body
+  const { event_id, branch_name } = req.body
   if (!query || !event_id) throw new AppError('query and event_id are required', 400)
-  const result = await lookupParticipantService(query, Number(event_id))
+  const result = await lookupParticipantService(query, Number(event_id), branch_name || null)
   res.json(result)
 })
 

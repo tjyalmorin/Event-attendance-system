@@ -238,7 +238,7 @@ export default function ScannerPage() {
     }, 300)
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
-  }, [query, pageState, eventId])
+  }, [query, pageState, eventId, userRole, userBranch])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -301,6 +301,11 @@ export default function ScannerPage() {
       if (data.next_action === 'blocked') {
         playTone('denied'); triggerFlash('red')
         setError('Participant has already completed attendance. No further entries allowed.')
+        setPageState('error'); setLoading(false); return
+      }
+      if (userRole === 'staff' && userBranch && data.participant?.branch_name !== userBranch) {
+        playTone('denied'); triggerFlash('red')
+        setError('This participant is not from your assigned branch.')
         setPageState('error'); setLoading(false); return
       }
       setLookup(data); setPhotoError(false); setPageState('verify')

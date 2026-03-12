@@ -898,11 +898,11 @@ export default function EventDetailTabs({
   const tabs: { key: TabType; label: string }[] = [
     { key: 'registrants', label: `Registrants (${visibleConfirmedCount})` },
     { key: 'attendance',  label: `Attendance (${visibleSessions.length})` },
-    { key: 'scanlogs',   label: `Scan Logs (${scanLogs.length})` },
-    { key: 'reports',    label: 'Reports' },
     ...(isAdmin ? [
-      { key: 'staff' as TabType, label: `Assigned Staff (${assignedStaff.length})` },
-      { key: 'trash' as TabType, label: `Trash (${cancelledParticipants.length})` },
+      { key: 'scanlogs' as TabType,   label: `Scan Logs (${scanLogs.length})` },
+      { key: 'reports' as TabType,    label: 'Reports' },
+      { key: 'staff' as TabType,      label: `Assigned Staff (${assignedStaff.length})` },
+      { key: 'trash' as TabType,      label: `Trash (${cancelledParticipants.length})` },
     ] : []),
   ]
 
@@ -950,14 +950,16 @@ export default function EventDetailTabs({
           {activeTab === 'registrants' && (
             <>
               <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-shrink-0 flex-wrap">
-                <BranchFilterDropdown
-                  branches={registrantBranches}
-                  value={registrantsBranchFilter}
-                  onChange={setRegistrantsBranchFilter}
-                  dropdownRef={registrantsBranchRef}
-                  open={registrantsBranchOpen}
-                  setOpen={setRegistrantsBranchOpen}
-                />
+                {isAdmin && (
+                  <BranchFilterDropdown
+                    branches={registrantBranches}
+                    value={registrantsBranchFilter}
+                    onChange={setRegistrantsBranchFilter}
+                    dropdownRef={registrantsBranchRef}
+                    open={registrantsBranchOpen}
+                    setOpen={setRegistrantsBranchOpen}
+                  />
+                )}
                 <AgentTypeFilterDropdown
                   types={registrantAgentTypes}
                   value={registrantsAgentTypeFilter}
@@ -1061,14 +1063,16 @@ export default function EventDetailTabs({
                   open={attendanceStatusOpen}
                   setOpen={setAttendanceStatusOpen}
                 />
-                <BranchFilterDropdown
-                  branches={attendanceBranches}
-                  value={attendanceBranchFilter}
-                  onChange={setAttendanceBranchFilter}
-                  dropdownRef={attendanceBranchRef}
-                  open={attendanceBranchOpen}
-                  setOpen={setAttendanceBranchOpen}
-                />
+                {isAdmin && (
+                  <BranchFilterDropdown
+                    branches={attendanceBranches}
+                    value={attendanceBranchFilter}
+                    onChange={setAttendanceBranchFilter}
+                    dropdownRef={attendanceBranchRef}
+                    open={attendanceBranchOpen}
+                    setOpen={setAttendanceBranchOpen}
+                  />
+                )}
                 <AgentTypeFilterDropdown
                   types={attendanceAgentTypes}
                   value={attendanceAgentTypeFilter}
