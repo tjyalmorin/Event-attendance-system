@@ -260,6 +260,11 @@ const migrate = async (): Promise<void> => {
     `);
 
     await pool.query(`
+      ALTER TABLE events
+        ADD COLUMN IF NOT EXISTS preset_url VARCHAR(500);
+    `);
+
+    await pool.query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS otp_code     VARCHAR(6),
         ADD COLUMN IF NOT EXISTS otp_expires  TIMESTAMPTZ,

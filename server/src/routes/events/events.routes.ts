@@ -25,7 +25,7 @@ router.post('/',   authenticate, roleGuard('admin'), uploadPoster.any(), createE
 
 // ── Event-specific routes ─────────────────────────────────────
 router.get('/:event_id',    getEventById)  // ← PUBLIC: used by RegistrationPage (no auth)
-router.put('/:event_id',    authenticate, roleGuard('admin'), validate(updateEventSchema), updateEvent)
+router.put('/:event_id',    authenticate, roleGuard('admin'), uploadPoster.any(), validate(updateEventSchema), updateEvent)
 router.delete('/:event_id', authenticate, roleGuard('admin'), deleteEvent)
 
 router.post('/:event_id/restore',           authenticate, roleGuard('admin'), restoreEvent)

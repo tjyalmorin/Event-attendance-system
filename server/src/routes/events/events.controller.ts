@@ -35,6 +35,7 @@ export const createEvent = asyncHandler(async (req: Request, res: Response) => {
     poster_url:         posterFile
                           ? `/uploads/posters/${posterFile.filename}`
                           : req.body.poster_url || null,
+    preset_url:         req.body.preset_url || null,
   }
   const event = await createEventService(req.user!.user_id, body)
   res.status(201).json(event)
@@ -52,7 +53,27 @@ export const getEventById = asyncHandler(async (req: Request, res: Response) => 
 })
 
 export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
-  const event = await updateEventService(Number(req.params.event_id), req.body)
+  const files = req.files as Express.Multer.File[] | undefined
+  const posterFile = files?.find(f => f.fieldname === 'poster')
+
+  const body = {
+    ...req.body,
+    event_branches: parseField(req.body.event_branches),
+    staff_ids:      parseField(req.body.staff_ids),
+    // poster_url: if new file uploaded use that path, else if remove_poster flag clear it,
+    // else keep whatever was sent in body (could be existing url or null)
+    poster_url: posterFile
+      ? `/uploads/posters/${posterFile.filename}`
+      : req.body.remove_poster === 'true'
+        ? null
+        : req.body.poster_url ?? undefined,
+    // preset_url: empty string means remove, otherwise use value from body
+    preset_url: req.body.preset_url === ''
+      ? null
+      : req.body.preset_url ?? undefined,
+  }
+
+  const event = await updateEventService(Number(req.params.event_id), body)
   res.json(event)
 })
 

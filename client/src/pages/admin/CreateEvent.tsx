@@ -217,10 +217,18 @@ const CreateEvent: React.FC = () => {
   const [posterTab, setPosterTab] = useState<'upload' | 'preset'>('upload');
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
 
-  const PRESET_IMAGES = Array.from({ length: 10 }, (_, i) => {
-    const num = String(i + 1).padStart(2, '0');
-    return { id: num, url: `http://localhost:5000/uploads/presets/${num}.webp` };
-  });
+  const PRESET_IMAGES = [
+    { id: 'stock1',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224134/primelog/presets/stock1.jpg' },
+    { id: 'stock2',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224137/primelog/presets/stock2.jpg' },
+    { id: 'stock3',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224138/primelog/presets/stock3.jpg' },
+    { id: 'stock4',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224139/primelog/presets/stock4.jpg' },
+    { id: 'stock5',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224141/primelog/presets/stock5.jpg' },
+    { id: 'stock6',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224142/primelog/presets/stock6.jpg' },
+    { id: 'stock7',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224145/primelog/presets/stock7.jpg' },
+    { id: 'stock8',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224146/primelog/presets/stock8.jpg' },
+    { id: 'stock9',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224147/primelog/presets/stock9.jpg' },
+    { id: 'stock10', url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224135/primelog/presets/stock10.jpg' },
+  ];
 
   const isDirty = () =>
     formData.title.trim() !== '' || formData.description.trim() !== '' || formData.venue.trim() !== '' ||
@@ -294,7 +302,10 @@ const CreateEvent: React.FC = () => {
       fd.append('registration_end', registrationEnd ? registrationEnd.toISOString() : '');
       fd.append('staff_ids', JSON.stringify(selectedStaffIds));
       if (posterFile) fd.append('poster', posterFile);
-      else if (selectedPreset) fd.append('poster_url', `http://localhost:5000/uploads/presets/${selectedPreset}.webp`);
+      if (selectedPreset) {
+        const preset = PRESET_IMAGES.find(p => p.id === selectedPreset);
+        if (preset) fd.append('preset_url', preset.url);
+      }
       await api.post('/events', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       navigate('/admin/events', { state: { created: true } });
     } catch (err: any) {
@@ -313,7 +324,7 @@ const CreateEvent: React.FC = () => {
     setEventDate(null); setStartTime(null); setEndTime(null);
     setCheckinCutoff(null); setRegistrationStart(null); setRegistrationEnd(null);
     setShowDescription(false); setFieldErrors({}); setError('');
-    setPosterFile(null); setPosterPreview(null); setPosterTab('upload'); setSelectedPreset(null);
+    setPosterFile(null); setPosterPreview(null); setSelectedPreset(null);
   };
 
   const advancedStep = userRole === 'admin' && selectedBranches.length > 0 ? 6 : 5;
@@ -467,68 +478,82 @@ const CreateEvent: React.FC = () => {
                   </div>
                 )}
 
-                {/* Poster */}
+                {/* ── Event Poster (Registration Page) ── */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
                       Event Poster <span className="text-gray-400 font-normal">(Optional)</span>
                     </label>
-                    {(posterPreview || selectedPreset) && (
-                      <button type="button" onClick={() => { setPosterFile(null); setPosterPreview(null); setSelectedPreset(null); }}
+                    {posterPreview && (
+                      <button type="button" onClick={() => { setPosterFile(null); setPosterPreview(null); }}
                         className="text-xs font-semibold text-red-600 border border-red-200 dark:border-red-900 rounded-lg px-3 py-1.5 hover:border-red-400 transition-colors">
                         Remove
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Shown on the registration page instead of the slideshow if uploaded.</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Shown on the <span className="font-semibold text-gray-500 dark:text-gray-400">Registration Page</span>. Upload a custom image for this event.</p>
 
-                  {/* Preview */}
-                  {(posterPreview || selectedPreset) ? (
+                  {posterPreview ? (
                     <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a]" style={{ maxHeight: 200 }}>
-                      <img src={posterPreview ?? `http://localhost:5000/uploads/presets/${selectedPreset}.webp`} alt="Poster preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
+                      <img src={posterPreview} alt="Poster preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
                       <div className="absolute inset-0 bg-black/10" />
                     </div>
                   ) : (
-                    <>
-                      {/* Tabs */}
-                      <div className="flex gap-1 mb-3 bg-gray-100 dark:bg-[#1a1a1a] rounded-xl p-1">
-                        {(['upload', 'preset'] as const).map(tab => (
-                          <button key={tab} type="button" onClick={() => setPosterTab(tab)}
-                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all capitalize ${posterTab === tab ? 'bg-white dark:bg-[#2a2a2a] text-gray-800 dark:text-white shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'}`}>
-                            {tab === 'upload' ? '↑ Upload Image' : '🖼 Choose Preset'}
-                          </button>
-                        ))}
-                      </div>
-
-                      {posterTab === 'upload' ? (
-                        <label className="flex flex-col items-center justify-center gap-2 w-full py-7 bg-gray-50 dark:bg-[#0f0f0f] border-2 border-dashed border-gray-200 dark:border-[#2a2a2a] rounded-xl cursor-pointer hover:border-[#DC143C] hover:bg-red-50/20 dark:hover:bg-[#DC143C]/5 transition-all">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-gray-300 dark:text-gray-600">
-                            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-                          </svg>
-                          <span className="text-sm font-semibold text-gray-400 dark:text-gray-500">Click to upload</span>
-                          <span className="text-xs text-gray-300 dark:text-gray-600">JPG, PNG, WEBP · Max 5MB</span>
-                          <input type="file" accept="image/*" className="sr-only"
-                            onChange={e => {
-                              const file = e.target.files?.[0] ?? null;
-                              if (!file) return;
-                              if (file.size > 5 * 1024 * 1024) { setError('Poster image must be under 5MB.'); return; }
-                              setPosterFile(file); setPosterPreview(URL.createObjectURL(file)); setSelectedPreset(null); setError('');
-                            }} />
-                        </label>
-                      ) : (
-                        <div className="grid grid-cols-5 gap-2 p-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl">
-                          {PRESET_IMAGES.map(preset => (
-                            <button key={preset.id} type="button" onClick={() => { setSelectedPreset(preset.id); setPosterFile(null); setPosterPreview(null); }}
-                              className={`relative rounded-lg overflow-hidden border-2 transition-all aspect-square ${selectedPreset === preset.id ? 'border-[#DC143C] shadow-md scale-105' : 'border-transparent hover:border-gray-300 dark:hover:border-[#444]'}`}>
-                              <img src={preset.url} alt={`Preset ${preset.id}`} className="w-full h-full object-cover"
-                                onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="%23e5e7eb"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="10" fill="%239ca3af">' + preset.id + '</text></svg>' }} />
-                              <span className="absolute bottom-0.5 right-1 text-[9px] font-bold text-white drop-shadow">{preset.id}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </>
+                    <label className="flex flex-col items-center justify-center gap-2 w-full py-7 bg-gray-50 dark:bg-[#0f0f0f] border-2 border-dashed border-gray-200 dark:border-[#2a2a2a] rounded-xl cursor-pointer hover:border-[#DC143C] hover:bg-red-50/20 dark:hover:bg-[#DC143C]/5 transition-all">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-gray-300 dark:text-gray-600">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                      </svg>
+                      <span className="text-sm font-semibold text-gray-400 dark:text-gray-500">Click to upload</span>
+                      <span className="text-xs text-gray-300 dark:text-gray-600">JPG, PNG, WEBP · Max 5MB</span>
+                      <input type="file" accept="image/*" className="sr-only"
+                        onChange={e => {
+                          const file = e.target.files?.[0] ?? null;
+                          if (!file) return;
+                          if (file.size > 5 * 1024 * 1024) { setError('Poster image must be under 5MB.'); return; }
+                          setPosterFile(file); setPosterPreview(URL.createObjectURL(file)); setError('');
+                        }} />
+                    </label>
                   )}
+                </div>
+
+                {/* ── Event Card Preset (EventManagement) ── */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      Card Preset <span className="text-gray-400 font-normal">(Optional)</span>
+                    </label>
+                    {selectedPreset && (
+                      <button type="button" onClick={() => setSelectedPreset(null)}
+                        className="text-xs font-semibold text-red-600 border border-red-200 dark:border-red-900 rounded-lg px-3 py-1.5 hover:border-red-400 transition-colors">
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Shown on the <span className="font-semibold text-gray-500 dark:text-gray-400">Event Management card</span>. Choose a stock photo from the gallery.</p>
+
+                  {selectedPreset && (
+                    <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a] mb-3" style={{ maxHeight: 200 }}>
+                      <img src={PRESET_IMAGES.find(p => p.id === selectedPreset)?.url ?? ''} alt="Preset preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
+                      <div className="absolute inset-0 bg-black/10" />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-5 gap-2 p-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl">
+                    {PRESET_IMAGES.map(preset => (
+                      <button key={preset.id} type="button" onClick={() => setSelectedPreset(selectedPreset === preset.id ? null : preset.id)}
+                        className={`relative rounded-lg overflow-hidden border-2 transition-all aspect-square ${selectedPreset === preset.id ? 'border-[#DC143C] shadow-md scale-105' : 'border-transparent hover:border-gray-300 dark:hover:border-[#444]'}`}>
+                        <img src={preset.url} alt={`Preset ${preset.id}`} className="w-full h-full object-cover"
+                          onError={e => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="%23e5e7eb"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-size="10" fill="%239ca3af">' + preset.id + '</text></svg>' }} />
+                        {selectedPreset === preset.id && (
+                          <div className="absolute inset-0 bg-[#DC143C]/20 flex items-center justify-center">
+                            <div className="bg-[#DC143C] rounded-full p-0.5">
+                              <svg viewBox="0 0 12 9" fill="none" className="w-3 h-3"><path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* ── 2. Schedule ── */}

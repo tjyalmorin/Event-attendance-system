@@ -9,15 +9,16 @@ export const createEventService = async (created_by: string, payload: CreateEven
     `INSERT INTO events
       (created_by, title, description, event_date, start_time, end_time,
        registration_start, registration_end, venue, checkin_cutoff,
-       registration_link, poster_url, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft')
+       registration_link, poster_url, preset_url, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft')
      RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date, 0::int as registered_count`,
     [
       created_by, payload.title, payload.description, payload.event_date,
       payload.start_time, payload.end_time, payload.registration_start,
       payload.registration_end, payload.venue,
       payload.checkin_cutoff, registration_link,
-      payload.poster_url ?? null
+      payload.poster_url ?? null,
+      payload.preset_url ?? null
     ]
   )
 
@@ -155,13 +156,15 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
      SET title=$1, description=$2, event_date=$3, start_time=$4, end_time=$5,
          venue=$6, status=$7, checkin_cutoff=$8,
          registration_start=$9, registration_end=$10,
+         poster_url=$11, preset_url=$12,
          version=version+1, updated_at=NOW()
-     WHERE event_id=$11 AND deleted_at IS NULL
+     WHERE event_id=$13 AND deleted_at IS NULL
      RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date`,
     [
       merged.title, merged.description, merged.event_date, merged.start_time,
       merged.end_time, merged.venue, merged.status,
       merged.checkin_cutoff, merged.registration_start, merged.registration_end,
+      merged.poster_url ?? null, merged.preset_url ?? null,
       event_id
     ]
   )

@@ -43,6 +43,21 @@ const ChevronDownIcon = () => (
   </svg>
 );
 
+
+// ── Preset Images (Cloudinary) ──
+const PRESET_IMAGES = [
+  { id: 'stock1',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224134/primelog/presets/stock1.jpg' },
+  { id: 'stock2',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224137/primelog/presets/stock2.jpg' },
+  { id: 'stock3',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224138/primelog/presets/stock3.jpg' },
+  { id: 'stock4',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224139/primelog/presets/stock4.jpg' },
+  { id: 'stock5',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224141/primelog/presets/stock5.jpg' },
+  { id: 'stock6',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224142/primelog/presets/stock6.jpg' },
+  { id: 'stock7',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224145/primelog/presets/stock7.jpg' },
+  { id: 'stock8',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224146/primelog/presets/stock8.jpg' },
+  { id: 'stock9',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224147/primelog/presets/stock9.jpg' },
+  { id: 'stock10', url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224135/primelog/presets/stock10.jpg' },
+];
+
 // ── Numbered section divider ──
 const SectionDivider: React.FC<{ label: string; step: number }> = ({ label, step }) => (
   <div className="flex items-center gap-3 pt-1">
@@ -207,6 +222,14 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
     (event as any).poster_url ? (event as any).poster_url : null
   );
   const [removePoster, setRemovePoster] = useState(false);
+
+  // ── Preset (Card image) ──
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(
+    (event as any).preset_url
+      ? (PRESET_IMAGES.find(p => p.url === (event as any).preset_url)?.id ?? null)
+      : null
+  );
+  const [removePreset, setRemovePreset] = useState(false);
 
   // ── Branches & Teams ──
   const [selectedBranches, setSelectedBranches] = useState<BranchSelection[]>([]);
@@ -395,6 +418,8 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
       toMinute(registrationEnd) !== origRegEnd ||
       posterFile !== null ||
       removePoster ||
+      removePreset ||
+      selectedPreset !== ((event as any).preset_url ? (PRESET_IMAGES.find(p => p.url === (event as any).preset_url)?.id ?? null) : null) ||
       branchesChanged ||
       staffChanged
     );
@@ -445,6 +470,11 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
         fd.append('staff_ids', JSON.stringify(selectedStaffIds));
         if (posterFile) fd.append('poster', posterFile);
         if (removePoster) fd.append('remove_poster', 'true');
+        if (selectedPreset) {
+          const preset = PRESET_IMAGES.find(p => p.id === selectedPreset);
+          if (preset) fd.append('preset_url', preset.url);
+        }
+        if (removePreset) fd.append('preset_url', '');
         await api.put(`/events/${event.event_id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       } else {
         await api.put(`/events/${event.event_id}`, {
@@ -461,6 +491,9 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
           registration_end: registrationEnd ? registrationEnd.toISOString() : null,
           event_branches: selectedBranches,
           staff_ids: selectedStaffIds,
+          preset_url: selectedPreset
+            ? (PRESET_IMAGES.find(p => p.id === selectedPreset)?.url ?? null)
+            : removePreset ? null : (event as any).preset_url ?? null,
         });
       }
       onSuccess();
@@ -576,7 +609,7 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                 </div>
               )}
 
-              {/* Poster */}
+              {/* ── Event Poster (Registration Page) ── */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
@@ -589,7 +622,7 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                     </button>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Shown on the registration page instead of the slideshow if uploaded.</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Shown on the <span className="font-semibold text-gray-500 dark:text-gray-400">Registration Page</span>. Upload a custom image for this event.</p>
                 {posterPreview ? (
                   <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a]" style={{ maxHeight: 200 }}>
                     <img src={posterPreview} alt="Poster preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
@@ -611,6 +644,46 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                       }} />
                   </label>
                 )}
+              </div>
+
+              {/* ── Card Preset (EventManagement) ── */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    Card Preset <span className="text-gray-400 font-normal">(Optional)</span>
+                  </label>
+                  {selectedPreset && (
+                    <button type="button" onClick={() => { setSelectedPreset(null); setRemovePreset(true); }}
+                      className="text-xs font-semibold text-red-600 border border-red-200 dark:border-red-900 rounded-lg px-3 py-1.5 hover:border-red-400 transition-colors">
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Shown on the <span className="font-semibold text-gray-500 dark:text-gray-400">Event Management card</span>. Choose a stock photo from the gallery.</p>
+
+                {selectedPreset && (
+                  <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a] mb-3" style={{ maxHeight: 200 }}>
+                    <img src={PRESET_IMAGES.find(p => p.id === selectedPreset)?.url ?? ''} alt="Preset preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
+                    <div className="absolute inset-0 bg-black/10" />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-5 gap-2 p-3 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl">
+                  {PRESET_IMAGES.map(preset => (
+                    <button key={preset.id} type="button"
+                      onClick={() => { setSelectedPreset(selectedPreset === preset.id ? null : preset.id); setRemovePreset(false); }}
+                      className={`relative rounded-lg overflow-hidden border-2 transition-all aspect-square ${selectedPreset === preset.id ? 'border-[#DC143C] shadow-md scale-105' : 'border-transparent hover:border-gray-300 dark:hover:border-[#444]'}`}>
+                      <img src={preset.url} alt={`Preset ${preset.id}`} className="w-full h-full object-cover" />
+                      {selectedPreset === preset.id && (
+                        <div className="absolute inset-0 bg-[#DC143C]/20 flex items-center justify-center">
+                          <div className="bg-[#DC143C] rounded-full p-0.5">
+                            <svg viewBox="0 0 12 9" fill="none" className="w-3 h-3"><path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* ── 2. Schedule ── */}

@@ -751,11 +751,19 @@ const EventManagement: React.FC = () => {
                     className="group bg-white dark:bg-[#1c1c1c] rounded-2xl shadow-sm hover:shadow-xl dark:hover:shadow-[0_8px_24px_0px_rgba(255,255,255,0.05)] transition-all duration-200 cursor-pointer border border-gray-100 dark:border-[#2a2a2a] hover:border-gray-200 dark:hover:border-[#3a3a3a] flex flex-col"
                   >
                     <div className="relative h-[140px] flex-shrink-0 rounded-t-2xl overflow-hidden bg-gray-100 dark:bg-[#2a2a2a]">
-                      <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="w-24 h-24 text-gray-400">
-                          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                      </div>
+                      {((event as any).preset_url || event.poster_url) ? (
+                        <img
+                          src={(event as any).preset_url || event.poster_url || ''}
+                          alt={event.title}
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="w-24 h-24 text-gray-400">
+                            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                        </div>
+                      )}
                       <div className="absolute top-3 right-3">
                         <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${tl.badge}`}>
                           {tl.dot && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse flex-shrink-0" />}

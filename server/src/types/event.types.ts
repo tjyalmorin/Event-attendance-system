@@ -41,6 +41,7 @@ export interface CreateEventPayload {
   // ── Staff assigned to this event ──
   staff_ids?: string[] | null
   poster_url?: string | null
+  preset_url?: string | null
 }
 
 export interface UpdateEventPayload extends Partial<CreateEventPayload> {
