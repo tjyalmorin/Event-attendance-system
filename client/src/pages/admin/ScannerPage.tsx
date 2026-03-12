@@ -82,8 +82,8 @@ const playTone = (type: 'success' | 'checkout' | 'denied') => {
 
 // ── Icons ────────────────────────────────────────────────
 const ArrowLeftIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-    <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <polyline points="15 18 9 12 15 6"/>
   </svg>
 )
 const SearchIcon = () => (
@@ -461,19 +461,27 @@ export default function ScannerPage() {
 
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px 60px', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, width: '100%', maxWidth: (pageState === 'verify' || pageState === 'result' ? 820 : 520) + 60, transition: 'max-width 0.2s' }}>
-            {/* ── Back button on the left ── */}
-            <div style={{ flexShrink: 0, paddingTop: 4 }}>
-              <button
-                onClick={() => navigate(-1)}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: `1px solid ${border}`, background: card, color: textSecondary, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = textPrimary; (e.currentTarget as HTMLElement).style.borderColor = '#DC143C' }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = textSecondary; (e.currentTarget as HTMLElement).style.borderColor = border }}
-              >
-                <ArrowLeftIcon />
-                Back
-              </button>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, width: '100%', maxWidth: (pageState === 'verify' || pageState === 'result' ? 820 : 520) + 60 + (pageState === 'verify' ? 194 : 0), transition: 'max-width 0.2s' }}>
+            {/* ── Back button on the left — only shown in verify/pick/result/error states ── */}
+            {pageState !== 'input' && (
+              <div style={{ flexShrink: 0, alignSelf: 'stretch', display: 'flex' }}>
+                <button
+                  onClick={() => pageState === 'verify' || pageState === 'pick' ? resetToInput() : navigate(-1)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 48, alignSelf: 'stretch',
+                    borderRadius: 14, border: `1px solid ${border}`, background: card,
+                    color: textSecondary, cursor: 'pointer', transition: 'all 0.15s',
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = textPrimary; (e.currentTarget as HTMLElement).style.borderColor = '#DC143C'; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1a1010' : '#fff5f5' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = textSecondary; (e.currentTarget as HTMLElement).style.borderColor = border; (e.currentTarget as HTMLElement).style.background = card }}
+                  title="Back"
+                >
+                  <ArrowLeftIcon />
+                </button>
+              </div>
+            )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
             {/* ── INPUT STATE ── */}
@@ -627,7 +635,8 @@ export default function ScannerPage() {
 
             {/* ── VERIFY STATE ── */}
             {pageState === 'verify' && lookup && (
-              <div style={{ background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 40px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)', border: `1px solid ${border}` }}>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+              <div style={{ flex: 1, minWidth: 0, background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 40px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)', border: `1px solid ${border}` }}>
                 {lookup.participant.label ? (() => {
                   const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
                   return (
@@ -636,12 +645,12 @@ export default function ScannerPage() {
                 })() : (
                   <div style={{ height: 5, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)' }} />
                 )}
-                <div style={{ padding: '36px 36px 32px', display: 'flex', gap: 36 }}>
+                <div style={{ padding: '36px 36px 32px', display: 'flex', gap: 36, alignItems: 'flex-start' }}>
 
                   {/* LEFT: photo + status pill */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, flexShrink: 0 }}>
                     <div style={{ position: 'relative' }}>
-                      <div style={{ width: 230, height: 230, borderRadius: 20, background: isDarkMode ? '#2a2a2a' : '#f2f2f2', border: `2px solid ${border}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ width: 300, height: 300, borderRadius: 20, background: isDarkMode ? '#2a2a2a' : '#f2f2f2', border: `2px solid ${border}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {verifyPhotoUrl && !photoError ? (
                           <img src={verifyPhotoUrl} alt={lookup.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setPhotoError(true)} />
                         ) : (
@@ -653,7 +662,7 @@ export default function ScannerPage() {
                       </div>
                       <div style={{ position: 'absolute', inset: -5, borderRadius: 24, border: '2px solid rgba(220,20,60,0.2)', pointerEvents: 'none' }} />
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 100, fontSize: 13, fontWeight: 600, background: lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.07)' : 'rgba(37,99,235,0.07)', color: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', border: `1.5px solid ${lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.2)' : 'rgba(37,99,235,0.2)'}`, width: 230, justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 100, fontSize: 13, fontWeight: 600, background: lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.07)' : 'rgba(37,99,235,0.07)', color: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', border: `1.5px solid ${lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.2)' : 'rgba(37,99,235,0.2)'}`, width: 300, justifyContent: 'center' }}>
                       <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', animation: 'pulse 1.8s infinite' }} />
                       {lookup.next_action === 'check_in' ? 'Not Yet Checked In' : lookup.next_action === 'check_out' ? 'Currently Inside' : 'Blocked'}
                     </div>
@@ -663,47 +672,20 @@ export default function ScannerPage() {
                   {/* RIGHT: name + info rows + actions */}
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
-                    {/* ── Name row with label badge ── */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 4 }}>
+                    {/* ── Name row ── */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
                       <div style={{ fontSize: 36, fontWeight: 700, color: textPrimary, letterSpacing: '-1px', lineHeight: 1.1 }}>
                         {lookup.participant.full_name}
                       </div>
-                      {lookup.participant.label && (() => {
-                        const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
-                        return (
-                          <button
-                            onClick={() => setLabelModalOpen(true)}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 5,
-                              fontSize: 13, fontWeight: 800,
-                              padding: '5px 14px', borderRadius: 999,
-                              background: lc.bg, color: lc.text,
-                              border: `2px solid ${lc.border}`,
-                              letterSpacing: '0.3px',
-                              whiteSpace: 'nowrap',
-                              flexShrink: 0,
-                              alignSelf: 'center',
-                              cursor: 'pointer',
-                              animation: 'labelPulse 1.6s ease-in-out 4',
-                              boxShadow: `0 0 0 0 ${lc.border}`,
-                            }}
-                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '0.8'; (e.currentTarget as HTMLElement).style.animation = 'none' }}
-                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
-                          >
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: lc.text, flexShrink: 0, opacity: 0.8 }} />
-                            {lookup.participant.label}
-                          </button>
-                        )
-                      })()}
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-                      <div style={{ fontSize: 13, color: '#DC143C', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Agent Profile</div>
                       {lookup.participant.agent_type && (
-                        <div style={{ padding: '3px 10px', borderRadius: 8, background: isDarkMode ? '#1a1a1a' : '#f3f4f6', border: `1px solid ${border}`, fontSize: 11, fontWeight: 700, color: textSecondary, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                        <div style={{ padding: '3px 10px', borderRadius: 8, background: isDarkMode ? '#1a1a1a' : '#f3f4f6', border: `1px solid ${border}`, fontSize: 11, fontWeight: 700, color: textSecondary, letterSpacing: '0.5px', textTransform: 'uppercase', alignSelf: 'center' }}>
                           {lookup.participant.agent_type}
                         </div>
                       )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                      <div style={{ fontSize: 13, color: '#DC143C', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Agent Profile</div>
                     </div>
 
                     <div style={{ border: `1px solid ${border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 28 }}>
@@ -756,6 +738,53 @@ export default function ScannerPage() {
                   </div>
                 </div>
                 <style>{`@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } } @keyframes spin { to { transform: rotate(360deg) } } @keyframes labelPulse { 0% { box-shadow: 0 0 0 0 currentColor; transform: scale(1); } 40% { box-shadow: 0 0 0 7px transparent; transform: scale(1.06); } 70% { box-shadow: 0 0 0 10px transparent; transform: scale(1); } 100% { box-shadow: 0 0 0 0 transparent; transform: scale(1); } } @keyframes barShine { 0% { background-position: 0% 0%; } 100% { background-position: 300% 0%; } }`}</style>
+              </div>
+
+              {/* ── LABEL PANEL (right side, only when label exists) ── */}
+              {lookup.participant.label && (() => {
+                const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
+                return (
+                  <div style={{
+                    width: 180, flexShrink: 0,
+                    background: card, border: `1px solid ${border}`,
+                    borderRadius: 24, overflow: 'hidden',
+                    boxShadow: '0 4px 40px rgba(0,0,0,0.08)',
+                    display: 'flex', flexDirection: 'column',
+                  }}>
+                    {/* Colored top bar matching label */}
+                    <div style={{ height: 6, background: `linear-gradient(90deg, ${lc.border}, ${lc.text}, ${lc.border}, ${lc.text}, ${lc.border})`, backgroundSize: '300% 100%', animation: 'barShine 2s linear infinite', flexShrink: 0 }} />
+                    <div style={{ padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
+                      {/* Label badge */}
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        fontSize: 12, fontWeight: 800,
+                        padding: '5px 12px', borderRadius: 999,
+                        background: lc.bg, color: lc.text,
+                        border: `2px solid ${lc.border}`,
+                        whiteSpace: 'nowrap', alignSelf: 'flex-start',
+                        animation: 'labelPulse 1.6s ease-in-out 4',
+                        boxShadow: `0 0 0 0 ${lc.border}`,
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: lc.text, flexShrink: 0, opacity: 0.8 }} />
+                        {lookup.participant.label}
+                      </span>
+
+                      {/* Divider */}
+                      <div style={{ height: 1, background: border }} />
+
+                      {/* Description */}
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', margin: 0, marginBottom: 6 }}>Note</p>
+                        {lookup.participant.label_description ? (
+                          <p style={{ fontSize: 13, color: textPrimary, margin: 0, lineHeight: 1.6 }}>{lookup.participant.label_description}</p>
+                        ) : (
+                          <p style={{ fontSize: 12, color: textSecondary, fontStyle: 'italic', margin: 0 }}>No note added.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
               </div>
             )}
 
