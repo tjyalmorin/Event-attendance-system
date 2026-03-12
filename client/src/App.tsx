@@ -28,17 +28,15 @@ import AccountManagement from './pages/admin/AccountManagement'
 // Components
 import Sidebar from './components/Sidebar'
 
-// Protected route wrapper
-const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
-  const token = localStorage.getItem('authToken')
-  return token ? <>{children}</> : <Navigate to="/admin/login" />
-}
-
 // ── Shared layout: persistent Sidebar + scrollable content area ──
 // Sidebar lives here — never unmounts during admin navigation
-const AdminLayout = ({ userRole }: { userRole: 'admin' | 'staff' }) => {
+// userRole is read from localStorage so staff can't see admin-only sidebar items
+const AdminLayout = () => {
   const token = localStorage.getItem('authToken')
   if (!token) return <Navigate to="/admin/login" />
+
+  const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
+  const userRole: 'admin' | 'staff' = storedUser?.role === 'admin' ? 'admin' : 'staff'
 
   return (
     <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
@@ -68,7 +66,7 @@ function App() {
 
             {/* ── Admin Routes (shared persistent Sidebar) ── */}
             {/* NOTE: static routes (trash, archive, create) must come BEFORE /:eventId */}
-            <Route element={<AdminLayout userRole="admin" />}>
+            <Route element={<AdminLayout />}>
               <Route path="/admin/events" element={<EventManagement />} />
               <Route path="/admin/events/trash" element={<TrashBin />} />
               <Route path="/admin/events/archive" element={<EventArchive />} />
@@ -82,7 +80,7 @@ function App() {
             </Route>
 
             {/* ── Staff Routes (shared persistent Sidebar) ── */}
-            <Route element={<AdminLayout userRole="staff" />}>
+            <Route element={<AdminLayout />}>
               <Route path="/staff/events" element={<EventManagement />} />
               <Route path="/staff/events/:eventId" element={<EventDetail />} />
               <Route path="/staff/events/:eventId/scanner" element={<ScannerPage />} />

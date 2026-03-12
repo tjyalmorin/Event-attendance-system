@@ -130,7 +130,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   };
 
   const btnBase = (active: boolean) =>
-    `w-full flex items-center rounded-lg transition-all ${isCollapsed ? 'justify-center px-1.5 py-2.5' : 'gap-3 px-3 py-2.5'} ${
+    `group w-full flex items-center rounded-lg transition-all ${isCollapsed ? 'justify-center px-1.5 py-2.5' : 'gap-3 px-3 py-2.5'} ${
       active
         ? 'bg-[#DC143C] text-white shadow-lg'
         : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333]'
@@ -139,10 +139,28 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   const iconColor = (active: boolean) =>
     active ? 'text-white' : 'text-gray-400 dark:text-gray-500';
 
+  const iconWrap = (active: boolean) =>
+    active ? '' : 'sidebar-icon-bounce';
+
   // Avatar color: red for admin, blue for staff
   const avatarBg = userRole === 'admin' ? 'bg-[#DC143C]' : 'bg-blue-600';
 
   return (
+    <>
+    <style>{`
+      @keyframes icon-tumble {
+        0%   { transform: rotate(0deg)   scale(1);    }
+        20%  { transform: rotate(-25deg) scale(1.25); }
+        45%  { transform: rotate(18deg)  scale(1.2);  }
+        65%  { transform: rotate(-10deg) scale(1.1);  }
+        80%  { transform: rotate(5deg)   scale(1.05); }
+        100% { transform: rotate(0deg)   scale(1);    }
+      }
+      button:hover .sidebar-icon-bounce {
+        animation: icon-tumble 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+      }
+
+    `}</style>
     <div className={`${isCollapsed ? 'w-[60px]' : 'w-[260px]'} sticky top-0 h-screen bg-white dark:bg-[#1c1c1c] border-r border-gray-200 dark:border-[#2a2a2a] flex flex-col transition-all duration-300 flex-shrink-0`}>
       {/* Header */}
       <div className={`h-[77px] border-b border-gray-200 dark:border-[#2a2a2a] flex items-center ${isCollapsed ? 'justify-center p-2' : 'justify-between p-5'}`}>
@@ -159,7 +177,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
       <div className="flex-1 p-3 space-y-1 overflow-y-auto">
         {mainItems.filter(i => i.show).map(item => (
           <button key={item.path} onClick={() => navigate(item.path)} className={btnBase(isActive(item.path))}>
-            <span className={iconColor(isActive(item.path))}>{item.icon}</span>
+            <span className={`${iconColor(isActive(item.path))} ${iconWrap(isActive(item.path))}`}>{item.icon}</span>
             {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
           </button>
         ))}
@@ -251,6 +269,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
