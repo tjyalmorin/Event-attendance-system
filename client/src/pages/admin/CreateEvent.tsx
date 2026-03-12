@@ -212,9 +212,10 @@ const CreateEvent: React.FC = () => {
     venue?: string;
   }>({});
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const [posterFile, setPosterFile] = useState<File | null>(null);
-  const [posterPreview, setPosterPreview] = useState<string | null>(null);
-  const [posterTab, setPosterTab] = useState<'upload' | 'preset'>('upload');
+  // ── Slideshow images (up to 5) ──
+  const [slideshowFiles, setSlideshowFiles] = useState<File[]>([]);
+  const [slideshowPreviews, setSlideshowPreviews] = useState<string[]>([]);
+  const slideshowInputRef = useRef<HTMLInputElement>(null);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
 
   const PRESET_IMAGES = [
@@ -233,7 +234,7 @@ const CreateEvent: React.FC = () => {
   const isDirty = () =>
     formData.title.trim() !== '' || formData.description.trim() !== '' || formData.venue.trim() !== '' ||
     eventDate !== null || startTime !== null || endTime !== null ||
-    checkinCutoff !== null || registrationStart !== null || registrationEnd !== null || posterFile !== null;
+    checkinCutoff !== null || registrationStart !== null || registrationEnd !== null || slideshowFiles.length > 0;
 
   const handleBack = () => isDirty() ? setShowDiscardConfirm(true) : navigate('/admin/events');
 
@@ -301,7 +302,7 @@ const CreateEvent: React.FC = () => {
       fd.append('registration_start', registrationStart ? registrationStart.toISOString() : '');
       fd.append('registration_end', registrationEnd ? registrationEnd.toISOString() : '');
       fd.append('staff_ids', JSON.stringify(selectedStaffIds));
-      if (posterFile) fd.append('poster', posterFile);
+      slideshowFiles.forEach(f => fd.append('slideshow_images', f));
       if (selectedPreset) {
         const preset = PRESET_IMAGES.find(p => p.id === selectedPreset);
         if (preset) fd.append('preset_url', preset.url);
@@ -324,7 +325,7 @@ const CreateEvent: React.FC = () => {
     setEventDate(null); setStartTime(null); setEndTime(null);
     setCheckinCutoff(null); setRegistrationStart(null); setRegistrationEnd(null);
     setShowDescription(false); setFieldErrors({}); setError('');
-    setPosterFile(null); setPosterPreview(null); setSelectedPreset(null);
+    setSlideshowFiles([]); setSlideshowPreviews([]); setSelectedPreset(null);
   };
 
   const advancedStep = userRole === 'admin' && selectedBranches.length > 0 ? 6 : 5;
@@ -478,42 +479,94 @@ const CreateEvent: React.FC = () => {
                   </div>
                 )}
 
-                {/* ── Event Poster (Registration Page) ── */}
+                {/* ── Slideshow Images (Registration Page) ── */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Event Poster <span className="text-gray-400 font-normal">(Optional)</span>
+                      Slideshow Images <span className="text-gray-400 font-normal">(Optional)</span>
                     </label>
-                    {posterPreview && (
-                      <button type="button" onClick={() => { setPosterFile(null); setPosterPreview(null); }}
-                        className="text-xs font-semibold text-red-600 border border-red-200 dark:border-red-900 rounded-lg px-3 py-1.5 hover:border-red-400 transition-colors">
-                        Remove
-                      </button>
-                    )}
+                    <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">
+                      {slideshowFiles.length}/5
+                    </span>
                   </div>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Shown on the <span className="font-semibold text-gray-500 dark:text-gray-400">Registration Page</span>. Upload a custom image for this event.</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                    Shown as a slideshow on the <span className="font-semibold text-gray-500 dark:text-gray-400">Registration Page</span>. If none, the default Pru Life slides will show instead.
+                  </p>
 
-                  {posterPreview ? (
-                    <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a]" style={{ maxHeight: 200 }}>
-                      <img src={posterPreview} alt="Poster preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
-                      <div className="absolute inset-0 bg-black/10" />
+                  {/* Image thumbnails */}
+                  {slideshowPreviews.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {slideshowPreviews.map((src, idx) => (
+                        <div key={idx} className="relative w-[90px] h-[68px] rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a] group flex-shrink-0">
+                          <img src={src} alt={`Slide ${idx + 1}`} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSlideshowFiles(prev => prev.filter((_, i) => i !== idx));
+                              setSlideshowPreviews(prev => prev.filter((_, i) => i !== idx));
+                            }}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
+                              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                          </button>
+                          <span className="absolute bottom-1 left-1.5 text-[9px] font-bold text-white/80 drop-shadow">
+                            {idx + 1}
+                          </span>
+                        </div>
+                      ))}
+
+                      {/* Add more button */}
+                      {slideshowFiles.length < 5 && (
+                        <button
+                          type="button"
+                          onClick={() => slideshowInputRef.current?.click()}
+                          className="w-[90px] h-[68px] rounded-xl border-2 border-dashed border-gray-200 dark:border-[#2a2a2a] hover:border-[#DC143C] hover:bg-red-50/20 dark:hover:bg-[#DC143C]/5 transition-all flex flex-col items-center justify-center gap-1 text-gray-400 dark:text-gray-600 flex-shrink-0"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                          </svg>
+                          <span className="text-[10px] font-semibold">Add</span>
+                        </button>
+                      )}
                     </div>
-                  ) : (
+                  )}
+
+                  {/* Empty state — first upload */}
+                  {slideshowPreviews.length === 0 && (
                     <label className="flex flex-col items-center justify-center gap-2 w-full py-7 bg-gray-50 dark:bg-[#0f0f0f] border-2 border-dashed border-gray-200 dark:border-[#2a2a2a] rounded-xl cursor-pointer hover:border-[#DC143C] hover:bg-red-50/20 dark:hover:bg-[#DC143C]/5 transition-all">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-gray-300 dark:text-gray-600">
                         <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
                       </svg>
-                      <span className="text-sm font-semibold text-gray-400 dark:text-gray-500">Click to upload</span>
-                      <span className="text-xs text-gray-300 dark:text-gray-600">JPG, PNG, WEBP · Max 5MB</span>
+                      <span className="text-sm font-semibold text-gray-400 dark:text-gray-500">Click to upload first image</span>
+                      <span className="text-xs text-gray-300 dark:text-gray-600">JPG, PNG, WEBP · Max 5MB each · Up to 5 images</span>
                       <input type="file" accept="image/*" className="sr-only"
                         onChange={e => {
                           const file = e.target.files?.[0] ?? null;
                           if (!file) return;
-                          if (file.size > 5 * 1024 * 1024) { setError('Poster image must be under 5MB.'); return; }
-                          setPosterFile(file); setPosterPreview(URL.createObjectURL(file)); setError('');
+                          if (file.size > 5 * 1024 * 1024) { setError('Each image must be under 5MB.'); return; }
+                          if (slideshowFiles.length >= 5) return;
+                          setSlideshowFiles(prev => [...prev, file]);
+                          setSlideshowPreviews(prev => [...prev, URL.createObjectURL(file)]);
+                          setError('');
                         }} />
                     </label>
                   )}
+
+                  {/* Hidden input for "Add" button */}
+                  <input ref={slideshowInputRef} type="file" accept="image/*" className="sr-only"
+                    onChange={e => {
+                      const file = e.target.files?.[0] ?? null;
+                      e.target.value = '';
+                      if (!file) return;
+                      if (file.size > 5 * 1024 * 1024) { setError('Each image must be under 5MB.'); return; }
+                      if (slideshowFiles.length >= 5) return;
+                      setSlideshowFiles(prev => [...prev, file]);
+                      setSlideshowPreviews(prev => [...prev, URL.createObjectURL(file)]);
+                      setError('');
+                    }} />
                 </div>
 
                 {/* ── Event Card Preset (EventManagement) ── */}

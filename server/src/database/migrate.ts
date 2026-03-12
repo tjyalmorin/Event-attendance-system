@@ -265,6 +265,11 @@ const migrate = async (): Promise<void> => {
     `);
 
     await pool.query(`
+      ALTER TABLE events
+        ADD COLUMN IF NOT EXISTS slideshow_urls TEXT[] NOT NULL DEFAULT '{}';
+    `);
+
+    await pool.query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS otp_code     VARCHAR(6),
         ADD COLUMN IF NOT EXISTS otp_expires  TIMESTAMPTZ,
@@ -406,8 +411,8 @@ const migrate = async (): Promise<void> => {
     console.log('');
     console.log('  📋 Tables created/verified:');
     console.log('     • users');
-    console.log('     • agents             ← NEW (photo_url by agent_code)');
-    console.log('     • events');
+    console.log('     • agents             ← photo_url by agent_code');
+    console.log('     • events              ← slideshow_urls TEXT[] added');
     console.log('     • event_permissions');
     console.log('     • admin_grants');
     console.log('     • participants');

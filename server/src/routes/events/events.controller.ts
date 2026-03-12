@@ -18,9 +18,10 @@ const parseField = (val: any) => {
 
 export const createEvent = asyncHandler(async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[] | undefined
-  console.log('📁 req.files:', files)
-  console.log('📋 req.body keys:', Object.keys(req.body))
-  const posterFile = files?.find(f => f.fieldname === 'poster' || f.fieldname === 'poster_url')
+
+  // Collect all uploaded slideshow images (field name: slideshow_images)
+  const slideshowFiles = files?.filter(f => f.fieldname === 'slideshow_images') ?? []
+  const slideshowUrls = slideshowFiles.map(f => `/uploads/slideshow/${f.filename}`)
 
   const body = {
     ...req.body,
@@ -32,11 +33,10 @@ export const createEvent = asyncHandler(async (req: Request, res: Response) => {
     checkin_cutoff:     req.body.checkin_cutoff      || null,
     registration_start: req.body.registration_start  || null,
     registration_end:   req.body.registration_end    || null,
-    poster_url:         posterFile
-                          ? `/uploads/posters/${posterFile.filename}`
-                          : req.body.poster_url || null,
+    slideshow_urls:     slideshowUrls,
     preset_url:         req.body.preset_url || null,
   }
+
   const event = await createEventService(req.user!.user_id, body)
   res.status(201).json(event)
 })
@@ -54,19 +54,20 @@ export const getEventById = asyncHandler(async (req: Request, res: Response) => 
 
 export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[] | undefined
-  const posterFile = files?.find(f => f.fieldname === 'poster')
+
+  // New slideshow images uploaded in this request
+  const newSlideshowFiles = files?.filter(f => f.fieldname === 'slideshow_images') ?? []
+  const newSlideshowUrls = newSlideshowFiles.map(f => `/uploads/slideshow/${f.filename}`)
+
+  // URLs the frontend wants removed from the existing array
+  const removeSlideshowUrls: string[] = parseField(req.body.remove_slideshow_urls)
 
   const body = {
     ...req.body,
-    event_branches: parseField(req.body.event_branches),
-    staff_ids:      parseField(req.body.staff_ids),
-    // poster_url: if new file uploaded use that path, else if remove_poster flag clear it,
-    // else keep whatever was sent in body (could be existing url or null)
-    poster_url: posterFile
-      ? `/uploads/posters/${posterFile.filename}`
-      : req.body.remove_poster === 'true'
-        ? null
-        : req.body.poster_url ?? undefined,
+    event_branches:        parseField(req.body.event_branches),
+    staff_ids:             parseField(req.body.staff_ids),
+    new_slideshow_urls:    newSlideshowUrls,
+    remove_slideshow_urls: removeSlideshowUrls,
     // preset_url: empty string means remove, otherwise use value from body
     preset_url: req.body.preset_url === ''
       ? null

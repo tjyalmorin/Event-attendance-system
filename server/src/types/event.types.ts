@@ -18,6 +18,8 @@ export interface Event {
   updated_at: Date
   deleted_at: Date | null
   event_branches?: EventBranchEntry[]
+  slideshow_urls: string[]   // array of /uploads/slideshow/... paths (empty = use default slides)
+  preset_url: string | null
 }
 
 export interface EventBranchEntry {
@@ -36,14 +38,14 @@ export interface CreateEventPayload {
   venue?: string | null
   capacity?: number | null
   checkin_cutoff?: string | null
-  // ── Branches/teams selected for this event ──
   event_branches?: { branch_name: string; teams: string[] }[] | null
-  // ── Staff assigned to this event ──
   staff_ids?: string[] | null
-  poster_url?: string | null
+  slideshow_urls?: string[]   // paths of newly uploaded files (set by controller)
   preset_url?: string | null
 }
 
 export interface UpdateEventPayload extends Partial<CreateEventPayload> {
   status?: 'draft' | 'open' | 'closed' | 'completed' | 'archived'
+  new_slideshow_urls?: string[]    // newly uploaded files to append
+  remove_slideshow_urls?: string[] // existing URLs to remove from the array
 }
