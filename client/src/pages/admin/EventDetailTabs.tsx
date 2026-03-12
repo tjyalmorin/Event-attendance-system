@@ -263,6 +263,73 @@ const UsersIcon = () => (
 // ─────────────────────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────────────────────
+function AttendanceRowMenu({ onEditTimes, onLabel }: {
+  onEditTimes: () => void
+  onLabel?: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState({ top: 0, left: 0, dropUp: false })
+  const btnRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (btnRef.current && !btnRef.current.closest('[data-dropdown]')?.contains(e.target as Node))
+        setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = () => setOpen(false)
+    window.addEventListener('scroll', handler, true)
+    return () => window.removeEventListener('scroll', handler, true)
+  }, [open])
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      const dropUp = window.innerHeight - rect.bottom < 140
+      setPos({ top: dropUp ? rect.top - 8 : rect.bottom + 4, left: rect.right - 176, dropUp })
+    }
+    setOpen(p => !p)
+  }
+
+  return (
+    <div data-dropdown>
+      <button ref={btnRef} onClick={handleOpen}
+        className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors rounded">
+        <DotsIcon />
+      </button>
+      {open && (
+        <div style={{
+          position: 'fixed',
+          top: pos.dropUp ? undefined : pos.top,
+          bottom: pos.dropUp ? window.innerHeight - pos.top : undefined,
+          left: pos.left, zIndex: 9999,
+        }} className="w-44 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-xl overflow-hidden">
+          <button onClick={() => { setOpen(false); onEditTimes() }}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+            <PencilIcon />
+            Edit Times
+          </button>
+          {onLabel && (
+            <>
+              <div className="h-px bg-gray-100 dark:bg-[#2a2a2a] mx-2" />
+              <button onClick={() => { setOpen(false); onLabel() }}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
+                <TagIcon />
+                Add / Edit Label
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function RegistrantDropdown({ participant, onLabel, onRemove }: {
   participant: Participant
   onLabel: () => void
@@ -387,7 +454,7 @@ function SortDropdown({ options, value, onChange, dropdownRef, open, setOpen }: 
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
+        <div className="absolute left-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
           <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sort by</span>
           </div>
@@ -401,6 +468,187 @@ function SortDropdown({ options, value, onChange, dropdownRef, open, setOpen }: 
               {opt.label}
               {value === opt.value && (
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BranchFilterDropdown({ branches, value, onChange, dropdownRef, open, setOpen }: {
+  branches: string[]
+  value: string
+  onChange: (v: string) => void
+  dropdownRef: React.RefObject<HTMLDivElement>
+  open: boolean
+  setOpen: (v: boolean) => void
+}) {
+  const label = value === 'all' ? 'All Branches' : value
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button onClick={() => setOpen(!open)}
+        className={`flex items-center gap-2 h-9 px-3 rounded-xl border text-sm font-semibold transition-all ${
+          value !== 'all'
+            ? 'border-[#DC143C] text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10'
+            : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+        }`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        <span className="text-xs max-w-[120px] truncate">{label}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl min-w-[200px] max-h-64 flex flex-col">
+          <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] rounded-t-xl flex-shrink-0">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filter by Branch</span>
+          </div>
+          <div className="overflow-y-auto flex-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-gray-100 dark:[&::-webkit-scrollbar-track]:bg-[#2a2a2a] [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-[#444] [&::-webkit-scrollbar-thumb]:rounded-full">
+            {[{ value: 'all', label: 'All Branches' }, ...branches.map(b => ({ value: b, label: b }))].map(opt => (
+              <button key={opt.value} onClick={() => { onChange(opt.value); setOpen(false) }}
+                className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
+                  value === opt.value
+                    ? 'text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10 font-semibold'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+                }`}>
+                <span className="truncate text-left">{opt.label}</span>
+                {value === opt.value && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0 ml-2">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Agent type styling
+// ─────────────────────────────────────────────────────────────
+const AGENT_TYPE_STYLES: Record<string, { bg: string; text: string; darkBg: string; darkText: string }> = {
+  'Agent':            { bg: 'bg-blue-50',    text: 'text-blue-700',    darkBg: 'dark:bg-blue-900/20',    darkText: 'dark:text-blue-400' },
+  'Unit Manager':     { bg: 'bg-teal-50',    text: 'text-teal-700',    darkBg: 'dark:bg-teal-900/20',    darkText: 'dark:text-teal-400' },
+  'Branch Manager':   { bg: 'bg-emerald-50', text: 'text-emerald-700', darkBg: 'dark:bg-emerald-900/20', darkText: 'dark:text-emerald-400' },
+  'Area Manager':     { bg: 'bg-purple-50',  text: 'text-purple-700',  darkBg: 'dark:bg-purple-900/20',  darkText: 'dark:text-purple-400' },
+  'District Manager': { bg: 'bg-amber-50',   text: 'text-amber-700',   darkBg: 'dark:bg-amber-900/20',   darkText: 'dark:text-amber-400' },
+}
+const getAgentTypeStyle = (type: string) =>
+  AGENT_TYPE_STYLES[type] ?? { bg: 'bg-gray-100', text: 'text-gray-600', darkBg: 'dark:bg-gray-800', darkText: 'dark:text-gray-400' }
+
+function AgentTypeFilterDropdown({ types, value, onChange, dropdownRef, open, setOpen }: {
+  types: string[]
+  value: string
+  onChange: (v: string) => void
+  dropdownRef: React.RefObject<HTMLDivElement>
+  open: boolean
+  setOpen: (v: boolean) => void
+}) {
+  const label = value === 'all' ? 'Agent Type' : value
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button onClick={() => setOpen(!open)}
+        className={`flex items-center gap-2 h-9 px-3 rounded-xl border text-sm font-semibold transition-all ${
+          value !== 'all'
+            ? 'border-[#DC143C] text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10'
+            : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+        }`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0">
+          <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        <span className="text-xs max-w-[110px] truncate">{label}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[190px]">
+          <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filter by Agent Type</span>
+          </div>
+          {[{ value: 'all', label: 'All Types' }, ...types.map(t => ({ value: t, label: t }))].map(opt => {
+            const style = opt.value !== 'all' ? getAgentTypeStyle(opt.value) : null
+            return (
+              <button key={opt.value} onClick={() => { onChange(opt.value); setOpen(false) }}
+                className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
+                  value === opt.value
+                    ? 'text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10 font-semibold'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+                }`}>
+                <div className="flex items-center gap-2.5">
+                  {style && <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${style.bg.replace('-50', '-400')} ${style.darkBg.replace('/20', '/60')}`} />}
+                  <span>{opt.label}</span>
+                </div>
+                {value === opt.value && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0 ml-2">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function StatusFilterDropdown({ value, onChange, ended, dropdownRef, open, setOpen }: {
+  value: string
+  onChange: (v: string) => void
+  ended: boolean
+  dropdownRef: React.RefObject<HTMLDivElement>
+  open: boolean
+  setOpen: (v: boolean) => void
+}) {
+  const options = [
+    { value: 'all',         label: 'All Status' },
+    { value: 'checked_in',  label: 'Checked In' },
+    { value: 'checked_out', label: 'Checked Out' },
+    { value: 'flagged',     label: 'Early Out' },
+    { value: 'no_show',     label: ended ? 'No-Show' : 'Waiting' },
+  ]
+  const label = options.find(o => o.value === value)?.label ?? 'All Status'
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button onClick={() => setOpen(!open)}
+        className={`flex items-center gap-2 h-9 px-3 rounded-xl border text-sm font-semibold transition-all ${
+          value !== 'all'
+            ? 'border-[#DC143C] text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10'
+            : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+        }`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <span className="text-xs max-w-[100px] truncate">{label}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
+          <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filter by Status</span>
+          </div>
+          {options.map(opt => (
+            <button key={opt.value} onClick={() => { onChange(opt.value); setOpen(false) }}
+              className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
+                value === opt.value
+                  ? 'text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10 font-semibold'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+              }`}>
+              {opt.label}
+              {value === opt.value && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0 ml-2">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
               )}
@@ -487,17 +735,33 @@ export default function EventDetailTabs({
   const [registrantsSort, setRegistrantsSort] = useState<'name' | 'date'>('date')
   const [registrantsSortOpen, setRegistrantsSortOpen] = useState(false)
   const registrantsSortRef = useRef<HTMLDivElement>(null)
+  const [registrantsBranchFilter, setRegistrantsBranchFilter] = useState<string>('all')
+  const [registrantsBranchOpen, setRegistrantsBranchOpen] = useState(false)
+  const registrantsBranchRef = useRef<HTMLDivElement>(null)
+  const [registrantsAgentTypeFilter, setRegistrantsAgentTypeFilter] = useState<string>('all')
+  const [registrantsAgentTypeOpen, setRegistrantsAgentTypeOpen] = useState(false)
+  const registrantsAgentTypeRef = useRef<HTMLDivElement>(null)
 
   const [attendanceSearch, setAttendanceSearch] = useState('')
   const [attendanceSort, setAttendanceSort] = useState<'checkin' | 'name'>('checkin')
   const [attendanceSortOpen, setAttendanceSortOpen] = useState(false)
   const attendanceSortRef = useRef<HTMLDivElement>(null)
+  const [attendanceBranchFilter, setAttendanceBranchFilter] = useState<string>('all')
+  const [attendanceBranchOpen, setAttendanceBranchOpen] = useState(false)
+  const attendanceBranchRef = useRef<HTMLDivElement>(null)
+  const [attendanceAgentTypeFilter, setAttendanceAgentTypeFilter] = useState<string>('all')
+  const [attendanceAgentTypeOpen, setAttendanceAgentTypeOpen] = useState(false)
+  const attendanceAgentTypeRef = useRef<HTMLDivElement>(null)
+  const [attendanceStatusOpen, setAttendanceStatusOpen] = useState(false)
+  const attendanceStatusRef = useRef<HTMLDivElement>(null)
 
   const [scanlogsSearch, setScanlogsSearch] = useState('')
   const [scanlogsSort, setScanlogsSort] = useState<'latest' | 'oldest'>('latest')
   const [scanlogsSortOpen, setScanlogsSortOpen] = useState(false)
   const [scanlogsType, setScanlogsType] = useState<'all' | 'check_in' | 'check_out' | 'denied'>('all')
   const scanlogsSortRef = useRef<HTMLDivElement>(null)
+  const [scanlogsTypeOpen, setScanlogsTypeOpen] = useState(false)
+  const scanlogsTypeRef = useRef<HTMLDivElement>(null)
 
   const [trashSearch, setTrashSearch] = useState('')
 
@@ -511,16 +775,22 @@ export default function EventDetailTabs({
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (registrantsSortRef.current && !registrantsSortRef.current.contains(e.target as Node)) setRegistrantsSortOpen(false)
+      if (registrantsBranchRef.current && !registrantsBranchRef.current.contains(e.target as Node)) setRegistrantsBranchOpen(false)
+      if (registrantsAgentTypeRef.current && !registrantsAgentTypeRef.current.contains(e.target as Node)) setRegistrantsAgentTypeOpen(false)
       if (attendanceSortRef.current  && !attendanceSortRef.current.contains(e.target as Node))  setAttendanceSortOpen(false)
+      if (attendanceBranchRef.current && !attendanceBranchRef.current.contains(e.target as Node)) setAttendanceBranchOpen(false)
+      if (attendanceAgentTypeRef.current && !attendanceAgentTypeRef.current.contains(e.target as Node)) setAttendanceAgentTypeOpen(false)
+      if (attendanceStatusRef.current && !attendanceStatusRef.current.contains(e.target as Node)) setAttendanceStatusOpen(false)
       if (scanlogsSortRef.current    && !scanlogsSortRef.current.contains(e.target as Node))    setScanlogsSortOpen(false)
+      if (scanlogsTypeRef.current    && !scanlogsTypeRef.current.contains(e.target as Node))    setScanlogsTypeOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   // Reset pages on filter/sort change
-  useEffect(() => { setRegistrantsPage(1) }, [registrantsSearch, registrantsSort])
-  useEffect(() => { setAttendancePage(1) },  [attendanceSearch, attendanceSort, filterStatus])
+  useEffect(() => { setRegistrantsPage(1) }, [registrantsSearch, registrantsSort, registrantsBranchFilter, registrantsAgentTypeFilter])
+  useEffect(() => { setAttendancePage(1) },  [attendanceSearch, attendanceSort, filterStatus, attendanceBranchFilter, attendanceAgentTypeFilter])
   useEffect(() => { setScanlogsPage(1) },    [scanlogsSearch, scanlogsSort, scanlogsType])
   useEffect(() => { setTrashPage(1) },       [trashSearch])
 
@@ -531,6 +801,8 @@ export default function EventDetailTabs({
       const q = registrantsSearch.toLowerCase()
       return p.full_name?.toLowerCase().includes(q) || p.agent_code?.toLowerCase().includes(q) || p.branch_name?.toLowerCase().includes(q)
     })
+    .filter(p => registrantsBranchFilter === 'all' || p.branch_name === registrantsBranchFilter)
+    .filter(p => registrantsAgentTypeFilter === 'all' || p.agent_type === registrantsAgentTypeFilter)
     .sort((a, b) => {
       if (registrantsSort === 'name') return a.full_name.localeCompare(b.full_name)
       return new Date(b.registered_at).getTime() - new Date(a.registered_at).getTime()
@@ -573,7 +845,12 @@ export default function EventDetailTabs({
         filterStatus === 'checked_out' ? !!s.check_out_time :
         filterStatus === 'flagged'     ? s.check_out_method === 'early_out' :
         filterStatus === 'no_show'     ? s._isPending : true
-      return matchSearch && matchFilter
+      const matchBranch = attendanceBranchFilter === 'all' || s.branch_name === attendanceBranchFilter
+      const matchAgentType = attendanceAgentTypeFilter === 'all' || (() => {
+        const p = participants.find(p => p.agent_code === s.agent_code)
+        return p?.agent_type === attendanceAgentTypeFilter
+      })()
+      return matchSearch && matchFilter && matchBranch && matchAgentType
     })
     .sort((a, b) => {
       if (attendanceSort === 'name') return (a.full_name || '').localeCompare(b.full_name || '')
@@ -606,6 +883,17 @@ export default function EventDetailTabs({
       return p.full_name?.toLowerCase().includes(q) || p.agent_code?.toLowerCase().includes(q) || p.branch_name?.toLowerCase().includes(q)
     })
 
+  // ── Branch lists for filter dropdowns ──
+  const registrantBranches = [...new Set(visibleParticipants.map(p => p.branch_name).filter(Boolean))].sort()
+  const attendanceBranches = [...new Set(allAttendanceRows.map(s => s.branch_name).filter(Boolean))].sort()
+
+  // ── Agent type lists for filter dropdowns ──
+  const registrantAgentTypes = [...new Set(visibleParticipants.map(p => p.agent_type ? String(p.agent_type) : null).filter((t): t is string => t !== null))].sort()
+  const attendanceAgentTypes = [...new Set(allAttendanceRows.map(s => {
+    const p = participants.find(p => p.agent_code === s.agent_code)
+    return p?.agent_type ? String(p.agent_type) : null
+  }).filter((t): t is string => t !== null))].sort()
+
   // ── Tabs definition ──
   const tabs: { key: TabType; label: string }[] = [
     { key: 'registrants', label: `Registrants (${visibleConfirmedCount})` },
@@ -621,7 +909,7 @@ export default function EventDetailTabs({
   const totalAttendanceEntries = allAttendanceRows.length
 
   // ── Pagination ──
-  const PAGE_SIZE = 10
+  const PAGE_SIZE = 20
   const registrantsTotalPages = Math.max(1, Math.ceil(filteredRegistrants.length / PAGE_SIZE))
   const attendanceTotalPages  = Math.max(1, Math.ceil(filteredAttendanceSorted.length / PAGE_SIZE))
   const scanlogsTotalPages    = Math.max(1, Math.ceil(filteredScanLogs.length / PAGE_SIZE))
@@ -662,14 +950,23 @@ export default function EventDetailTabs({
           {/* ── REGISTRANTS ── */}
           {activeTab === 'registrants' && (
             <>
-              <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-shrink-0">
-                <div className="relative flex-1">
-                  <input value={registrantsSearch} onChange={e => setRegistrantsSearch(e.target.value)}
-                    placeholder="Search name, agent code, branch…"
-                    className="w-full h-9 pl-9 pr-4 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#DC143C] transition-colors"
-                  />
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><SearchIcon /></span>
-                </div>
+              <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-shrink-0 flex-wrap">
+                <BranchFilterDropdown
+                  branches={registrantBranches}
+                  value={registrantsBranchFilter}
+                  onChange={setRegistrantsBranchFilter}
+                  dropdownRef={registrantsBranchRef}
+                  open={registrantsBranchOpen}
+                  setOpen={setRegistrantsBranchOpen}
+                />
+                <AgentTypeFilterDropdown
+                  types={registrantAgentTypes}
+                  value={registrantsAgentTypeFilter}
+                  onChange={setRegistrantsAgentTypeFilter}
+                  dropdownRef={registrantsAgentTypeRef}
+                  open={registrantsAgentTypeOpen}
+                  setOpen={setRegistrantsAgentTypeOpen}
+                />
                 <SortDropdown
                   options={[{ value: 'date', label: 'Date Registered' }, { value: 'name', label: 'Name A–Z' }]}
                   value={registrantsSort}
@@ -678,17 +975,24 @@ export default function EventDetailTabs({
                   open={registrantsSortOpen}
                   setOpen={setRegistrantsSortOpen}
                 />
+                <div className="relative flex-1 min-w-[200px]">
+                  <input value={registrantsSearch} onChange={e => setRegistrantsSearch(e.target.value)}
+                    placeholder="Search name, agent code, branch…"
+                    className="w-full h-9 pl-9 pr-4 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#DC143C] transition-colors"
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><SearchIcon /></span>
+                </div>
               </div>
               <div className="flex-1 overflow-auto">
-                <table className="w-full text-sm table-fixed">
+                <table className="w-full text-xs table-fixed">
                   <colgroup>
-                    <col className="w-[130px]" /><col className="w-[220px]" /><col className="w-[150px]" />
-                    <col className="w-[150px]" /><col className="w-[140px]" /><col className="w-[180px]" /><col className="w-[80px]" />
+                    <col className="w-[100px]" /><col className="w-[170px]" /><col className="w-[140px]" />
+                    <col className="w-[120px]" /><col className="w-[120px]" /><col className="w-[155px]" /><col className="w-[70px]" />
                   </colgroup>
                   <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
                     <tr>
                       {['Agent Code', 'Full Name', 'Branch', 'Team', 'Agent Type', 'Registered At', 'Actions'].map(h => (
-                        <th key={h} className="px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap text-left">{h}</th>
+                        <th key={h} className="px-3 py-2.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap text-left">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -696,39 +1000,38 @@ export default function EventDetailTabs({
                     {filteredRegistrants.length === 0 ? (
                       <tr><td colSpan={7} className="text-center py-16 text-gray-400 dark:text-gray-500">No registrants found.</td></tr>
                     ) : pagedRegistrants.map(p => (
-                      <tr key={p.participant_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
-                        <td className="px-5 py-3.5">
-                          <span className="text-sm font-medium text-[#DC143C]">{fmtAgentCode(p.agent_code)}</span>
+                      <tr key={p.participant_id} className="hover:bg-gray-100/80 dark:hover:bg-red-900/10 transition-colors h-[44px]">
+                        <td className="px-3 py-2.5">
+                          <span className="text-xs font-medium text-[#DC143C]">{fmtAgentCode(p.agent_code)}</span>
                         </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-800 dark:text-white truncate">{p.full_name}</span>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium text-gray-800 dark:text-white text-xs truncate">{p.full_name}</span>
                             {p.label && (() => {
                               const c = getLabelColor(String(p.label))
                               return (
                                 <button onClick={() => onLabelOpen(p)}
-                                  className={`inline-flex items-center whitespace-nowrap text-[10px] font-bold px-2 py-0.5 h-5 rounded-full border cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
+                                  className={`inline-flex items-center whitespace-nowrap text-[9px] font-bold px-1.5 py-0.5 h-4 rounded-full border cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
                                   {p.label}
                                 </button>
                               )
                             })()}
                           </div>
                         </td>
-                        <td className="px-5 py-3.5">
-                          <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span>
-                        </td>
-                        <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs truncate max-w-0">{p.team_name}</td>
-                        <td className="px-5 py-3.5">
-                          {p.agent_type ? (
-                            <span className="inline-block px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-xs font-medium whitespace-nowrap">{p.agent_type}</span>
-                          ) : (
+                        <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 text-[11px] truncate">{p.branch_name}</td>
+                        <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 text-[11px] truncate">{p.team_name}</td>
+                        <td className="px-3 py-2.5">
+                          {p.agent_type ? (() => {
+                            const s = getAgentTypeStyle(p.agent_type)
+                            return <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold whitespace-nowrap ${s.bg} ${s.text} ${s.darkBg} ${s.darkText}`}>{p.agent_type}</span>
+                          })() : (
                             <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
                           )}
                         </td>
-                        <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">
+                        <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 text-[11px] tabular-nums">
                           {new Date(p.registered_at).toLocaleString('en-PH')}
                         </td>
-                        <td className="px-5 py-3.5">
+                        <td className="px-3 py-2.5">
                           {isAdmin ? (
                             <RegistrantDropdown
                               participant={p}
@@ -750,31 +1053,31 @@ export default function EventDetailTabs({
           {/* ── ATTENDANCE ── */}
           {activeTab === 'attendance' && (
             <>
-              <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-wrap flex-shrink-0">
-                <div className="flex items-center gap-1.5">
-                  {([
-                    { value: 'all',         label: 'All' },
-                    { value: 'checked_in',  label: 'Checked In' },
-                    { value: 'checked_out', label: 'Checked Out' },
-                    { value: 'flagged',     label: 'Early Out' },
-                    { value: 'no_show',     label: ended ? 'No-Show' : 'Waiting' },
-                  ] as const).map(f => (
-                    <button key={f.value} onClick={() => setFilterStatus(f.value)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${filterStatus === f.value
-                        ? 'bg-[#DC143C] border-[#DC143C] text-white'
-                        : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
-                      }`}>
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="relative flex-1 min-w-[180px]">
-                  <input value={attendanceSearch} onChange={e => setAttendanceSearch(e.target.value)}
-                    placeholder="Search name, agent code…"
-                    className="w-full h-9 pl-9 pr-4 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#DC143C] transition-colors"
-                  />
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><SearchIcon /></span>
-                </div>
+              <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-shrink-0 flex-wrap">
+                <StatusFilterDropdown
+                  value={filterStatus}
+                  onChange={v => setFilterStatus(v as any)}
+                  ended={ended}
+                  dropdownRef={attendanceStatusRef}
+                  open={attendanceStatusOpen}
+                  setOpen={setAttendanceStatusOpen}
+                />
+                <BranchFilterDropdown
+                  branches={attendanceBranches}
+                  value={attendanceBranchFilter}
+                  onChange={setAttendanceBranchFilter}
+                  dropdownRef={attendanceBranchRef}
+                  open={attendanceBranchOpen}
+                  setOpen={setAttendanceBranchOpen}
+                />
+                <AgentTypeFilterDropdown
+                  types={attendanceAgentTypes}
+                  value={attendanceAgentTypeFilter}
+                  onChange={setAttendanceAgentTypeFilter}
+                  dropdownRef={attendanceAgentTypeRef}
+                  open={attendanceAgentTypeOpen}
+                  setOpen={setAttendanceAgentTypeOpen}
+                />
                 <SortDropdown
                   options={[{ value: 'checkin', label: 'Check-in Time' }, { value: 'name', label: 'Name A–Z' }]}
                   value={attendanceSort}
@@ -783,25 +1086,32 @@ export default function EventDetailTabs({
                   open={attendanceSortOpen}
                   setOpen={setAttendanceSortOpen}
                 />
+                <div className="relative flex-1 min-w-[180px]">
+                  <input value={attendanceSearch} onChange={e => setAttendanceSearch(e.target.value)}
+                    placeholder="Search name, agent code…"
+                    className="w-full h-9 pl-9 pr-4 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#DC143C] transition-colors"
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><SearchIcon /></span>
+                </div>
                 {isAdmin && visibleCheckedInCount > 0 && (
                   <button onClick={onBulkCheckOutOpen}
-                    className="flex items-center gap-2 h-9 px-3 rounded-xl bg-[#DC143C] text-white text-xs font-bold hover:bg-[#b01030] transition-all shadow-[0_2px_8px_rgba(220,20,60,0.25)] ml-auto flex-shrink-0">
+                    className="flex items-center gap-2 h-9 px-3 rounded-xl bg-[#DC143C] text-white text-xs font-bold hover:bg-[#b01030] transition-all shadow-[0_2px_8px_rgba(220,20,60,0.25)] flex-shrink-0">
                     <BulkOutIcon />
                     Check Out All ({visibleCheckedInCount})
                   </button>
                 )}
               </div>
               <div className="flex-1 overflow-auto">
-                <table className="w-full text-sm table-fixed">
+                <table className="w-full text-xs table-fixed">
                   <colgroup>
-                    <col className="w-[120px]" /><col className="w-[180px]" /><col className="w-[130px]" />
-                    <col className="w-[110px]" /><col className="w-[130px]" /><col className="w-[180px]" /><col className="w-[180px]" />
-                    <col className="w-[110px]" />{isAdmin && <col className="w-[110px]" />}
+                    <col className="w-[100px]" /><col className="w-[160px]" /><col className="w-[140px]" />
+                    <col className="w-[100px]" /><col className="w-[110px]" /><col className="w-[155px]" /><col className="w-[155px]" />
+                    <col className="w-[100px]" />{isAdmin && <col className="w-[80px]" />}
                   </colgroup>
                   <thead className="bg-gray-50 dark:bg-[#171717] sticky top-0 z-10">
                     <tr>
                       {['Agent Code', 'Full Name', 'Branch', 'Team', 'Agent Type', 'Check In', 'Check Out', 'Status', ...(isAdmin ? ['Actions'] : [])].map(h => (
-                        <th key={h} className="text-left px-5 py-3 text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                        <th key={h} className="text-left px-3 py-2.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -811,72 +1121,70 @@ export default function EventDetailTabs({
                     ) : pagedAttendance.map((s, idx) => {
                       const isEditing = isAdmin && !s._isPending && editingSessionId === s.session_id
                       return (
-                        <tr key={s.session_id ?? `pending-${idx}`} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
-                          <td className="px-5 py-3.5">
-                            <span className="text-sm font-medium text-[#DC143C]">{fmtAgentCode(s.agent_code)}</span>
+                        <tr key={s.session_id ?? `pending-${idx}`} className="hover:bg-gray-100/80 dark:hover:bg-red-900/10 transition-colors h-[44px]">
+                          <td className="px-3 py-2.5">
+                            <span className="text-xs font-medium text-[#DC143C]">{fmtAgentCode(s.agent_code)}</span>
                           </td>
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-800 dark:text-white">{s.full_name}</span>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-gray-800 dark:text-white text-xs truncate">{s.full_name}</span>
                               {(() => {
                                 const p = participants.find(p => p.agent_code === s.agent_code)
                                 if (!p?.label) return null
                                 const c = getLabelColor(String(p.label))
                                 return (
                                   <button onClick={() => onLabelOpen(p)}
-                                    className={`inline-flex items-center whitespace-nowrap text-[10px] font-bold px-2 py-0.5 h-5 rounded-full border cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
+                                    className={`inline-flex items-center whitespace-nowrap text-[9px] font-bold px-1.5 py-0.5 h-4 rounded-full border cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0 ${c.bg} ${c.text} ${c.border} ${c.darkBg} ${c.darkText}`}>
                                     {p.label}
                                   </button>
                                 )
                               })()}
                             </div>
                           </td>
-                          <td className="px-5 py-3.5">
-                            <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{s.branch_name}</span>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 text-[11px] truncate">
+                            {s.branch_name}
                           </td>
-                          <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs">{s.team_name}</td>
-                          <td className="px-5 py-3.5">
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 text-[11px] truncate">{s.team_name}</td>
+                          <td className="px-3 py-2.5">
                             {(() => {
                               const p = participants.find(p => p.agent_code === s.agent_code)
-                              return p?.agent_type ? (
-                                <span className="inline-block px-2.5 py-1 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-xs font-medium whitespace-nowrap">{p.agent_type}</span>
-                              ) : (
-                                <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
-                              )
+                              if (!p?.agent_type) return <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+                              const st = getAgentTypeStyle(p.agent_type)
+                              return <span className={`inline-block px-2 py-0.5 rounded-md text-[11px] font-semibold whitespace-nowrap ${st.bg} ${st.text} ${st.darkBg} ${st.darkText}`}>{p.agent_type}</span>
                             })()}
                           </td>
-                          <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">
+                          <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400 text-[11px] tabular-nums">
                             {isEditing ? (
                               <MaskedDateTimeInput value={editCheckIn} onChange={setEditCheckIn}
-                                className="w-full h-8 px-2 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#141414] text-gray-800 dark:text-white text-xs outline-none focus:border-[#DC143C] transition-colors tabular-nums"
+                                className="w-full h-7 px-2 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#141414] text-gray-800 dark:text-white text-[11px] outline-none focus:border-[#DC143C] transition-colors tabular-nums"
                               />
                             ) : (
                               s.check_in_time ? new Date(s.check_in_time).toLocaleString('en-PH') : '—'
                             )}
                           </td>
-                          <td className="px-5 py-3.5 text-gray-600 dark:text-gray-400 text-xs tabular-nums">
+                          <td className="px-3 py-2.5 text-gray-600 dark:text-gray-400 text-[11px] tabular-nums">
                             {isEditing ? (
                               <MaskedDateTimeInput value={editCheckOut} onChange={setEditCheckOut}
-                                className="w-full h-8 px-2 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#141414] text-gray-800 dark:text-white text-xs outline-none focus:border-[#DC143C] transition-colors tabular-nums"
+                                className="w-full h-7 px-2 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#141414] text-gray-800 dark:text-white text-[11px] outline-none focus:border-[#DC143C] transition-colors tabular-nums"
                               />
                             ) : (
                               s.check_out_time ? new Date(s.check_out_time).toLocaleString('en-PH') : '—'
                             )}
                           </td>
-                          <td className="pl-2 pr-5 py-3.5">
+                          <td className="px-3 py-2.5">
                             {s._isPending ? (
                               ended ? (
-                                <span className="inline-flex items-center whitespace-nowrap text-xs font-semibold px-2.5 h-6 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">No-Show</span>
+                                <span className="inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">No-Show</span>
                               ) : (
-                                <span className="inline-flex items-center whitespace-nowrap text-xs font-semibold px-2.5 h-6 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">Waiting</span>
+                                <span className="inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">Waiting</span>
                               )
                             ) : s.check_out_method === 'early_out' ? (
                               <button onClick={() => onEarlyOutOpen(s as any)}
-                                className="inline-flex items-center whitespace-nowrap text-xs font-semibold px-2.5 h-6 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 hover:opacity-80 transition-opacity">
+                                className="inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 hover:opacity-80 transition-opacity">
                                 Early Out
                               </button>
                             ) : (
-                              <span className={`inline-flex items-center whitespace-nowrap text-xs font-semibold px-2.5 h-6 rounded-full ${
+                              <span className={`inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full ${
                                 s.check_out_time
                                   ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
                                   : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
@@ -886,29 +1194,32 @@ export default function EventDetailTabs({
                             )}
                           </td>
                           {isAdmin && (
-                            <td className="px-5 py-3.5 pl-7">
+                            <td className="pl-5 pr-3 py-2.5">
                               {s._isPending ? (
                                 <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
                               ) : isEditing ? (
                                 <div className="flex items-center gap-1">
                                   <button onClick={() => onSaveEdit(s.session_id)} disabled={editSaving} title="Save"
-                                    className="flex items-center justify-center w-8 h-8 rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition-colors">
+                                    className="flex items-center justify-center w-7 h-7 rounded-lg bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 transition-colors">
                                     {editSaving
                                       ? <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                      : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                      : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>
                                     }
                                   </button>
                                   <button onClick={onCancelEdit} title="Cancel"
-                                    className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-400 transition-colors">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                    className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-400 transition-colors">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                   </button>
                                 </div>
-                              ) : (
-                                <button onClick={() => onStartEdit(s as any)} title="Edit times"
-                                  className="flex items-center justify-center w-7 h-7 rounded-lg border border-gray-200 dark:border-[#2a2a2a] text-gray-400 hover:text-[#DC143C] hover:border-[#DC143C] transition-colors">
-                                  <PencilIcon />
-                                </button>
-                              )}
+                              ) : (() => {
+                                const linked = participants.find(p => p.agent_code === s.agent_code)
+                                return (
+                                  <AttendanceRowMenu
+                                    onEditTimes={() => onStartEdit(s as any)}
+                                    onLabel={linked ? () => onLabelOpen(linked, true) : undefined}
+                                  />
+                                )
+                              })()}
                             </td>
                           )}
                         </tr>
@@ -923,30 +1234,7 @@ export default function EventDetailTabs({
           {/* ── SCAN LOGS ── */}
           {activeTab === 'scanlogs' && (
             <>
-              <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-wrap flex-shrink-0">
-                <div className="flex items-center gap-1.5">
-                  {([
-                    { value: 'all',       label: 'All' },
-                    { value: 'check_in',  label: 'Check In' },
-                    { value: 'check_out', label: 'Check Out' },
-                    { value: 'denied',    label: 'Denied' },
-                  ] as const).map(f => (
-                    <button key={f.value} onClick={() => setScanlogsType(f.value)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${scanlogsType === f.value
-                        ? 'bg-[#DC143C] border-[#DC143C] text-white'
-                        : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
-                      }`}>
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="relative flex-1 min-w-[180px]">
-                  <input value={scanlogsSearch} onChange={e => setScanlogsSearch(e.target.value)}
-                    placeholder="Search name, agent code…"
-                    className="w-full h-9 pl-9 pr-4 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#DC143C] transition-colors"
-                  />
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><SearchIcon /></span>
-                </div>
+              <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 dark:border-[#2a2a2a] bg-gray-50/50 dark:bg-[#171717]/50 flex-wrap flex-shrink-0">
                 <SortDropdown
                   options={[{ value: 'latest', label: 'Latest First' }, { value: 'oldest', label: 'Oldest First' }]}
                   value={scanlogsSort}
@@ -955,6 +1243,58 @@ export default function EventDetailTabs({
                   open={scanlogsSortOpen}
                   setOpen={setScanlogsSortOpen}
                 />
+                <div className="relative" ref={scanlogsTypeRef}>
+                  <button onClick={() => setScanlogsTypeOpen(o => !o)}
+                    className={`flex items-center gap-2 h-9 px-3 rounded-xl border text-sm font-semibold transition-all ${
+                      scanlogsType !== 'all'
+                        ? 'border-[#DC143C] text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10'
+                        : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+                    }`}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0">
+                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                    <span className="text-xs">
+                      {scanlogsType === 'all' ? 'All Types' : scanlogsType === 'check_in' ? 'Check In' : scanlogsType === 'check_out' ? 'Check Out' : 'Denied'}
+                    </span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 flex-shrink-0 transition-transform ${scanlogsTypeOpen ? 'rotate-180' : ''}`}>
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
+                  {scanlogsTypeOpen && (
+                    <div className="absolute left-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[150px]">
+                      <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filter by Type</span>
+                      </div>
+                      {([
+                        { value: 'all',       label: 'All Types' },
+                        { value: 'check_in',  label: 'Check In' },
+                        { value: 'check_out', label: 'Check Out' },
+                        { value: 'denied',    label: 'Denied' },
+                      ] as const).map(opt => (
+                        <button key={opt.value} onClick={() => { setScanlogsType(opt.value); setScanlogsTypeOpen(false) }}
+                          className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
+                            scanlogsType === opt.value
+                              ? 'text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10 font-semibold'
+                              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+                          }`}>
+                          {opt.label}
+                          {scanlogsType === opt.value && (
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0 ml-2">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="relative flex-1 min-w-[180px]">
+                  <input value={scanlogsSearch} onChange={e => setScanlogsSearch(e.target.value)}
+                    placeholder="Search name, agent code…"
+                    className="w-full h-9 pl-9 pr-4 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:border-[#DC143C] transition-colors"
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><SearchIcon /></span>
+                </div>
               </div>
               <div className="flex-1 overflow-auto">
                 <table className="w-full text-sm table-fixed">
@@ -973,7 +1313,7 @@ export default function EventDetailTabs({
                     {filteredScanLogs.length === 0 ? (
                       <tr><td colSpan={5} className="text-center py-16 text-gray-400 dark:text-gray-500">No scan logs found.</td></tr>
                     ) : pagedScanLogs.map(s => (
-                      <tr key={s.scan_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
+                      <tr key={s.scan_id} className="hover:bg-gray-100/80 dark:hover:bg-red-900/10 transition-colors h-[52px]">
                         <td className="px-5 py-3.5">
                           <span className="text-sm font-medium text-[#DC143C]">{fmtAgentCode(s.agent_code || s.qr_token || '')}</span>
                         </td>
@@ -1079,14 +1419,12 @@ export default function EventDetailTabs({
                     </thead>
                     <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
                       {pagedStaff.map(s => (
-                        <tr key={s.user_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
+                        <tr key={s.user_id} className="hover:bg-gray-100/80 dark:hover:bg-red-900/10 transition-colors h-[52px]">
                           <td className="px-5 py-3.5">
                             <span className="text-sm font-medium text-[#DC143C]">{fmtAgentCode(s.agent_code)}</span>
                           </td>
                           <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{s.full_name}</td>
-                          <td className="px-5 py-3.5">
-                            <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{s.branch_name}</span>
-                          </td>
+                          <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs truncate">{s.branch_name}</td>
                           <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs tabular-nums">
                             {new Date(s.assigned_at).toLocaleString('en-PH')}
                           </td>
@@ -1143,14 +1481,12 @@ export default function EventDetailTabs({
                     </thead>
                     <tbody className="divide-y divide-gray-50 dark:divide-[#2a2a2a]">
                       {pagedTrash.map(p => (
-                        <tr key={p.participant_id} className="hover:bg-red-50/30 dark:hover:bg-red-900/10 transition-colors h-[52px]">
+                        <tr key={p.participant_id} className="hover:bg-gray-100/80 dark:hover:bg-red-900/10 transition-colors h-[52px]">
                           <td className="px-5 py-3.5">
                             <span className="text-sm font-medium text-[#DC143C]">{fmtAgentCode(p.agent_code)}</span>
                           </td>
                           <td className="px-5 py-3.5 font-medium text-gray-800 dark:text-white">{p.full_name}</td>
-                          <td className="px-5 py-3.5">
-                            <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-400 text-xs font-medium">{p.branch_name}</span>
-                          </td>
+                          <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs truncate">{p.branch_name}</td>
                           <td className="px-5 py-3.5 text-gray-500 dark:text-gray-400 text-xs truncate max-w-0">{p.team_name}</td>
                           <td className="px-5 py-3.5">
                             <div className="flex items-center gap-2">

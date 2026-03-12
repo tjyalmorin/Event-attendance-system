@@ -621,7 +621,7 @@ export default function EventDetail() {
           const flatRows = teamParticipants.flatMap(p => [
             p.agent_code || '—', p.full_name,
             typeof p.label === 'string' ? p.label : '—',
-            new Date(p.registered_at).toLocaleDateString('en-PH'),
+            new Date(p.registered_at).toLocaleString('en-PH'),
           ])
           cursor = writeTeamBlock(ws, team, ['Agent Code', 'Full Name', 'Label', 'Registered At'], flatRows, cursor, colCount)
         })
@@ -638,10 +638,10 @@ export default function EventDetail() {
 
     if (docType === 'attendance') {
       writeSummarySheet({ allBranches, participants, sessions, reportLabel: '✅ Attendance Report' })
-      const colCount = 7
+      const colCount = 5
       allBranches.forEach(branch => {
         const ws = wb.addWorksheet(safeSheetName(branch))
-        ws.columns = [{ width: 18 }, { width: 28 }, { width: 22 }, { width: 22 }, { width: 14 }, { width: 14 }, { width: 16 }]
+        ws.columns = [{ width: 18 }, { width: 28 }, { width: 22 }, { width: 22 }, { width: 16 }]
         const branchSessions = sessions.filter(s => s.branch_name === branch)
         const teams = [...new Set(branchSessions.map(s => s.team_name))].filter(Boolean).sort()
         let cursor = 1
@@ -660,10 +660,9 @@ export default function EventDetail() {
             s.agent_code || '—', s.full_name,
             s.check_in_time ? new Date(s.check_in_time).toLocaleString('en-PH') : '—',
             s.check_out_time ? new Date(s.check_out_time).toLocaleString('en-PH') : '—',
-            s.check_in_method || '—', s.check_out_method || '—',
             s.check_out_method === 'early_out' ? (s.early_out_reason || 'No reason') : '—',
           ])
-          cursor = writeTeamBlock(ws, team, ['Agent Code', 'Full Name', 'Check In', 'Check Out', 'In Method', 'Out Method', 'Early Out Reason'], flatRows, cursor, colCount)
+          cursor = writeTeamBlock(ws, team, ['Agent Code', 'Full Name', 'Check In', 'Check Out', 'Early Out Reason'], flatRows, cursor, colCount)
         })
         const branchTotalRow = ws.getRow(cursor)
         branchTotalRow.getCell(1).value = `Branch Total: ${branchSessions.length} attendee${branchSessions.length !== 1 ? 's' : ''}`
