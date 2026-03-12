@@ -906,7 +906,6 @@ export default function EventDetailTabs({
     ] : []),
   ]
 
-  const totalAttendanceEntries = allAttendanceRows.length
 
   // ── Pagination ──
   const PAGE_SIZE = 20
@@ -1515,11 +1514,31 @@ export default function EventDetailTabs({
         {/* ── TABLE FOOTER + PAGINATION ── */}
         <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#171717] flex-shrink-0">
           <span className="text-xs text-gray-400 dark:text-gray-500">
-            {activeTab === 'registrants' && `${filteredRegistrants.length} registrant${filteredRegistrants.length !== 1 ? 's' : ''}`}
-            {activeTab === 'attendance'  && `${filteredAttendanceSorted.length} of ${totalAttendanceEntries} entries`}
-            {activeTab === 'scanlogs'    && `${filteredScanLogs.length} scan log${filteredScanLogs.length !== 1 ? 's' : ''}`}
-            {activeTab === 'staff'       && `${assignedStaff.length} staff member${assignedStaff.length !== 1 ? 's' : ''} assigned`}
-            {activeTab === 'trash'       && `${filteredTrash.length} removed registrant${filteredTrash.length !== 1 ? 's' : ''}`}
+            {activeTab === 'registrants' && (() => {
+              const from = filteredRegistrants.length === 0 ? 0 : (safeRegPage - 1) * PAGE_SIZE + 1
+              const to = Math.min(safeRegPage * PAGE_SIZE, filteredRegistrants.length)
+              return `Showing ${from}–${to} of ${filteredRegistrants.length} registrant${filteredRegistrants.length !== 1 ? 's' : ''}`
+            })()}
+            {activeTab === 'attendance' && (() => {
+              const from = filteredAttendanceSorted.length === 0 ? 0 : (safeAttPage - 1) * PAGE_SIZE + 1
+              const to = Math.min(safeAttPage * PAGE_SIZE, filteredAttendanceSorted.length)
+              return `Showing ${from}–${to} of ${filteredAttendanceSorted.length} entr${filteredAttendanceSorted.length !== 1 ? 'ies' : 'y'}`
+            })()}
+            {activeTab === 'scanlogs' && (() => {
+              const from = filteredScanLogs.length === 0 ? 0 : (safeScanPage - 1) * PAGE_SIZE + 1
+              const to = Math.min(safeScanPage * PAGE_SIZE, filteredScanLogs.length)
+              return `Showing ${from}–${to} of ${filteredScanLogs.length} scan log${filteredScanLogs.length !== 1 ? 's' : ''}`
+            })()}
+            {activeTab === 'staff' && (() => {
+              const from = assignedStaff.length === 0 ? 0 : (safeStaffPage - 1) * PAGE_SIZE + 1
+              const to = Math.min(safeStaffPage * PAGE_SIZE, assignedStaff.length)
+              return `Showing ${from}–${to} of ${assignedStaff.length} staff member${assignedStaff.length !== 1 ? 's' : ''}`
+            })()}
+            {activeTab === 'trash' && (() => {
+              const from = filteredTrash.length === 0 ? 0 : (safeTrashPage - 1) * PAGE_SIZE + 1
+              const to = Math.min(safeTrashPage * PAGE_SIZE, filteredTrash.length)
+              return `Showing ${from}–${to} of ${filteredTrash.length} removed registrant${filteredTrash.length !== 1 ? 's' : ''}`
+            })()}
           </span>
           {activeTab === 'registrants' && registrantsTotalPages > 1 && <PaginationBar page={safeRegPage}   totalPages={registrantsTotalPages} onChange={setRegistrantsPage} />}
           {activeTab === 'attendance'  && attendanceTotalPages  > 1 && <PaginationBar page={safeAttPage}   totalPages={attendanceTotalPages}  onChange={setAttendancePage} />}
@@ -1623,18 +1642,26 @@ export default function EventDetailTabs({
                     </div>
                     {labelType === 'Custom…' && (
                       <div>
-                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Custom Label</label>
-                        <input value={labelCustom} onChange={e => setLabelCustom(e.target.value)}
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Custom Label</label>
+                          <span className={`text-[11px] tabular-nums ${labelCustom.length >= 30 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>{labelCustom.length}/30</span>
+                        </div>
+                        <input value={labelCustom} onChange={e => setLabelCustom(e.target.value.slice(0, 30))}
                           placeholder="e.g. Best Agent, Million Club…"
+                          maxLength={30}
                           className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C]"
                         />
                       </div>
                     )}
                     <div>
-                      <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Note <span className="font-normal normal-case text-gray-400">(optional)</span></label>
-                      <textarea value={labelNote} onChange={e => setLabelNote(e.target.value)}
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Note <span className="font-normal normal-case text-gray-400">(optional)</span></label>
+                        <span className={`text-[11px] tabular-nums ${labelNote.length >= 200 ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>{labelNote.length}/200</span>
+                      </div>
+                      <textarea value={labelNote} onChange={e => setLabelNote(e.target.value.slice(0, 200))}
                         placeholder="e.g. Seated at Table 2, Row 5 · Perform after opening remarks"
                         rows={3}
+                        maxLength={200}
                         className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#141414] text-gray-800 dark:text-white text-sm outline-none focus:border-[#DC143C] resize-none"
                       />
                     </div>
