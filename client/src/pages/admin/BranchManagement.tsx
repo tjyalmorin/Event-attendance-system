@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Sidebar from '../../components/Sidebar'
+
 import {
   getAllBranchesApi,
   createBranchApi,
@@ -289,11 +289,7 @@ export default function BranchManagement() {
   const inputClass = "h-[40px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f] px-3 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-[#1c1c1c] focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
 
   return (
-    <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
-
-      <Sidebar userRole={userRole} />
-
-      <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto">
 
         {/* ── HEADER ── */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
@@ -506,7 +502,6 @@ export default function BranchManagement() {
             </div>
           )}
         </div>
-      </div>
 
       {/* ── DELETE CONFIRM MODAL ── */}
       {deleteTarget && (

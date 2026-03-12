@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { getEventByIdApi } from '../../api/events.api'
 import { lookupParticipantApi, resolveParticipantApi, scanAgentCodeApi, logDenialApi, getSessionsByEventApi } from '../../api/scan.api'
 import { Event, ScanResponse } from '../../types'
-import Sidebar from '../../components/Sidebar'
 import { useDarkMode } from '../../contexts/DarkModeContext'
 import { useStaffProtection } from '../../hooks/useStaffProtection'
 
@@ -390,17 +389,13 @@ export default function ScannerPage() {
   const inputBg       = isDarkMode ? '#141414' : '#f9fafb'
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: bg }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: bg }}>
       {/* Flash overlay */}
       {flashColor && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, pointerEvents: 'none', transition: 'opacity 0.3s',
           background: flashColor === 'green' ? 'rgba(22,163,74,0.15)' : flashColor === 'blue' ? 'rgba(37,99,235,0.15)' : 'rgba(220,20,60,0.18)'
         }} />
       )}
-
-      <Sidebar userRole={userRole} />
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
         {/* ── HEADER ── */}
         <header className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a] shadow-sm flex-shrink-0">
@@ -890,7 +885,6 @@ export default function ScannerPage() {
             </div>
           </div>
         </div>
-      </div>
 
       {/* ── LABEL DETAIL MODAL ── */}
       {labelModalOpen && lookup?.participant.label && (() => {

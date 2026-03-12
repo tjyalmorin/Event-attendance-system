@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import Sidebar from '../../components/Sidebar'
 import { updateProfileApi, changePasswordApi } from '../../api/users.api'
 import { getMeApi } from '../../api/auth.api'
 import { getAllBranchesApi, BranchItem } from '../../api/branches.api'
@@ -316,9 +315,7 @@ export default function ProfileSettingsPage() {
   const pwCheck = pwChecks(newPassword)
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-[#0f0f0f] overflow-hidden">
-      <Sidebar userRole={userRole} />
-      <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-6 py-10">
 
           {/* Header */}
@@ -534,7 +531,6 @@ export default function ProfileSettingsPage() {
           )}
 
         </div>
-      </div>
     </div>
   )
 }

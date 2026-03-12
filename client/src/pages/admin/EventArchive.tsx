@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { Event } from '../../types';
-import Sidebar from '../../components/Sidebar';
 
 // ── Icons ──
 const ArrowLeftIcon = () => (
@@ -160,7 +159,6 @@ const SuccessToast: React.FC<{ message: string }> = ({ message }) => (
 // ── Main Component ──
 export default function EventArchive() {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -229,9 +227,7 @@ export default function EventArchive() {
   });
 
   return (
-    <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
-      <Sidebar userRole={user.role === 'staff' ? 'staff' : 'admin'} />
-      <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto">
 
         {/* Header */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
@@ -389,7 +385,6 @@ export default function EventArchive() {
             </div>
           )}
         </div>
-      </div>
 
       {restoringEvent && <RestoreModal event={restoringEvent} onClose={() => setRestoringEvent(null)} onConfirm={handleRestore} loading={restoreLoading} />}
       {trashingEvent && <TrashModal event={trashingEvent} onClose={() => setTrashingEvent(null)} onConfirm={handleTrash} loading={trashLoading} />}

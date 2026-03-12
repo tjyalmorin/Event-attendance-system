@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import api from '../../api/axios';
 import { Event } from '../../types';
-import Sidebar from '../../components/Sidebar';
 import EditEventModal from '../../components/EditEventModal';
 
 // ── SVG Icons ──
@@ -612,9 +611,7 @@ const EventManagement: React.FC = () => {
   });
 
   return (
-    <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
-      <Sidebar userRole={user.role === 'staff' ? 'staff' : 'admin'} />
-      <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto">
         {/* Header */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
           <div className="px-12 h-[76px] flex items-center">
@@ -848,7 +845,6 @@ const EventManagement: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
 
       {editingEvent && <EditEventModal event={editingEvent} onClose={() => setEditingEvent(null)} onSuccess={handleEditSuccess} />}
       {trashingEvent && <TrashModal event={trashingEvent} onClose={() => setTrashingEvent(null)} onConfirm={handleTrash} loading={trashLoading} />}

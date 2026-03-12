@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { DarkModeProvider } from './contexts/DarkModeContext'
 import { SidebarProvider } from './contexts/SidebarContext'
 
@@ -25,10 +25,29 @@ import ResetPasswordPage from './pages/admin/ResetPasswordPage'
 import ProfileSettingsPage from './pages/admin/ProfileSettingsPage'
 import AccountManagement from './pages/admin/AccountManagement'
 
+// Components
+import Sidebar from './components/Sidebar'
+
 // Protected route wrapper
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const token = localStorage.getItem('authToken')
   return token ? <>{children}</> : <Navigate to="/admin/login" />
+}
+
+// ── Shared layout: persistent Sidebar + scrollable content area ──
+// Sidebar lives here — never unmounts during admin navigation
+const AdminLayout = ({ userRole }: { userRole: 'admin' | 'staff' }) => {
+  const token = localStorage.getItem('authToken')
+  if (!token) return <Navigate to="/admin/login" />
+
+  return (
+    <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
+      <Sidebar userRole={userRole} />
+      <div className="flex-1 flex flex-col min-w-0 overflow-auto">
+        <Outlet />
+      </div>
+    </div>
+  )
 }
 
 function App() {
@@ -37,41 +56,39 @@ function App() {
       <SidebarProvider>
         <div className="min-h-screen bg-gray-50 dark:bg-[#0f0f0f]">
           <Routes>
-            {/* Public Client Routes */}
+            {/* ── Public Client Routes ── */}
             <Route path="/register/:eventId" element={<RegistrationPage />} />
             <Route path="/confirmation" element={<ConfirmationPage />} />
 
-            {/* Branch and Team Management (Admin-only) */}
-            <Route path="/admin/settings/branches" element={<PrivateRoute><BranchManagement /></PrivateRoute>} />
-
-            {/* Auth */}
+            {/* ── Auth (public) ── */}
             <Route path="/admin/login" element={<AdminLogin />} />
-
-            {/* Forgot Password (public) */}
             <Route path="/admin/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/admin/verify-otp" element={<VerifyOtpPage />} />
             <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
 
-            {/* Protected Admin Routes */}
+            {/* ── Admin Routes (shared persistent Sidebar) ── */}
             {/* NOTE: static routes (trash, archive, create) must come BEFORE /:eventId */}
-            <Route path="/admin/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
-            <Route path="/admin/events/trash" element={<PrivateRoute><TrashBin /></PrivateRoute>} />
-            <Route path="/admin/events/archive" element={<PrivateRoute><EventArchive /></PrivateRoute>} />
-            <Route path="/admin/events/create" element={<PrivateRoute><CreateEvent /></PrivateRoute>} />
-            <Route path="/admin/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
-            <Route path="/admin/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
+            <Route element={<AdminLayout userRole="admin" />}>
+              <Route path="/admin/events" element={<EventManagement />} />
+              <Route path="/admin/events/trash" element={<TrashBin />} />
+              <Route path="/admin/events/archive" element={<EventArchive />} />
+              <Route path="/admin/events/create" element={<CreateEvent />} />
+              <Route path="/admin/events/:eventId" element={<EventDetail />} />
+              <Route path="/admin/events/:eventId/scanner" element={<ScannerPage />} />
+              <Route path="/admin/settings/profile" element={<ProfileSettingsPage />} />
+              <Route path="/admin/settings/accounts" element={<AccountManagement />} />
+              <Route path="/admin/settings/branches" element={<BranchManagement />} />
+              <Route path="/admin/settings" element={<Navigate to="/admin/settings/profile" />} />
+            </Route>
 
-            {/* Settings */}
-            <Route path="/admin/settings/profile" element={<PrivateRoute><ProfileSettingsPage /></PrivateRoute>} />
-            <Route path="/admin/settings/accounts" element={<PrivateRoute><AccountManagement /></PrivateRoute>} />
-            <Route path="/admin/settings" element={<Navigate to="/admin/settings/profile" />} />
+            {/* ── Staff Routes (shared persistent Sidebar) ── */}
+            <Route element={<AdminLayout userRole="staff" />}>
+              <Route path="/staff/events" element={<EventManagement />} />
+              <Route path="/staff/events/:eventId" element={<EventDetail />} />
+              <Route path="/staff/events/:eventId/scanner" element={<ScannerPage />} />
+            </Route>
 
-            {/* Staff Routes */}
-            <Route path="/staff/events" element={<PrivateRoute><EventManagement /></PrivateRoute>} />
-            <Route path="/staff/events/:eventId" element={<PrivateRoute><EventDetail /></PrivateRoute>} />
-            <Route path="/staff/events/:eventId/scanner" element={<PrivateRoute><ScannerPage /></PrivateRoute>} />
-
-            {/* Default */}
+            {/* ── Default ── */}
             <Route path="/" element={<Navigate to="/admin/login" />} />
             <Route path="*" element={<Navigate to="/admin/login" />} />
           </Routes>

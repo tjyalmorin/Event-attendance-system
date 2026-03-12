@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
-import Sidebar from '../../components/Sidebar'
 import { getAllUsersApi, createUserApi, deleteUserApi, updateUserApi, toggleUserActiveApi } from '../../api/users.api'
 import { getAuditLogsApi, createAuditLogApi, AuditLogEntry, deleteAuditLogsByIdsApi, deleteAuditLogsOlderThanApi, clearAllAuditLogsApi } from '../../api/audit-logs.api'
 import { User } from '../../types'
@@ -867,9 +866,7 @@ export default function AccountManagement() {
   const showPwHints = (modalType === 'create' || modalType === 'edit') && form.password.length > 0
 
   return (
-    <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
-      <Sidebar userRole={userRole} />
-      <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto">
 
         {/* ── HEADER ── */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
@@ -1346,7 +1343,6 @@ export default function AccountManagement() {
 
           </div>
         </div>
-      </div>
 
 
       {/* ── HISTORY: Clear All Modal ── */}

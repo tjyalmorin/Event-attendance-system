@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import api from '../../api/axios';
-import Sidebar from '../../components/Sidebar';
 import { useBranches } from '../../hooks/useBranches';
 import { getStaffByBranchesApi } from '../../api/events.api';
 
@@ -330,7 +329,7 @@ const CreateEvent: React.FC = () => {
   const advancedStep = userRole === 'admin' && selectedBranches.length > 0 ? 6 : 5;
 
   return (
-    <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
+    <div className="flex-1 overflow-auto">
       <style>{`
         .react-datepicker { font-family: inherit; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); overflow: hidden; }
         .dark .react-datepicker { background: #1c1c1c; border-color: #2a2a2a; }
@@ -409,9 +408,6 @@ const CreateEvent: React.FC = () => {
         </div>
       )}
 
-      <Sidebar userRole={userRole} />
-
-      <div className="flex-1 overflow-auto">
         {/* Page header */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
           <div className="px-12 h-[76px] flex items-center gap-4">
@@ -847,7 +843,6 @@ const CreateEvent: React.FC = () => {
             </form>
           </div>
         </div>
-      </div>
     </div>
   );
 };

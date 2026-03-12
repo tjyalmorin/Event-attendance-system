@@ -12,7 +12,6 @@ import {
 } from '../../api/participants.api'
 import { getSessionsByEventApi, getScanLogsByEventApi, updateSessionTimesApi, bulkCheckOutApi } from '../../api/scan.api'
 import { Event, Participant, AttendanceSession, ScanLog } from '../../types'
-import Sidebar from '../../components/Sidebar'
 import { useStaffProtection } from '../../hooks/useStaffProtection'
 import EventDetailTabs, { AssignedStaff, TabType } from './EventDetailTabs'
 import EditEventModal from '../../components/EditEventModal'
@@ -762,10 +761,7 @@ export default function EventDetail() {
   // JSX
   // ─────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f] flex">
-      <Sidebar userRole={isAdmin ? 'admin' : 'staff'} />
-
-      <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0">
 
         {/* ── HEADER ── */}
         <header className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a] shadow-sm flex-shrink-0">
@@ -1034,7 +1030,6 @@ export default function EventDetail() {
           />
 
         </div>
-      </div>
 
       {/* ── EDIT EVENT MODAL ── */}
       {editModalOpen && (

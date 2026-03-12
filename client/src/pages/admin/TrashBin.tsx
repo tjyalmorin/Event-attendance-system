@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getTrashedEventsApi, restoreEventApi, permanentDeleteEventApi } from '../../api/events.api'
 import { Event } from '../../types'
-import Sidebar from '../../components/Sidebar'
 
 // ── Icons ──
 const TrashIcon = () => (
@@ -54,7 +53,6 @@ const SuccessToast: React.FC<{ message: string }> = ({ message }) => (
 
 const TrashBin: React.FC = () => {
   const navigate = useNavigate()
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
 
   const [trashedEvents, setTrashedEvents] = useState<Event[]>([])
   const [trashLoading, setTrashLoading] = useState(true)
@@ -164,10 +162,7 @@ const TrashBin: React.FC = () => {
   const pendingDeleteEvents = trashedEvents.filter(e => pendingDeleteIds.includes(e.event_id))
 
   return (
-    <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
-      <Sidebar userRole={user.role === 'staff' ? 'staff' : 'admin'} />
-
-      <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto">
         {/* Header */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
           <div className="px-12 h-[76px] flex items-center">
@@ -355,7 +350,6 @@ const TrashBin: React.FC = () => {
             </p>
           )}
         </div>
-      </div>
 
       {/* ── Delete Forever Confirmation Modal ── */}
       {showDeleteConfirm && (
