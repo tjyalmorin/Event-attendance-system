@@ -9,11 +9,11 @@ const pool = new Pool({
   // Port 6543 = Supabase's PgBouncer transaction pooler.
   // This is the correct port for high-concurrency apps — it multiplexes
   // many app connections onto a smaller number of real Postgres connections.
-  user:     'postgres.sxuvmzgjpnncekdmrtmj',
-  host:     'aws-1-ap-south-1.pooler.supabase.com',
-  database: 'postgres',
-  password: 'Primeloga1prime',
-  port:     6543,
+  user:     process.env.DB_USER,
+  host:     process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port:     Number(process.env.DB_PORT) || 6543,
   ssl:      { rejectUnauthorized: false },
 
   // ── Connection Pool Tuning (FIXED for spike load) ──────────────────────────
