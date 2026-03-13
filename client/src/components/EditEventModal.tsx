@@ -608,7 +608,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                 {slideshowPreviews.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-3">
                     {slideshowPreviews.map((src, idx) => {
-                      const isExisting = idx < ((event as any).slideshow_urls?.length ?? 0) - removedSlideshowUrls.length + (slideshowPreviews.length - slideshowFiles.length - ((event as any).slideshow_urls?.length ?? 0) + removedSlideshowUrls.length);
                       return (
                         <div key={idx} className="relative w-[90px] h-[68px] rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a] group flex-shrink-0">
                           <img src={src} alt={`Slide ${idx + 1}`} className="w-full h-full object-cover" />
@@ -618,7 +617,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                             onClick={() => {
                               const existingUrls: string[] = (event as any).slideshow_urls ?? [];
                               // Determine if this preview is an existing URL or a new file
-                              const existingInPreview = slideshowPreviews.filter(p => existingUrls.includes(p));
                               if (existingUrls.includes(src)) {
                                 setRemovedSlideshowUrls(prev => [...prev, src]);
                               } else {
