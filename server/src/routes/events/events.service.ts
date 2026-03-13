@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { CreateEventPayload, UpdateEventPayload } from '../../types/event.types.js'
 import { NotFoundError, ValidationError, AppError } from '../../errors/AppError.js'
 
-// ── ID validation helper (fixes #7, #8) ───────────────────
+// ── ID validation helper ───────────────────────────────────
 const validateEventId = (id: number) => {
   if (!id || isNaN(id) || id < 1) {
     throw new ValidationError('Invalid event ID: must be a positive integer')
@@ -114,7 +114,6 @@ export const getAllEventsService = async (userId?: string, userRole?: string, _u
 }
 
 export const getEventByIdService = async (event_id: number) => {
-  // ── FIX #7, #8: Validate ID before hitting DB ──────────────────────────
   validateEventId(event_id)
 
   const result = await pool.query(
@@ -138,7 +137,6 @@ export const getEventByIdService = async (event_id: number) => {
     [event_id]
   )
 
-  // ── FIX #6: Use NotFoundError so errorHandler returns 404 ───────────────
   if (!result.rows[0]) throw new NotFoundError('Event not found')
   return result.rows[0]
 }
@@ -159,14 +157,29 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
   const merged = { ...current, ...payload }
 
   // ── Compute new slideshow_urls array ───────────────────
-  // Start with the existing array from DB
-  const existingUrls: string[] = Array.isArray(current.slideshow_urls) ? current.slideshow_urls : []
-  // Remove any URLs flagged for removal
-  const removedUrls: string[] = payload.remove_slideshow_urls ?? []
+  const existingUrls: string[] = Array.isArray(current.slideshow_urls)
+    ? current.slideshow_urls
+    : []
+
+  const removedUrls: string[] = Array.isArray(payload.remove_slideshow_urls)
+    ? payload.remove_slideshow_urls
+    : (typeof payload.remove_slideshow_urls === 'string'
+        ? JSON.parse(payload.remove_slideshow_urls)
+        : [])
+
+  const newUrls: string[] = Array.isArray(payload.new_slideshow_urls)
+    ? payload.new_slideshow_urls
+    : []
+
+  console.log('=== SLIDESHOW DEBUG ===')
+  console.log('existingUrls:', JSON.stringify(existingUrls))
+  console.log('removedUrls:', JSON.stringify(removedUrls))
+
   const keptUrls = existingUrls.filter(url => !removedUrls.includes(url))
-  // Append new uploads, capped at 5 total
-  const newUrls: string[] = payload.new_slideshow_urls ?? []
   const finalUrls = [...keptUrls, ...newUrls].slice(0, 5)
+
+  console.log('keptUrls:', JSON.stringify(keptUrls))
+  console.log('finalUrls:', JSON.stringify(finalUrls))
 
   const result = await pool.query(
     `UPDATE events
@@ -217,7 +230,6 @@ export const softDeleteEventService = async (event_id: number) => {
     'UPDATE events SET deleted_at = NOW() WHERE event_id = $1 AND deleted_at IS NULL RETURNING event_id',
     [event_id]
   )
-  // ── FIX #9: Use NotFoundError so errorHandler returns 404 ───────────────
   if (!result.rows[0]) throw new NotFoundError('Event not found')
 }
 
@@ -291,14 +303,12 @@ export const restoreEventService = async (event_id: number) => {
 export const permanentDeleteEventService = async (event_id: number) => {
   validateEventId(event_id)
 
-  // ── FIX #10: Check event exists first ────────────────────────────────────
   const eventCheck = await pool.query(
     `SELECT event_id, deleted_at FROM events WHERE event_id = $1`,
     [event_id]
   )
   if (!eventCheck.rows[0]) throw new NotFoundError('Event not found')
 
-  // ── FIX #10: Must be soft-deleted first — return 400 if not ─────────────
   if (!eventCheck.rows[0].deleted_at) {
     throw new AppError('Event must be soft-deleted before permanent deletion', 400)
   }
@@ -343,19 +353,14 @@ export const restoreArchivedEventService = async (event_id: number) => {
   return result.rows[0]
 }
 
-// ── Feature 5: Copy Event ─────────────────────────────────────────────────────
-
 export const copyEventService = async (event_id: number, created_by: string) => {
-  // 1. Fetch the original event
   const original = await getEventByIdService(event_id)
 
-  // 2. Fetch its branches
   const branchesResult = await pool.query(
     `SELECT branch_name, team_names FROM event_branches WHERE event_id = $1`,
     [event_id]
   )
 
-  // 3. Create the new event as draft with modified title
   const registration_link = `${uuidv4().split('-')[0]}-${Date.now()}`
 
   const result = await pool.query(
@@ -372,7 +377,7 @@ export const copyEventService = async (event_id: number, created_by: string) => 
       original.event_date,
       original.start_time,
       original.end_time,
-      null, // registration window intentionally reset
+      null,
       null,
       original.venue,
       original.checkin_cutoff,
@@ -384,7 +389,6 @@ export const copyEventService = async (event_id: number, created_by: string) => 
 
   const newEvent = result.rows[0]
 
-  // 4. Copy event_branches (staff permissions are NOT copied — fresh draft)
   for (const branch of branchesResult.rows) {
     await pool.query(
       `INSERT INTO event_branches (event_id, branch_name, team_names)
