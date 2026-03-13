@@ -1,9 +1,9 @@
-import pool from '../../config/database'
+import pool from '../../config/database.js'
 import {
   FixCheckinPayload,
   ForceCheckoutPayload,
   EarlyOutPayload
-} from '../../types/override.types'
+} from '../../types/override.types.js'
 
 // ── Fix Wrong Check-in Time / Manual Check-in ────────────
 export const fixCheckinService = async (payload: FixCheckinPayload, admin_id: string) => {
@@ -12,9 +12,7 @@ export const fixCheckinService = async (payload: FixCheckinPayload, admin_id: st
   if (!adjusted_time) throw new Error('Adjusted time is required')
   if (!reason?.trim()) throw new Error('Reason is required')
 
-  // session_id === 0 means "create a new attendance session" (manual check-in)
   if (!session_id || session_id === 0) {
-    // Check participant isn't already checked in for this event
     const existing = await pool.query(
       `SELECT session_id FROM attendance_sessions
        WHERE participant_id = $1 AND event_id = $2 AND check_out_time IS NULL`,
@@ -46,7 +44,6 @@ export const fixCheckinService = async (payload: FixCheckinPayload, admin_id: st
     }
   }
 
-  // Otherwise update an existing session's check-in time
   const sessionResult = await pool.query(
     'SELECT * FROM attendance_sessions WHERE session_id = $1',
     [session_id]
@@ -57,9 +54,7 @@ export const fixCheckinService = async (payload: FixCheckinPayload, admin_id: st
   const original_time = session.check_in_time
 
   await pool.query(
-    `UPDATE attendance_sessions
-     SET check_in_time = $1, updated_at = NOW()
-     WHERE session_id = $2`,
+    `UPDATE attendance_sessions SET check_in_time = $1, updated_at = NOW() WHERE session_id = $2`,
     [adjusted_time, session_id]
   )
 

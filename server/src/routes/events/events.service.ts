@@ -1,6 +1,14 @@
 import pool from '../../config/database.js'
 import { v4 as uuidv4 } from 'uuid'
-import { CreateEventPayload, UpdateEventPayload } from '../../types/event.types'
+import { CreateEventPayload, UpdateEventPayload } from '../../types/event.types.js'
+import { NotFoundError, ValidationError, AppError } from '../../errors/AppError.js'
+
+// ── ID validation helper (fixes #7, #8) ───────────────────
+const validateEventId = (id: number) => {
+  if (!id || isNaN(id) || id < 1) {
+    throw new ValidationError('Invalid event ID: must be a positive integer')
+  }
+}
 
 export const createEventService = async (created_by: string, payload: CreateEventPayload) => {
   const registration_link = `${uuidv4().split('-')[0]}-${Date.now()}`
@@ -11,6 +19,8 @@ export const createEventService = async (created_by: string, payload: CreateEven
        registration_start, registration_end, venue, checkin_cutoff,
        registration_link, slideshow_urls, preset_url, status)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft')
+       registration_link, poster_url, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft')
      RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date, 0::int as registered_count`,
     [
       created_by, payload.title, payload.description, payload.event_date,
@@ -18,13 +28,12 @@ export const createEventService = async (created_by: string, payload: CreateEven
       payload.registration_end, payload.venue,
       payload.checkin_cutoff, registration_link,
       payload.slideshow_urls ?? [],
-      payload.preset_url ?? null,
+      payload.preset_url ?? null
     ]
   )
 
   const event = result.rows[0]
 
-  // ── Insert event_branches ──────────────────────────────
   if (payload.event_branches && payload.event_branches.length > 0) {
     for (const b of payload.event_branches) {
       await pool.query(
@@ -36,7 +45,6 @@ export const createEventService = async (created_by: string, payload: CreateEven
     }
   }
 
-  // ── Assign staff ───────────────────────────────────────
   if (payload.staff_ids && payload.staff_ids.length > 0) {
     for (const uid of payload.staff_ids) {
       await pool.query(
@@ -52,8 +60,6 @@ export const createEventService = async (created_by: string, payload: CreateEven
 }
 
 export const getAllEventsService = async (userId?: string, userRole?: string, _userBranch?: string) => {
-
-  // Single aggregation JOIN — runs once, not once per event row
   const countJoin = `
     LEFT JOIN (
       SELECT event_id, COUNT(*)::int AS registered_count
@@ -96,7 +102,6 @@ export const getAllEventsService = async (userId?: string, userRole?: string, _u
     return result.rows
   }
 
-  // Fallback
   const result = await pool.query(
     `SELECT e.*,
             TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
@@ -111,6 +116,9 @@ export const getAllEventsService = async (userId?: string, userRole?: string, _u
 }
 
 export const getEventByIdService = async (event_id: number) => {
+  // ── FIX #7, #8: Validate ID before hitting DB ──────────────────────────
+  validateEventId(event_id)
+
   const result = await pool.query(
     `SELECT e.*,
             TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
@@ -131,24 +139,24 @@ export const getEventByIdService = async (event_id: number) => {
      WHERE e.event_id = $1 AND e.deleted_at IS NULL`,
     [event_id]
   )
-  if (!result.rows[0]) throw new Error('Event not found')
+
+  // ── FIX #6: Use NotFoundError so errorHandler returns 404 ───────────────
+  if (!result.rows[0]) throw new NotFoundError('Event not found')
   return result.rows[0]
 }
 
 const getEventDetailsForStaffService = async (event_id: number) => {
   const event = await getEventByIdService(event_id)
-
-  // ── Attach event_branches ──────────────────────────────
   const branchesResult = await pool.query(
     `SELECT branch_name, team_names FROM event_branches WHERE event_id = $1 ORDER BY branch_name`,
     [event_id]
   )
   event.event_branches = branchesResult.rows
-
   return event
 }
 
 export const updateEventService = async (event_id: number, payload: UpdateEventPayload) => {
+  validateEventId(event_id)
   const current = await getEventByIdService(event_id)
   const merged = { ...current, ...payload }
 
@@ -169,7 +177,7 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
          registration_start=$9, registration_end=$10,
          slideshow_urls=$11, preset_url=$12,
          version=version+1, updated_at=NOW()
-     WHERE event_id=$13 AND deleted_at IS NULL
+     WHERE event_id=$11 AND deleted_at IS NULL
      RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date`,
     [
       merged.title, merged.description, merged.event_date, merged.start_time,
@@ -180,27 +188,22 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
     ]
   )
 
-  // ── Update event_branches if provided ──────────────────
   if (payload.event_branches && payload.event_branches.length > 0) {
     await pool.query(`DELETE FROM event_branches WHERE event_id = $1`, [event_id])
     for (const branch of payload.event_branches) {
       await pool.query(
-        `INSERT INTO event_branches (event_id, branch_name, team_names)
-         VALUES ($1, $2, $3)`,
+        `INSERT INTO event_branches (event_id, branch_name, team_names) VALUES ($1, $2, $3)`,
         [event_id, branch.branch_name, branch.teams]
       )
     }
   }
 
-  // ── Update staff permissions if provided ───────────────
   if (payload.staff_ids !== undefined) {
     await pool.query(`DELETE FROM event_permissions WHERE event_id = $1`, [event_id])
     if (payload.staff_ids && payload.staff_ids.length > 0) {
       for (const uid of payload.staff_ids) {
         await pool.query(
-          `INSERT INTO event_permissions (event_id, user_id)
-           VALUES ($1, $2)
-           ON CONFLICT (event_id, user_id) DO NOTHING`,
+          `INSERT INTO event_permissions (event_id, user_id) VALUES ($1, $2) ON CONFLICT (event_id, user_id) DO NOTHING`,
           [event_id, uid]
         )
       }
@@ -211,11 +214,13 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
 }
 
 export const softDeleteEventService = async (event_id: number) => {
+  validateEventId(event_id)
   const result = await pool.query(
     'UPDATE events SET deleted_at = NOW() WHERE event_id = $1 AND deleted_at IS NULL RETURNING event_id',
     [event_id]
   )
-  if (!result.rows[0]) throw new Error('Event not found')
+  // ── FIX #9: Use NotFoundError so errorHandler returns 404 ───────────────
+  if (!result.rows[0]) throw new NotFoundError('Event not found')
 }
 
 export const assignPermissionService = async (event_id: number, user_id: string) => {
@@ -228,8 +233,6 @@ export const assignPermissionService = async (event_id: number, user_id: string)
   )
   return result.rows[0]
 }
-
-// ── Staff management ──────────────────────────────────────────────────────────
 
 export const getEventStaffService = async (event_id: number) => {
   const result = await pool.query(
@@ -247,16 +250,12 @@ export const getEventStaffService = async (event_id: number) => {
 
 export const removeEventStaffService = async (event_id: number, user_id: string) => {
   const result = await pool.query(
-    `DELETE FROM event_permissions
-     WHERE event_id = $1 AND user_id = $2
-     RETURNING permission_id`,
+    `DELETE FROM event_permissions WHERE event_id = $1 AND user_id = $2 RETURNING permission_id`,
     [event_id, user_id]
   )
-  if (!result.rows[0]) throw new Error('Permission not found')
+  if (!result.rows[0]) throw new NotFoundError('Permission not found')
   return result.rows[0]
 }
-
-// ── Feature 3: Trash Bin ──────────────────────────────────────────────────────
 
 export const getTrashedEventsService = async () => {
   const result = await pool.query(
@@ -277,7 +276,6 @@ export const getTrashedEventsService = async () => {
   return result.rows
 }
 
-// ── BUG FIX: Also reset status if it was 'archived' before being trashed.
 export const restoreEventService = async (event_id: number) => {
   const result = await pool.query(
     `UPDATE events
@@ -288,16 +286,24 @@ export const restoreEventService = async (event_id: number) => {
      RETURNING event_id, title`,
     [event_id]
   )
-  if (!result.rows[0]) throw new Error('Event not found in trash')
+  if (!result.rows[0]) throw new NotFoundError('Event not found in trash')
   return result.rows[0]
 }
 
 export const permanentDeleteEventService = async (event_id: number) => {
-  const check = await pool.query(
-    `SELECT event_id FROM events WHERE event_id = $1 AND deleted_at IS NOT NULL`,
+  validateEventId(event_id)
+
+  // ── FIX #10: Check event exists first ────────────────────────────────────
+  const eventCheck = await pool.query(
+    `SELECT event_id, deleted_at FROM events WHERE event_id = $1`,
     [event_id]
   )
-  if (!check.rows[0]) throw new Error('Event not found in trash')
+  if (!eventCheck.rows[0]) throw new NotFoundError('Event not found')
+
+  // ── FIX #10: Must be soft-deleted first — return 400 if not ─────────────
+  if (!eventCheck.rows[0].deleted_at) {
+    throw new AppError('Event must be soft-deleted before permanent deletion', 400)
+  }
 
   await pool.query('DELETE FROM scan_logs WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM attendance_sessions WHERE event_id = $1', [event_id])
@@ -307,8 +313,6 @@ export const permanentDeleteEventService = async (event_id: number) => {
   await pool.query('DELETE FROM event_branches WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM events WHERE event_id = $1', [event_id])
 }
-
-// ── Feature 4: Archive ────────────────────────────────────────────────────────
 
 export const getArchivedEventsService = async () => {
   const result = await pool.query(
@@ -337,7 +341,7 @@ export const restoreArchivedEventService = async (event_id: number) => {
      RETURNING event_id, title`,
     [event_id]
   )
-  if (!result.rows[0]) throw new Error('Archived event not found')
+  if (!result.rows[0]) throw new NotFoundError('Archived event not found')
   return result.rows[0]
 }
 

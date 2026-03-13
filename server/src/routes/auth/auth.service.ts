@@ -1,17 +1,15 @@
-import pool from '../../config/database'
+import pool from '../../config/database.js'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import crypto from 'crypto'
 import nodemailer from 'nodemailer'
+import { UnauthorizedError, ValidationError, AppError } from '../../errors/AppError.js'
 
 export const loginService = async (email: string, password: string) => {
-  // Validate inputs
-  if (!email || typeof email !== 'string') throw new Error('Valid email is required')
-  if (!password || typeof password !== 'string') throw new Error('Password is required')
-  if (email.length > 255) throw new Error('Invalid email')
-  if (password.length > 128) throw new Error('Invalid password')
+  if (!email || typeof email !== 'string') throw new ValidationError('Valid email is required')
+  if (!password || typeof password !== 'string') throw new ValidationError('Password is required')
+  if (email.length > 255) throw new ValidationError('Invalid email')
+  if (password.length > 128) throw new ValidationError('Invalid password')
 
-  // Sanitize
   const sanitizedEmail = email.trim().toLowerCase()
 
   const result = await pool.query(
@@ -19,13 +17,21 @@ export const loginService = async (email: string, password: string) => {
     [sanitizedEmail]
   )
   const user = result.rows[0]
-  if (!user) throw new Error('Invalid email or password')
 
-  const isMatch = await bcrypt.compare(password, user.password_hash)
-  if (!isMatch) throw new Error('Invalid email or password')
+  // ── FIX #1: Use UnauthorizedError so errorHandler returns 401 ────────────
+  if (!user) throw new UnauthorizedError('Invalid email or password')
 
-  // ── Block deactivated accounts ─────────────────────────
-  if (!user.is_active) throw new Error('Your account has been deactivated. Please contact your administrator.')
+  // ── FIX #1: Wrap bcrypt.compare in try-catch, throw 401 on mismatch ─────
+  let isMatch: boolean
+  try {
+    isMatch = await bcrypt.compare(password, user.password_hash)
+  } catch {
+    throw new UnauthorizedError('Invalid email or password')
+  }
+  if (!isMatch) throw new UnauthorizedError('Invalid email or password')
+
+  // ── Block deactivated accounts ──────────────────────────────────────────
+  if (!user.is_active) throw new AppError('Your account has been deactivated. Please contact your administrator.', 403)
 
   const token = jwt.sign(
     { user_id: user.user_id, role: user.role },
@@ -42,7 +48,7 @@ export const getMeService = async (user_id: string) => {
     'SELECT user_id, agent_code, full_name, email, branch_name, team_name, role FROM users WHERE user_id = $1 AND deleted_at IS NULL',
     [user_id]
   )
-  if (!result.rows[0]) throw new Error('User not found')
+  if (!result.rows[0]) throw new AppError('User not found', 404)
   return result.rows[0]
 }
 
@@ -65,7 +71,7 @@ const sendEmail = async (to: string, subject: string, html: string) => {
 
 // ── Step 1: Send OTP ───────────────────────────────────────
 export const sendOtpService = async (email: string) => {
-  if (!email?.trim()) throw new Error('Email is required')
+  if (!email?.trim()) throw new ValidationError('Email is required')
 
   const result = await pool.query(
     `SELECT * FROM users WHERE email = $1 AND deleted_at IS NULL AND role = 'admin'`,
@@ -76,14 +82,11 @@ export const sendOtpService = async (email: string) => {
   // Always return success even if not found (security best practice)
   if (!user) return { message: 'If that admin email exists, an OTP has been sent.' }
 
-  // Generate 6-digit OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString()
-  const expires = new Date(Date.now() + 1000 * 60 * 10) // 10 minutes
+  const expires = new Date(Date.now() + 1000 * 60 * 10)
 
   await pool.query(
-    `UPDATE users
-     SET otp_code = $1, otp_expires = $2, otp_verified = FALSE
-     WHERE user_id = $3`,
+    `UPDATE users SET otp_code = $1, otp_expires = $2, otp_verified = FALSE WHERE user_id = $3`,
     [otp, expires, user.user_id]
   )
 
@@ -110,8 +113,8 @@ export const sendOtpService = async (email: string) => {
 
 // ── Step 2: Verify OTP ─────────────────────────────────────
 export const verifyOtpService = async (email: string, otp: string) => {
-  if (!email?.trim()) throw new Error('Email is required')
-  if (!otp?.trim()) throw new Error('OTP is required')
+  if (!email?.trim()) throw new ValidationError('Email is required')
+  if (!otp?.trim()) throw new ValidationError('OTP is required')
 
   const result = await pool.query(
     `SELECT * FROM users
@@ -123,9 +126,10 @@ export const verifyOtpService = async (email: string, otp: string) => {
     [email.trim().toLowerCase(), otp.trim()]
   )
   const user = result.rows[0]
-  if (!user) throw new Error('Invalid or expired OTP. Please try again.')
 
-  // Mark OTP as verified
+  // ── FIX #3: Use ValidationError so errorHandler returns 400 ─────────────
+  if (!user) throw new ValidationError('Invalid or expired OTP. Please try again.')
+
   await pool.query(
     `UPDATE users SET otp_verified = TRUE WHERE user_id = $1`,
     [user.user_id]
@@ -136,8 +140,8 @@ export const verifyOtpService = async (email: string, otp: string) => {
 
 // ── Step 3: Reset Password ─────────────────────────────────
 export const resetPasswordService = async (email: string, newPassword: string) => {
-  if (!email?.trim()) throw new Error('Email is required')
-  if (!newPassword || newPassword.length < 6) throw new Error('Password must be at least 6 characters')
+  if (!email?.trim()) throw new ValidationError('Email is required')
+  if (!newPassword || newPassword.length < 6) throw new ValidationError('Password must be at least 6 characters')
 
   const result = await pool.query(
     `SELECT * FROM users
@@ -149,7 +153,7 @@ export const resetPasswordService = async (email: string, newPassword: string) =
     [email.trim().toLowerCase()]
   )
   const user = result.rows[0]
-  if (!user) throw new Error('Session expired. Please restart the forgot password process.')
+  if (!user) throw new ValidationError('Session expired. Please restart the forgot password process.')
 
   const password_hash = await bcrypt.hash(newPassword, 10)
 
