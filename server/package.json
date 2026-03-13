@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Backend API for QR Event Attendance System",
   "main": "dist/server.js",
-  "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
