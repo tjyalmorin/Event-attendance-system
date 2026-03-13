@@ -23,13 +23,12 @@ router.get('/archived', authenticate, roleGuard('admin'), getArchivedEvents)
 // ── Standard routes ───────────────────────────────────────────
 router.get('/', authenticate, getAllEvents)
 
-// ── FIX #4, #5: Add validate(createEventSchema) BEFORE controller ───────────
 // uploadPoster.any() runs first (handles multipart), then Zod validates the body
 router.post('/', authenticate, roleGuard('admin'), uploadPoster.any(), validate(createEventSchema), createEvent)
 
 // ── Event-specific routes ─────────────────────────────────────
 router.get('/:event_id',    getEventById)  // ← PUBLIC: used by RegistrationPage
-router.put('/:event_id',    authenticate, roleGuard('admin'), validate(updateEventSchema), updateEvent)
+router.put('/:event_id',    authenticate, roleGuard('admin'), uploadPoster.any(), validate(updateEventSchema), updateEvent)
 router.delete('/:event_id', authenticate, roleGuard('admin'), deleteEvent)
 
 router.post('/:event_id/copy',              authenticate, roleGuard('admin'), copyEvent)
