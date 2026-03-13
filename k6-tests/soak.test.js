@@ -36,6 +36,7 @@ export const options = {
     { duration: '2m',  target: 0  },  // ramp down
   ],
 
+
   thresholds: {
     // Soak thresholds — moderate load so these should be comfortable
     http_req_failed:   ['rate<0.05'],    // fail if >5% network errors
@@ -209,4 +210,24 @@ export function handleSummary(data) {
   console.log('⚠️  Bad:  response times climb steadily (memory leak)')
   console.log('❌ Fatal: server crash or OOM kill')
   return {}
+}
+
+// ── Teardown: remind to clean up via Supabase SQL ─────────────
+// Deleting 3000+ participants one-by-one via API is too slow for k6 teardown.
+// Run this in Supabase SQL editor after each soak test instead:
+//
+//   DELETE FROM attendance_sessions WHERE participant_id IN
+//     (SELECT participant_id FROM participants WHERE full_name LIKE 'K6 User%');
+//   DELETE FROM scan_logs WHERE participant_id IN
+//     (SELECT participant_id FROM participants WHERE full_name LIKE 'K6 User%');
+//   DELETE FROM participants WHERE full_name LIKE 'K6 User%';
+//
+export function teardown(data) {
+  const { eventId } = data
+  console.log(`\n🧹 Soak test complete — clean up test data in Supabase SQL:`)
+  console.log(`   DELETE FROM attendance_sessions WHERE participant_id IN`)
+  console.log(`     (SELECT participant_id FROM participants WHERE full_name LIKE 'K6 User%');`)
+  console.log(`   DELETE FROM scan_logs WHERE participant_id IN`)
+  console.log(`     (SELECT participant_id FROM participants WHERE full_name LIKE 'K6 User%');`)
+  console.log(`   DELETE FROM participants WHERE full_name LIKE 'K6 User%';`)
 }

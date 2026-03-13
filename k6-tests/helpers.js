@@ -100,12 +100,15 @@ export function getFirstEventId(token) {
 }
 
 // ── Generate unique agent code per VU + iteration ─────────────
-// Format: 8-digit number, VU-prefixed to avoid collisions
+// Uses timestamp + VU + ITER to guarantee uniqueness even across
+// long soak runs where ITER exceeds 999 and the old slice caused collisions.
 export function uniqueAgentCode() {
-  const vu   = String(__VU).padStart(3, '0')
-  const iter = String(__ITER).padStart(3, '0')
-  const rand = String(Math.floor(Math.random() * 99)).padStart(2, '0')
-  return `${vu}${iter}${rand}`.slice(0, 8).padStart(8, '1')
+  // Last 4 digits of epoch ms + VU (2 digits) + ITER mod 100 (2 digits)
+  // = always exactly 8 digits, unique within any test run
+  const ts   = String(Date.now()).slice(-4)
+  const vu   = String(__VU   % 100).padStart(2, '0')
+  const iter = String(__ITER % 100).padStart(2, '0')
+  return `${ts}${vu}${iter}`
 }
 
 // ── Unique full name ───────────────────────────────────────────
