@@ -8,7 +8,8 @@ import {
   createEvent, getAllEvents, getEventById, updateEvent, deleteEvent, assignPermission,
   getTrashedEvents, restoreEvent, permanentDeleteEvent,
   getEventStaff, removeEventStaff,
-  getArchivedEvents, restoreArchivedEvent
+  getArchivedEvents, restoreArchivedEvent,
+  copyEvent
 } from './events.controller.js'
 import { getEventAdminGrants } from '../users/admin-grant.controller.js'
 import { getCancelledParticipantsByEvent } from '../participants/participants.controller.js'
@@ -28,6 +29,7 @@ router.get('/:event_id',    getEventById)  // ← PUBLIC: used by RegistrationPa
 router.put('/:event_id',    authenticate, roleGuard('admin'), uploadPoster.any(), validate(updateEventSchema), updateEvent)
 router.delete('/:event_id', authenticate, roleGuard('admin'), deleteEvent)
 
+router.post('/:event_id/copy',              authenticate, roleGuard('admin'), copyEvent)
 router.post('/:event_id/restore',           authenticate, roleGuard('admin'), restoreEvent)
 router.post('/:event_id/restore-archive',   authenticate, roleGuard('admin'), restoreArchivedEvent)
 router.delete('/:event_id/permanent',       authenticate, roleGuard('admin'), permanentDeleteEvent)

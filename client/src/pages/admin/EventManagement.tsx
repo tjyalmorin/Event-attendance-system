@@ -100,6 +100,13 @@ const PublishIcon = () => (
   </svg>
 );
 
+const DuplicateIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+  </svg>
+);
+
 // ── Computed display status ──
 const getDisplayStatus = (event: Event): string => {
   if (event.status === 'draft') return 'draft';
@@ -425,6 +432,7 @@ const EventManagement: React.FC = () => {
   const [publishLoading, setPublishLoading] = useState(false);
   const [archivingEvent, setArchivingEvent] = useState<Event | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const [copyingEventId, setCopyingEventId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; onUndo?: () => void } | null>(null);
   const [registrationToast, setRegistrationToast] = useState<'opened' | 'closed' | null>(null);
   const [, setUndoSnapshot] = useState<Event | null>(null);
@@ -563,6 +571,21 @@ const EventManagement: React.FC = () => {
       console.error('Failed to archive event:', err);
     } finally {
       setArchiveLoading(false);
+    }
+  };
+
+  // ── Create Copy: stays on EventManagement, just refreshes the list ──
+  const handleCopy = async (event: Event) => {
+    setCopyingEventId(event.event_id);
+    try {
+      await api.post(`/events/${event.event_id}/copy`);
+      setToast({ message: `"Copy of ${event.title}" created as draft` });
+      fetchEvents();
+    } catch (err) {
+      console.error('Failed to copy event:', err);
+      setToast({ message: 'Failed to create copy. Please try again.' });
+    } finally {
+      setCopyingEventId(null);
     }
   };
 
@@ -742,6 +765,7 @@ const EventManagement: React.FC = () => {
                 const isOpen = event.status === 'open';
                 const isClosed = event.status === 'closed';
                 const isDraft = event.status === 'draft';
+                const isCopying = copyingEventId === event.event_id;
                 return (
                   <div key={event.event_id}
                     onClick={() => navigate(`/admin/events/${event.event_id}`)}
@@ -823,6 +847,17 @@ const EventManagement: React.FC = () => {
                                   <LinkIcon /> Registration
                                 </button>
                               )}
+                              {/* ── Create Copy ── */}
+                              <button
+                                onClick={() => { handleCopy(event); setOpenDropdown(null); }}
+                                disabled={isCopying}
+                                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isCopying
+                                  ? <><svg className="animate-spin h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> Copying...</>
+                                  : <><DuplicateIcon /> Create Copy</>
+                                }
+                              </button>
                               <div className="h-px bg-gray-100 dark:bg-[#2a2a2a]" />
                               {displayStatus === 'completed' && (
                                 <button onClick={() => { setArchivingEvent(event); setOpenDropdown(null); }}

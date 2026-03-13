@@ -340,3 +340,56 @@ export const restoreArchivedEventService = async (event_id: number) => {
   if (!result.rows[0]) throw new Error('Archived event not found')
   return result.rows[0]
 }
+
+// ── Feature 5: Copy Event ─────────────────────────────────────────────────────
+
+export const copyEventService = async (event_id: number, created_by: string) => {
+  // 1. Fetch the original event
+  const original = await getEventByIdService(event_id)
+
+  // 2. Fetch its branches
+  const branchesResult = await pool.query(
+    `SELECT branch_name, team_names FROM event_branches WHERE event_id = $1`,
+    [event_id]
+  )
+
+  // 3. Create the new event as draft with modified title
+  const registration_link = `${uuidv4().split('-')[0]}-${Date.now()}`
+
+  const result = await pool.query(
+    `INSERT INTO events
+      (created_by, title, description, event_date, start_time, end_time,
+       registration_start, registration_end, venue, checkin_cutoff,
+       registration_link, poster_url, preset_url, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft')
+     RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date, 0::int as registered_count`,
+    [
+      created_by,
+      `Copy of ${original.title}`,
+      original.description,
+      original.event_date,
+      original.start_time,
+      original.end_time,
+      null, // registration window intentionally reset
+      null,
+      original.venue,
+      original.checkin_cutoff,
+      registration_link,
+      original.poster_url ?? null,
+      original.preset_url ?? null,
+    ]
+  )
+
+  const newEvent = result.rows[0]
+
+  // 4. Copy event_branches (staff permissions are NOT copied — fresh draft)
+  for (const branch of branchesResult.rows) {
+    await pool.query(
+      `INSERT INTO event_branches (event_id, branch_name, team_names)
+       VALUES ($1, $2, $3)`,
+      [newEvent.event_id, branch.branch_name, branch.team_names]
+    )
+  }
+
+  return newEvent
+}
