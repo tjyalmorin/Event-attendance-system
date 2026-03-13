@@ -18,9 +18,7 @@ export const createEventService = async (created_by: string, payload: CreateEven
       (created_by, title, description, event_date, start_time, end_time,
        registration_start, registration_end, venue, checkin_cutoff,
        registration_link, slideshow_urls, preset_url, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft')
-       registration_link, poster_url, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft')
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::text[],$13,'draft')
      RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date, 0::int as registered_count`,
     [
       created_by, payload.title, payload.description, payload.event_date,
@@ -177,7 +175,7 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
          registration_start=$9, registration_end=$10,
          slideshow_urls=$11, preset_url=$12,
          version=version+1, updated_at=NOW()
-     WHERE event_id=$11 AND deleted_at IS NULL
+     WHERE event_id=$13 AND deleted_at IS NULL
      RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date`,
     [
       merged.title, merged.description, merged.event_date, merged.start_time,
