@@ -21,31 +21,36 @@ export const uploadPhoto = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
 })
 
-// ── Poster upload — disk storage ──────────────────────────────
-const POSTER_DIR = path.resolve('uploads/posters')
-if (!fs.existsSync(POSTER_DIR)) fs.mkdirSync(POSTER_DIR, { recursive: true })
+// ── Slideshow images — disk storage ──────────────────────────
+const SLIDESHOW_DIR = path.resolve('uploads/slideshow')
+if (!fs.existsSync(SLIDESHOW_DIR)) fs.mkdirSync(SLIDESHOW_DIR, { recursive: true })
 
-const posterStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, POSTER_DIR),
+const slideshowStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, SLIDESHOW_DIR),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase()
-    const name = `poster-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`
+    const name = `slide-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`
     cb(null, name)
   },
 })
 
-const posterFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const slideshowFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowed = ['.jpg', '.jpeg', '.png', '.webp']
   const ext = path.extname(file.originalname).toLowerCase()
   if (allowed.includes(ext)) {
     cb(null, true)
   } else {
-    cb(new Error('Only JPG, PNG, or WEBP files are allowed for posters'))
+    cb(new Error('Only JPG, PNG, or WEBP files are allowed for slideshow images'))
   }
 }
 
-export const uploadPoster = multer({
-  storage: posterStorage,
-  fileFilter: posterFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+// uploadSlideshow handles both single poster (legacy) and multiple slideshow_images
+export const uploadSlideshow = multer({
+  storage: slideshowStorage,
+  fileFilter: slideshowFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
 })
+
+// Keep uploadPoster as alias so events.routes.ts import doesn't break
+// — it now points to the same multer instance
+export const uploadPoster = uploadSlideshow

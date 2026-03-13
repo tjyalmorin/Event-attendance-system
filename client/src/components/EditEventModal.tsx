@@ -216,12 +216,14 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
   const [registrationStart, setRegistrationStart] = useState<Date | null>(safeDate(event.registration_start));
   const [registrationEnd, setRegistrationEnd] = useState<Date | null>(safeDate(event.registration_end));
 
-  // ── Poster ──
-  const [posterFile, setPosterFile] = useState<File | null>(null);
-  const [posterPreview, setPosterPreview] = useState<string | null>(
-    (event as any).poster_url ? (event as any).poster_url : null
-  );
-  const [removePoster, setRemovePoster] = useState(false);
+  // ── Slideshow images ──
+  const [slideshowFiles, setSlideshowFiles] = useState<File[]>([]);
+  const [slideshowPreviews, setSlideshowPreviews] = useState<string[]>(() => {
+    const existing = (event as any).slideshow_urls;
+    return Array.isArray(existing) ? existing : [];
+  });
+  const [removedSlideshowUrls, setRemovedSlideshowUrls] = useState<string[]>([]);
+  const slideshowInputRef = useRef<HTMLInputElement>(null);
 
   // ── Preset (Card image) ──
   const [selectedPreset, setSelectedPreset] = useState<string | null>(
@@ -416,8 +418,8 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
       toHHMM(dateToTimeStr(checkinCutoff)) !== toHHMM(orig.checkinCutoff) ||
       toMinute(registrationStart) !== origRegStart ||
       toMinute(registrationEnd) !== origRegEnd ||
-      posterFile !== null ||
-      removePoster ||
+      slideshowFiles.length > 0 ||
+      removedSlideshowUrls.length > 0 ||
       removePreset ||
       selectedPreset !== ((event as any).preset_url ? (PRESET_IMAGES.find(p => p.url === (event as any).preset_url)?.id ?? null) : null) ||
       branchesChanged ||
@@ -452,50 +454,29 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
     }
     setLoading(true);
     try {
-      // If there's a poster file, use multipart — otherwise use JSON
-      if (posterFile || removePoster) {
-        const fd = new FormData();
-        fd.append('title', title);
-        fd.append('description', description || '');
-        fd.append('event_date', eventDate
-          ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}`
-          : '');
-        fd.append('start_time', dateToTimeStr(startTime) || '');
-        fd.append('end_time', dateToTimeStr(endTime) || '');
-        fd.append('venue', venue);
-        fd.append('checkin_cutoff', dateToTimeStr(checkinCutoff) || '');
-        fd.append('registration_start', registrationStart ? registrationStart.toISOString() : '');
-        fd.append('registration_end', registrationEnd ? registrationEnd.toISOString() : '');
-        fd.append('event_branches', JSON.stringify(selectedBranches));
-        fd.append('staff_ids', JSON.stringify(selectedStaffIds));
-        if (posterFile) fd.append('poster', posterFile);
-        if (removePoster) fd.append('remove_poster', 'true');
-        if (selectedPreset) {
-          const preset = PRESET_IMAGES.find(p => p.id === selectedPreset);
-          if (preset) fd.append('preset_url', preset.url);
-        }
-        if (removePreset) fd.append('preset_url', '');
-        await api.put(`/events/${event.event_id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      } else {
-        await api.put(`/events/${event.event_id}`, {
-          title,
-          description: description || null,
-          event_date: eventDate
-            ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}`
-            : '',
-          start_time: dateToTimeStr(startTime) || null,
-          end_time: dateToTimeStr(endTime) || null,
-          venue,
-          checkin_cutoff: dateToTimeStr(checkinCutoff) || null,
-          registration_start: registrationStart ? registrationStart.toISOString() : null,
-          registration_end: registrationEnd ? registrationEnd.toISOString() : null,
-          event_branches: selectedBranches,
-          staff_ids: selectedStaffIds,
-          preset_url: selectedPreset
-            ? (PRESET_IMAGES.find(p => p.id === selectedPreset)?.url ?? null)
-            : removePreset ? null : (event as any).preset_url ?? null,
-        });
+      // Always use multipart to support slideshow image uploads
+      const fd = new FormData();
+      fd.append('title', title);
+      fd.append('description', description || '');
+      fd.append('event_date', eventDate
+        ? `${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}`
+        : '');
+      fd.append('start_time', dateToTimeStr(startTime) || '');
+      fd.append('end_time', dateToTimeStr(endTime) || '');
+      fd.append('venue', venue);
+      fd.append('checkin_cutoff', dateToTimeStr(checkinCutoff) || '');
+      fd.append('registration_start', registrationStart ? registrationStart.toISOString() : '');
+      fd.append('registration_end', registrationEnd ? registrationEnd.toISOString() : '');
+      fd.append('event_branches', JSON.stringify(selectedBranches));
+      fd.append('staff_ids', JSON.stringify(selectedStaffIds));
+      slideshowFiles.forEach(f => fd.append('slideshow_images', f));
+      if (removedSlideshowUrls.length > 0) fd.append('remove_slideshow_urls', JSON.stringify(removedSlideshowUrls));
+      if (selectedPreset) {
+        const preset = PRESET_IMAGES.find(p => p.id === selectedPreset);
+        if (preset) fd.append('preset_url', preset.url);
       }
+      if (removePreset) fd.append('preset_url', '');
+      await api.put(`/events/${event.event_id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       onSuccess();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to update event');
@@ -609,41 +590,105 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                 </div>
               )}
 
-              {/* ── Event Poster (Registration Page) ── */}
+              {/* ── Slideshow Images (Registration Page) ── */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    Event Poster <span className="text-gray-400 font-normal">(Optional)</span>
+                    Slideshow Images <span className="text-gray-400 font-normal">(Optional)</span>
                   </label>
-                  {posterPreview && (
-                    <button type="button" onClick={() => { setPosterFile(null); setPosterPreview(null); setRemovePoster(true); }}
-                      className="text-xs font-semibold text-red-600 border border-red-200 dark:border-red-900 rounded-lg px-3 py-1.5 hover:border-red-400 transition-colors">
-                      Remove
-                    </button>
-                  )}
+                  <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">
+                    {slideshowPreviews.length}/5
+                  </span>
                 </div>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Shown on the <span className="font-semibold text-gray-500 dark:text-gray-400">Registration Page</span>. Upload a custom image for this event.</p>
-                {posterPreview ? (
-                  <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a]" style={{ maxHeight: 200 }}>
-                    <img src={posterPreview} alt="Poster preview" className="w-full object-cover" style={{ maxHeight: 200 }} />
-                    <div className="absolute inset-0 bg-black/10" />
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                  Shown as a slideshow on the <span className="font-semibold text-gray-500 dark:text-gray-400">Registration Page</span>. If none, the default Pru Life slides will show instead.
+                </p>
+
+                {/* Image thumbnails */}
+                {slideshowPreviews.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {slideshowPreviews.map((src, idx) => {
+                      const isExisting = idx < ((event as any).slideshow_urls?.length ?? 0) - removedSlideshowUrls.length + (slideshowPreviews.length - slideshowFiles.length - ((event as any).slideshow_urls?.length ?? 0) + removedSlideshowUrls.length);
+                      return (
+                        <div key={idx} className="relative w-[90px] h-[68px] rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a] group flex-shrink-0">
+                          <img src={src} alt={`Slide ${idx + 1}`} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const existingUrls: string[] = (event as any).slideshow_urls ?? [];
+                              // Determine if this preview is an existing URL or a new file
+                              const existingInPreview = slideshowPreviews.filter(p => existingUrls.includes(p));
+                              if (existingUrls.includes(src)) {
+                                setRemovedSlideshowUrls(prev => [...prev, src]);
+                              } else {
+                                const newFileIdx = slideshowPreviews.filter(p => !existingUrls.includes(p)).indexOf(src);
+                                setSlideshowFiles(prev => prev.filter((_, i) => i !== newFileIdx));
+                              }
+                              setSlideshowPreviews(prev => prev.filter((_, i) => i !== idx));
+                            }}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
+                              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                          </button>
+                          <span className="absolute bottom-1 left-1.5 text-[9px] font-bold text-white/80 drop-shadow">
+                            {idx + 1}
+                          </span>
+                        </div>
+                      );
+                    })}
+
+                    {/* Add more button */}
+                    {slideshowPreviews.length < 5 && (
+                      <button
+                        type="button"
+                        onClick={() => slideshowInputRef.current?.click()}
+                        className="w-[90px] h-[68px] rounded-xl border-2 border-dashed border-gray-200 dark:border-[#2a2a2a] hover:border-[#DC143C] hover:bg-red-50/20 dark:hover:bg-[#DC143C]/5 transition-all flex flex-col items-center justify-center gap-1 text-gray-400 dark:text-gray-600 flex-shrink-0"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        <span className="text-[10px] font-semibold">Add</span>
+                      </button>
+                    )}
                   </div>
-                ) : (
+                )}
+
+                {/* Empty state */}
+                {slideshowPreviews.length === 0 && (
                   <label className="flex flex-col items-center justify-center gap-2 w-full py-7 bg-gray-50 dark:bg-[#0f0f0f] border-2 border-dashed border-gray-200 dark:border-[#2a2a2a] rounded-xl cursor-pointer hover:border-[#DC143C] hover:bg-red-50/20 dark:hover:bg-[#DC143C]/5 transition-all">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-gray-300 dark:text-gray-600">
                       <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
                     </svg>
-                    <span className="text-sm font-semibold text-gray-400 dark:text-gray-500">Click to upload</span>
-                    <span className="text-xs text-gray-300 dark:text-gray-600">JPG, PNG, WEBP · Max 5MB</span>
+                    <span className="text-sm font-semibold text-gray-400 dark:text-gray-500">Click to upload first image</span>
+                    <span className="text-xs text-gray-300 dark:text-gray-600">JPG, PNG, WEBP · Max 5MB each · Up to 5 images</span>
                     <input type="file" accept="image/*" className="sr-only"
                       onChange={e => {
                         const file = e.target.files?.[0] ?? null;
                         if (!file) return;
-                        if (file.size > 5 * 1024 * 1024) { setError('Poster image must be under 5MB.'); return; }
-                        setPosterFile(file); setPosterPreview(URL.createObjectURL(file)); setRemovePoster(false); setError('');
+                        if (file.size > 5 * 1024 * 1024) { setError('Each image must be under 5MB.'); return; }
+                        if (slideshowPreviews.length >= 5) return;
+                        setSlideshowFiles(prev => [...prev, file]);
+                        setSlideshowPreviews(prev => [...prev, URL.createObjectURL(file)]);
+                        setError('');
                       }} />
                   </label>
                 )}
+
+                {/* Hidden input for Add button */}
+                <input ref={slideshowInputRef} type="file" accept="image/*" className="sr-only"
+                  onChange={e => {
+                    const file = e.target.files?.[0] ?? null;
+                    e.target.value = '';
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) { setError('Each image must be under 5MB.'); return; }
+                    if (slideshowPreviews.length >= 5) return;
+                    setSlideshowFiles(prev => [...prev, file]);
+                    setSlideshowPreviews(prev => [...prev, URL.createObjectURL(file)]);
+                    setError('');
+                  }} />
               </div>
 
               {/* ── Card Preset (EventManagement) ── */}

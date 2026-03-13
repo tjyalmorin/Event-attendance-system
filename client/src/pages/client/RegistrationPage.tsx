@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getEventByIdApi } from '../../api/events.api'
 import { registerParticipantApi } from '../../api/participants.api'
@@ -96,12 +97,6 @@ const IconHome = ({ size = 16, color = 'currentColor' }) => (
   </svg>
 )
 
-const IconClock = ({ size = 16, color = 'currentColor' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-  </svg>
-)
-
 const IconMapPin = ({ size = 16, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
@@ -139,16 +134,142 @@ const IconDollarSign = ({ size = 16, color = 'currentColor' }) => (
   </svg>
 )
 
-const IconFileText = ({ size = 16, color = 'currentColor' }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-    <line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
-    <polyline points="10 9 9 9 8 9" />
-  </svg>
-)
+// ── Custom Select (matches AccountManagement style) ──────────────
+interface SelectOption { label: string; value: string }
+interface CustomSelectProps {
+  value: string
+  onChange: (val: string) => void
+  options: SelectOption[]
+  placeholder?: string
+  disabled?: boolean
+  centered?: boolean
+}
 
-// ── Types ─────────────────────────────────────────────────────────
+const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, placeholder = 'Select...', disabled = false, centered = false }) => {
+  const [open, setOpen] = useState(false)
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 })
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
+  const selected = options.find(o => o.value === value)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!btnRef.current?.contains(e.target as Node) && !dropRef.current?.contains(e.target as Node))
+        setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    window.addEventListener('resize', close)
+    // Only close on scroll events outside the dropdown itself
+    const onScroll = (e: UIEvent) => {
+      if (dropRef.current?.contains(e.target as Node)) return
+      close()
+    }
+    window.addEventListener('scroll', onScroll as EventListener, true)
+    return () => {
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', onScroll as EventListener, true)
+    }
+  }, [open])
+
+  const handleOpen = () => {
+    if (disabled) return
+    if (btnRef.current) {
+      requestAnimationFrame(() => {
+        if (!btnRef.current) return
+        const rect = btnRef.current.getBoundingClientRect()
+        let top: number
+        if (centered) {
+          const dropHeight = Math.min(options.length * 42, 208)
+          const centeredTop = rect.top + rect.height / 2 - dropHeight / 2
+          top = Math.max(12, Math.min(centeredTop, window.innerHeight - dropHeight - 12))
+        } else {
+          top = rect.bottom + 4
+        }
+        setDropPos({ top, left: rect.left, width: rect.width })
+        setOpen(p => !p)
+      })
+    }
+  }
+
+  const dropdown = open ? createPortal(
+    <div
+      ref={dropRef}
+      style={{
+        position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width,
+        zIndex: 99999, background: 'white', border: '1px solid #e5e7eb',
+        borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,0.14)', overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{ maxHeight: 208, overflowY: 'auto' }}
+        onWheel={e => e.stopPropagation()}
+        onTouchMove={e => e.stopPropagation()}
+      >
+        {options.map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => { onChange(opt.value); setOpen(false) }}
+            style={{
+              width: '100%', textAlign: 'left', padding: '10px 16px',
+              fontSize: 13, border: 'none', cursor: 'pointer',
+              background: opt.value === value ? 'rgba(220,20,60,0.07)' : 'white',
+              color: opt.value === value ? '#DC143C' : '#374151',
+              fontWeight: opt.value === value ? 600 : 400,
+              display: 'block',
+            }}
+            onMouseEnter={e => { if (opt.value !== value) (e.currentTarget as HTMLElement).style.background = '#f9fafb' }}
+            onMouseLeave={e => { if (opt.value !== value) (e.currentTarget as HTMLElement).style.background = 'white' }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>,
+    document.body
+  ) : null
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={handleOpen}
+        disabled={disabled}
+        style={{
+          height: 44, width: '100%', borderRadius: 12,
+          border: `1.5px solid ${open ? '#DC143C' : '#e5e7eb'}`,
+          background: open ? 'white' : '#f9fafb',
+          padding: '0 14px', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          outline: 'none', opacity: disabled ? 0.45 : 1,
+          boxShadow: open ? '0 0 0 3px rgba(220,20,60,0.08)' : 'none',
+          transition: 'border-color 0.15s, box-shadow 0.15s',
+          fontFamily: 'inherit',
+        }}
+      >
+        <span style={{ color: selected ? '#1f2937' : '#9ca3af' }}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <svg viewBox="0 0 24 24" fill="none" stroke={open ? '#DC143C' : '#9ca3af'} strokeWidth="2.5"
+          strokeLinecap="round" strokeLinejoin="round" width="13" height="13"
+          style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {dropdown}
+    </>
+  )
+}
+
+
 interface EventBranchEntry {
   branch_name: string
   team_names: string[]
@@ -234,6 +355,10 @@ export default function RegistrationPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [currentSlide, setCurrentSlide] = useState(0)
+  const [isPaused, setIsPaused] = useState(false)
+  const [panelHovered, setPanelHovered] = useState(false)
+  const [mobileBannerTapped, setMobileBannerTapped] = useState(false)
+  const mobileTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [form, setForm] = useState({
     agent_code: '',
     full_name: '',
@@ -242,6 +367,9 @@ export default function RegistrationPage() {
     agent_type: '',
   })
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const isPausedRef = useRef(false)
+
+  useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
 
   useEffect(() => {
     getEventByIdApi(Number(eventId))
@@ -250,23 +378,33 @@ export default function RegistrationPage() {
       .finally(() => setLoading(false))
   }, [eventId])
 
-  // Only run slideshow if no poster
-  useEffect(() => {
-    if (event?.poster_url) return
-    intervalRef.current = setInterval(() => {
-      setCurrentSlide(prev => (prev + 1) % slides.length)
-    }, 4500)
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [event?.poster_url])
+  // Determine active slides — use event's slideshow_urls if present, else default slides
+  const slideshowUrls: string[] = Array.isArray((event as any)?.slideshow_urls) && (event as any).slideshow_urls.length > 0
+    ? (event as any).slideshow_urls
+    : []
+  const useCustomSlideshow = slideshowUrls.length > 0
+  const activeSlideCount = useCustomSlideshow ? slideshowUrls.length : slides.length
 
-  const goToSlide = (i: number) => {
-    if (event?.poster_url) return
-    setCurrentSlide(i)
+  const startInterval = (count: number) => {
     if (intervalRef.current) clearInterval(intervalRef.current)
     intervalRef.current = setInterval(() => {
-      setCurrentSlide(prev => (prev + 1) % slides.length)
+      if (!isPausedRef.current)
+        setCurrentSlide(prev => (prev + 1) % count)
     }, 4500)
   }
+
+  useEffect(() => {
+    startInterval(activeSlideCount)
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
+  }, [activeSlideCount])
+
+  const goToSlide = (i: number) => {
+    setCurrentSlide(i)
+    startInterval(activeSlideCount)
+  }
+
+  const goPrev = () => goToSlide((currentSlide - 1 + activeSlideCount) % activeSlideCount)
+  const goNext = () => goToSlide((currentSlide + 1) % activeSlideCount)
 
   const { branches: allBranches } = useBranches()
   const [agentCodeError, setAgentCodeError] = useState('')
@@ -311,6 +449,8 @@ export default function RegistrationPage() {
     setForm(prev => ({ ...prev, [name]: value }))
   }
 
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (form.agent_code.length !== 8) {
@@ -321,6 +461,12 @@ export default function RegistrationPage() {
       setError('Please select your agent type.')
       return
     }
+    // Show confirmation modal instead of submitting directly
+    setShowConfirmModal(true)
+  }
+
+  const handleConfirmRegister = async () => {
+    setShowConfirmModal(false)
     setSubmitting(true)
     setError('')
     try {
@@ -339,7 +485,7 @@ export default function RegistrationPage() {
       <Styles />
       <div style={s.spinnerWrap}>
         <div className="pru-spinner" />
-        <p style={s.loadingText}>Loading event...</p>
+        <p style={s.loadingText}>Loading registration...</p>
       </div>
     </div>
   )
@@ -370,7 +516,12 @@ export default function RegistrationPage() {
     </div>
   )
 
-  // ── Derived event info ────────────────────────────────────────
+  // Confirmed non-null from here — recompute for render
+  const confirmedSlideshowUrls: string[] = Array.isArray((event as any).slideshow_urls) && (event as any).slideshow_urls.length > 0
+    ? (event as any).slideshow_urls
+    : []
+  const confirmedUseCustom = confirmedSlideshowUrls.length > 0
+
   const formattedDate = new Date(event.event_date).toLocaleDateString('en-PH', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
   })
@@ -378,22 +529,15 @@ export default function RegistrationPage() {
     ? `${formatTime12h(event.start_time)} – ${formatTime12h(event.end_time)}`
     : event.start_time ? formatTime12h(event.start_time) : ''
 
-  const hasPoster = Boolean(event.poster_url)
-  const posterSrc = event.poster_url
-  ? event.poster_url.startsWith('http')
-    ? event.poster_url
-    : event.poster_url   // relative — Vite proxies /uploads → port 5000
-  : null
-
   return (
-    <div style={s.page}>
+    <div style={s.page} className="pru-page">
       <Styles />
       <div style={s.card} className="pru-card">
 
         {/* ── LEFT: FORM PANEL ── */}
-        <div style={s.formPanel}>
+        <div style={s.formPanel} className="pru-form-panel">
           {/* Logo */}
-          <div style={s.logo}>
+          <div style={s.logo} className="pru-logo">
             <div style={s.logoMark}>
               <img
                 src={pruLogo}
@@ -407,69 +551,183 @@ export default function RegistrationPage() {
             </div>
           </div>
 
-          {/* ── Event Info Panel (What / Where / When / Why) ── */}
-          <div style={s.eventInfoBox}>
-            {/* WHAT */}
-            <div style={s.infoRow}>
-              <div style={s.infoRowLeft}>
-                <span style={{ ...s.infoIconBadge, background: '#fef2f2' }}>
-                  <IconFileText size={14} color="#DC143C" />
-                </span>
-              </div>
-              <div style={s.infoRowValue}>{event.title}</div>
-            </div>
+          {/* ── Mobile-only banner slot — appears after logo, before event details ── */}
+          <div className="pru-mobile-banner">
+            <div
+              style={{ position: 'relative', width: '100%', aspectRatio: '3/4', background: '#111', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}
+              onClick={() => {
+                setMobileBannerTapped(true)
+                if (mobileTapTimer.current) clearTimeout(mobileTapTimer.current)
+                mobileTapTimer.current = setTimeout(() => setMobileBannerTapped(false), 3000)
+              }}
+            >
+              {/* Slides */}
+              {confirmedUseCustom ? (
+                <>
+                  {confirmedSlideshowUrls.map((url, i) => (
+                    <div key={i} style={{
+                      position: 'absolute', inset: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      opacity: i === currentSlide ? 1 : 0,
+                      transition: 'opacity 0.9s ease',
+                      zIndex: i === currentSlide ? 1 : 0,
+                    }}>
+                      <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {slides.map((sl, i) => (
+                    <div key={i} style={{
+                      position: 'absolute', inset: 0,
+                      backgroundImage: `url(${sl.image})`,
+                      backgroundSize: 'cover', backgroundPosition: 'center',
+                      opacity: i === currentSlide ? 1 : 0,
+                      transition: 'opacity 0.9s ease',
+                      zIndex: i === currentSlide ? 1 : 0,
+                    }} />
+                  ))}
+                </>
+              )}
 
-            <div style={s.infoDivider} />
+              {/* Prev button */}
+              {activeSlideCount > 1 && (
+                <button
+                  onClick={e => { e.stopPropagation(); goPrev() }}
+                  style={{
+                    position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                    zIndex: 10, width: 36, height: 36, borderRadius: '50%',
+                    background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                    opacity: mobileBannerTapped ? 1 : 0,
+                    transition: 'opacity 0.2s ease',
+                    pointerEvents: mobileBannerTapped ? 'auto' : 'none',
+                  }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 18 9 12 15 6"/>
+                  </svg>
+                </button>
+              )}
 
-            {/* WHERE */}
-            <div style={s.infoRow}>
-              <div style={s.infoRowLeft}>
-                <span style={{ ...s.infoIconBadge, background: '#eff6ff' }}>
-                  <IconMapPin size={14} color="#3b82f6" />
-                </span>
-              </div>
-              <div style={s.infoRowValue}>
-                {event.venue || '—'}
-              </div>
-            </div>
+              {/* Next button */}
+              {activeSlideCount > 1 && (
+                <button
+                  onClick={e => { e.stopPropagation(); goNext() }}
+                  style={{
+                    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                    zIndex: 10, width: 36, height: 36, borderRadius: '50%',
+                    background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                    opacity: mobileBannerTapped ? 1 : 0,
+                    transition: 'opacity 0.2s ease',
+                    pointerEvents: mobileBannerTapped ? 'auto' : 'none',
+                  }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </button>
+              )}
 
-            <div style={s.infoDivider} />
+              {/* Pause / Play */}
+              {activeSlideCount > 1 && (
+                <button
+                  onClick={e => { e.stopPropagation(); setIsPaused(p => !p) }}
+                  style={{
+                    position: 'absolute', bottom: 10, right: 10,
+                    zIndex: 10, width: 38, height: 38, borderRadius: 9,
+                    background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                    opacity: mobileBannerTapped ? 1 : 0,
+                    transition: 'opacity 0.2s ease',
+                    pointerEvents: mobileBannerTapped ? 'auto' : 'none',
+                  }}>
+                  {isPaused ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none">
+                      <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                    </svg>
+                  )}
+                </button>
+              )}
 
-            {/* WHEN */}
-            <div style={s.infoRow}>
-              <div style={s.infoRowLeft}>
-                <span style={{ ...s.infoIconBadge, background: '#f0fdf4' }}>
-                  <IconCalendar size={14} color="#10b981" />
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
-                <div style={s.infoRowValue}>
-                  {formattedDate}
+              {/* Dots */}
+              {activeSlideCount > 1 && (
+                <div style={{
+                  position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
+                  display: 'flex', gap: 6, zIndex: 10,
+                }}>
+                  {Array.from({ length: activeSlideCount }).map((_, i) => (
+                    <div key={i} onClick={() => goToSlide(i)} style={{
+                      width: i === currentSlide ? 20 : 6, height: 6, borderRadius: 3,
+                      background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)',
+                      transition: 'width 0.3s ease, background 0.3s ease',
+                      cursor: 'pointer',
+                    }} />
+                  ))}
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Event Title as heading ── */}
+          <div style={{ marginBottom: 14 }} className="pru-event-title">
+            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#1f2937', lineHeight: 1.2, letterSpacing: '-0.03em' }}>
+              {event.title}
+            </div>
+          </div>
+
+          {/* ── Event Info Box (date, venue, description only) ── */}
+          <div style={s.eventInfoBox} className="pru-info-box">
+            {/* DATE */}
+            <div style={s.infoRow}>
+              <div style={s.infoRowLeft}>
+                <span style={{ ...s.infoIconBadge, background: '#f3f4f6' }}>
+                  <IconCalendar size={14} color="#6b7280" />
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                <div style={s.infoRowValue}>{formattedDate}</div>
                 {timeRange && (
-                  <div style={s.infoRowSub}>
-                    <span style={s.infoCardIconWrap}><IconClock size={12} color="#9ca3af" /></span>
-                    {timeRange}
-                  </div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280' }}>{timeRange}</div>
                 )}
               </div>
             </div>
 
-            {/* WHY — only if description exists */}
+            {/* VENUE */}
+            <div style={s.infoRow}>
+              <div style={s.infoRowLeft}>
+                <span style={{ ...s.infoIconBadge, background: '#f3f4f6' }}>
+                  <IconMapPin size={14} color="#6b7280" />
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                <div style={s.infoRowValue}>Venue</div>
+                <div style={{ fontSize: 12.5, color: '#6b7280', lineHeight: 1.5 }}>{event.venue || '—'}</div>
+              </div>
+            </div>
+
+            {/* DESCRIPTION — only if exists */}
             {event.description && (
-              <>
-                <div style={s.infoDivider} />
-                <div style={s.infoRow}>
-                  <div style={s.infoRowLeft}>
-                    <span style={{ ...s.infoIconBadge, background: '#fffbeb' }}>
-                      <IconInfo size={14} color="#f59e0b" />
-                    </span>
-                  </div>
-                  <div style={{ ...s.infoRowValue, fontWeight: 400, fontSize: 12.5, color: '#4b5563', lineHeight: 1.6, alignItems: 'flex-start' }}>
+              <div style={s.infoRow}>
+                <div style={s.infoRowLeft}>
+                  <span style={{ ...s.infoIconBadge, background: '#f3f4f6' }}>
+                    <IconInfo size={14} color="#6b7280" />
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                  <div style={s.infoRowValue}>Details</div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280', lineHeight: 1.6 }}>
                     {event.description}
                   </div>
                 </div>
-              </>
+              </div>
             )}
           </div>
 
@@ -492,7 +750,7 @@ export default function RegistrationPage() {
                   value={form.agent_code}
                   onChange={handleChange}
                   required
-                  placeholder="8-digit code (e.g. 12345678)"
+                  placeholder="Enter your agent code here..."
                   inputMode="numeric"
                   maxLength={8}
                 />
@@ -508,58 +766,43 @@ export default function RegistrationPage() {
                   value={form.full_name}
                   onChange={handleChange}
                   required
-                  placeholder="e.g. Maria Santos"
+                  placeholder="Enter your full name here..."
                 />
               </div>
               <div style={s.field}>
                 <label style={s.label}>BRANCH NAME</label>
-                <select
-                  className="pru-input"
-                  name="branch_name"
+                <CustomSelect
                   value={form.branch_name}
-                  onChange={handleChange}
-                  required
-                >
-                  <option value="">— Select branch —</option>
-                  {availableBranches.map(b => (
-                    <option key={b.name} value={b.name}>{b.name}</option>
-                  ))}
-                </select>
+                  onChange={val => setForm(prev => ({ ...prev, branch_name: val, team_name: '' }))}
+                  placeholder="— Select branch —"
+                  options={availableBranches.map(b => ({ label: b.name, value: b.name }))}
+                />
               </div>
               <div style={s.field}>
                 <label style={s.label}>TEAM NAME</label>
-                <select
-                  className="pru-input"
-                  name="team_name"
+                <CustomSelect
                   value={form.team_name}
-                  onChange={handleChange}
-                  required
+                  onChange={val => setForm(prev => ({ ...prev, team_name: val }))}
+                  placeholder={form.branch_name ? '— Select team —' : '— Select branch first —'}
                   disabled={!form.branch_name}
-                >
-                  <option value="">
-                    {form.branch_name ? '— Select team —' : '— Select branch first —'}
-                  </option>
-                  {getTeamsForSelectedBranch(form.branch_name).map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+                  options={getTeamsForSelectedBranch(form.branch_name).map(t => ({ label: t, value: t }))}
+                />
               </div>
               <div style={s.field}>
                 <label style={s.label}>AGENT TYPE</label>
-                <select
-                  className="pru-input"
-                  name="agent_type"
+                <CustomSelect
                   value={form.agent_type}
-                  onChange={handleChange}
-                  required
-                >
-                  <option value="">— Select agent type —</option>
-                  <option value="District Manager">District Manager</option>
-                  <option value="Area Manager">Area Manager</option>
-                  <option value="Branch Manager">Branch Manager</option>
-                  <option value="Unit Manager">Unit Manager</option>
-                  <option value="Agent">Agent</option>
-                </select>
+                  onChange={val => setForm(prev => ({ ...prev, agent_type: val }))}
+                  placeholder="— Select agent type —"
+                  centered
+                  options={[
+                    { label: 'District Manager', value: 'District Manager' },
+                    { label: 'Area Manager', value: 'Area Manager' },
+                    { label: 'Branch Manager', value: 'Branch Manager' },
+                    { label: 'Unit Manager', value: 'Unit Manager' },
+                    { label: 'Agent', value: 'Agent' },
+                  ]}
+                />
               </div>
             </div>
 
@@ -582,61 +825,132 @@ export default function RegistrationPage() {
           </form>
         </div>
 
-        {/* ── RIGHT: POSTER or SLIDESHOW ── */}
-        <div style={s.visualPanel} className="pru-visual-panel">
+        {/* ── RIGHT: SLIDESHOW (custom images or default fallback) ── */}
+        <div
+          style={s.visualPanel}
+          className="pru-visual-panel"
+          onMouseEnter={() => setPanelHovered(true)}
+          onMouseLeave={() => setPanelHovered(false)}
+        >
 
-          {hasPoster ? (
-            /* ── POSTER MODE ── */
-            <div style={s.posterWrap}>
-              {/* Top badge */}
-              <div style={s.topBadge}>
-                <div style={s.badgeIcon}>
-                  <img src={pruLogo} alt="PRU LIFE UK" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0 }} />
-                </div>
-                <div>
-                  <div style={s.badgeName}>A1 Prime</div>
-                  <div style={s.badgeSub}>Trusted since 1996</div>
-                </div>
-              </div>
-
-              <img
-                src={posterSrc!}
-                alt={event.title}
-                style={s.posterImg}
-              />
-
-              {/* Bottom overlay with event name */}
-              <div style={s.posterOverlay}>
-                <div style={s.posterEventLabel}>NOW OPEN FOR REGISTRATION</div>
-                <div style={s.posterEventTitle}>{event.title}</div>
-                <div style={s.posterEventMeta}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <IconCalendar size={13} color="rgba(255,255,255,0.8)" />
-                    {formattedDate}
-                  </span>
-                  {timeRange && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <IconClock size={13} color="rgba(255,255,255,0.8)" />
-                      {timeRange}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* ── SLIDESHOW MODE ── */
+          {/* ── Prev / Next buttons (hover only) ── */}
+          {activeSlideCount > 1 && (
             <>
-              {/* Top badge */}
-              <div style={s.topBadge}>
-                <div style={s.badgeIcon}>
-                  <img src={pruLogo} alt="PRU LIFE UK" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0 }} />
-                </div>
-                <div>
-                  <div style={s.badgeName}>A1 Prime</div>
-                  <div style={s.badgeSub}>Trusted since 1996</div>
-                </div>
-              </div>
+              <button
+                onClick={goPrev}
+                style={{
+                  position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
+                  zIndex: 10, width: 40, height: 40, borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                  opacity: panelHovered ? 1 : 0,
+                  transition: 'opacity 0.2s ease',
+                  pointerEvents: panelHovered ? 'auto' : 'none',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+              </button>
+              <button
+                onClick={goNext}
+                style={{
+                  position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
+                  zIndex: 10, width: 40, height: 40, borderRadius: '50%',
+                  background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                  opacity: panelHovered ? 1 : 0,
+                  transition: 'opacity 0.2s ease',
+                  pointerEvents: panelHovered ? 'auto' : 'none',
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
 
+              {/* Pause / Play button */}
+              <button
+                onClick={() => setIsPaused(p => !p)}
+                style={{
+                  position: 'absolute', bottom: 16, right: 16,
+                  zIndex: 10, width: 42, height: 42, borderRadius: 10,
+                  background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                  opacity: panelHovered ? 1 : 0,
+                  transition: 'opacity 0.2s ease',
+                  pointerEvents: panelHovered ? 'auto' : 'none',
+                }}
+              >
+                {isPaused ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="none">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="none">
+                    <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+                  </svg>
+                )}
+              </button>
+            </>
+          )}
+
+          {confirmedUseCustom ? (
+            /* ── CUSTOM SLIDESHOW MODE — portrait images, centered, contained ── */
+            <>
+              {confirmedSlideshowUrls.map((url, i) => (
+                <div
+                  key={i}
+                  style={{
+                    ...s.slide,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: '#111',
+                    opacity: i === currentSlide ? 1 : 0,
+                    zIndex: i === currentSlide ? 1 : 0,
+                  }}
+                >
+                  <img
+                    src={url}
+                    alt=""
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'contain',
+                      objectPosition: 'center',
+                      display: 'block',
+                    }}
+                  />
+                </div>
+              ))}
+
+              {/* Dots */}
+              {confirmedSlideshowUrls.length > 1 && (
+                <div style={s.dots}>
+                  {confirmedSlideshowUrls.map((_, i) => (
+                    <div
+                      key={i}
+                      onClick={() => goToSlide(i)}
+                      style={{
+                        ...s.dot,
+                        width: i === currentSlide ? 20 : 6,
+                        background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)',
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            /* ── DEFAULT SLIDESHOW MODE — hardcoded Pru Life slides ── */
+            <>
               {slides.map((sl, i) => (
                 <div
                   key={i}
@@ -688,6 +1002,126 @@ export default function RegistrationPage() {
         </div>
 
       </div>
+
+      {/* ── Confirmation Modal ─────────────────────────────── */}
+      {showConfirmModal && createPortal(
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 99999,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+            padding: 20,
+          }}
+          onClick={() => setShowConfirmModal(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'white', borderRadius: 16, width: '100%', maxWidth: 420,
+              boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              padding: '22px 24px 18px',
+              borderBottom: '1px solid #f3f4f6',
+              display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+            }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#DC143C', marginBottom: 4 }}>
+                  Confirm Registration
+                </div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', letterSpacing: '-0.02em', lineHeight: 1.3 }}>
+                  Review your details
+                </h3>
+                <p style={{ fontSize: 12.5, color: '#6b7280', marginTop: 4, lineHeight: 1.5 }}>
+                  Please confirm the information below before submitting.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                style={{
+                  width: 30, height: 30, borderRadius: 8, border: '1px solid #e5e7eb',
+                  background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                <IconX size={14} color="#6b7280" />
+              </button>
+            </div>
+
+            {/* Details rows */}
+            <div style={{ padding: '8px 24px 4px', display: 'flex', flexDirection: 'column' as const }}>
+              {[
+                { label: 'Agent Code', value: form.agent_code },
+                { label: 'Full Name',  value: form.full_name },
+                { label: 'Branch',     value: form.branch_name },
+                { label: 'Team',       value: form.team_name },
+                { label: 'Agent Type', value: form.agent_type },
+              ].map((row, i, arr) => (
+                <div key={row.label} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '10px 0',
+                  borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none',
+                }}>
+                  <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500 }}>{row.label}</span>
+                  <span style={{ fontSize: 13, color: '#111827', fontWeight: 600 }}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Event reference */}
+            <div style={{
+              margin: '12px 24px 16px',
+              background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10,
+              padding: '10px 14px',
+              display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#DC143C', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 11, color: '#ef4444', fontWeight: 500 }}>Registering for</div>
+                <div style={{ fontSize: 13, color: '#111827', fontWeight: 700, lineHeight: 1.3 }}>{event?.title}</div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ padding: '0 24px 20px', display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                style={{
+                  flex: 1, height: 42, borderRadius: 10,
+                  border: '1.5px solid #e5e7eb', background: 'white',
+                  fontSize: 13, fontWeight: 600, color: '#374151',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'white')}
+              >
+                Go Back
+              </button>
+              <button
+                onClick={handleConfirmRegister}
+                style={{
+                  flex: 2, height: 42, borderRadius: 10,
+                  border: 'none', background: '#DC143C',
+                  fontSize: 13, fontWeight: 700, color: 'white',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  boxShadow: '0 4px 14px rgba(220,20,60,0.25)',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#b8102f')}
+                onMouseLeave={e => (e.currentTarget.style.background = '#DC143C')}
+              >
+                Confirm Registration <IconArrowRight size={14} color="white" />
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
@@ -761,7 +1195,31 @@ function Styles() {
 
       @media (max-width: 768px) {
         .pru-visual-panel { display: none !important; }
-        .pru-card { grid-template-columns: 1fr !important; border-radius: 0 !important; min-height: 100vh !important; }
+        .pru-mobile-banner { display: block !important; }
+        .pru-card {
+          grid-template-columns: 1fr !important;
+          border-radius: 16px !important;
+          min-height: unset !important;
+        }
+        .pru-page {
+          padding: 16px !important;
+          align-items: flex-start !important;
+        }
+        /* More breathing room on mobile — logo and banner get extra space */
+        .pru-form-panel {
+          padding: 28px 24px 32px !important;
+          gap: 0;
+        }
+        /* Logo bottom margin */
+        .pru-logo { margin-bottom: 24px !important; }
+        /* Banner bottom margin already set inline (20px) */
+        /* Event title — more gap above form */
+        .pru-event-title { margin-bottom: 12px !important; }
+        /* Info box — tighter bottom margin before form */
+        .pru-info-box { margin-bottom: 16px !important; }
+      }
+      @media (min-width: 769px) {
+        .pru-mobile-banner { display: none !important; }
       }
     `}</style>
   )
@@ -792,9 +1250,9 @@ const s: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     width: '100%',
-    maxWidth: 1100,
-    minHeight: 700,
-    borderRadius: 24,
+    maxWidth: 1240,
+    minHeight: 580,
+    borderRadius: 10,
     overflow: 'hidden',
     boxShadow: '0 28px 80px rgba(220,20,60,0.08), 0 8px 24px rgba(0,0,0,0.08)',
     background: '#fff',
@@ -836,7 +1294,7 @@ const s: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'flex-start',
     gap: 12,
-    padding: '10px 16px',
+    padding: '11px 16px',
   },
   infoRowLeft: {
     display: 'flex',
@@ -857,12 +1315,9 @@ const s: Record<string, React.CSSProperties> = {
   },
   infoRowValue: {
     fontSize: 13,
-    fontWeight: 600,
+    fontWeight: 700,
     color: '#1f2937',
     lineHeight: 1.4,
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 5,
     flex: 1,
   },
   infoRowSub: {

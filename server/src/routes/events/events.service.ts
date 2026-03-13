@@ -9,7 +9,7 @@ export const createEventService = async (created_by: string, payload: CreateEven
     `INSERT INTO events
       (created_by, title, description, event_date, start_time, end_time,
        registration_start, registration_end, venue, checkin_cutoff,
-       registration_link, poster_url, preset_url, status)
+       registration_link, slideshow_urls, preset_url, status)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft')
      RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date, 0::int as registered_count`,
     [
@@ -17,8 +17,8 @@ export const createEventService = async (created_by: string, payload: CreateEven
       payload.start_time, payload.end_time, payload.registration_start,
       payload.registration_end, payload.venue,
       payload.checkin_cutoff, registration_link,
-      payload.poster_url ?? null,
-      payload.preset_url ?? null
+      payload.slideshow_urls ?? [],
+      payload.preset_url ?? null,
     ]
   )
 
@@ -115,6 +115,7 @@ export const getEventByIdService = async (event_id: number) => {
     `SELECT e.*,
             TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
             COALESCE(pc.registered_count, 0) AS registered_count,
+            COALESCE(e.slideshow_urls, '{}') AS slideshow_urls,
             COALESCE(
               (SELECT json_agg(json_build_object('branch_name', branch_name, 'team_names', team_names))
                FROM event_branches WHERE event_id = $1),
@@ -134,7 +135,7 @@ export const getEventByIdService = async (event_id: number) => {
   return result.rows[0]
 }
 
-export const getEventDetailsForStaffService = async (event_id: number) => {
+const getEventDetailsForStaffService = async (event_id: number) => {
   const event = await getEventByIdService(event_id)
 
   // ── Attach event_branches ──────────────────────────────
@@ -151,12 +152,22 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
   const current = await getEventByIdService(event_id)
   const merged = { ...current, ...payload }
 
+  // ── Compute new slideshow_urls array ───────────────────
+  // Start with the existing array from DB
+  const existingUrls: string[] = Array.isArray(current.slideshow_urls) ? current.slideshow_urls : []
+  // Remove any URLs flagged for removal
+  const removedUrls: string[] = payload.remove_slideshow_urls ?? []
+  const keptUrls = existingUrls.filter(url => !removedUrls.includes(url))
+  // Append new uploads, capped at 5 total
+  const newUrls: string[] = payload.new_slideshow_urls ?? []
+  const finalUrls = [...keptUrls, ...newUrls].slice(0, 5)
+
   const result = await pool.query(
     `UPDATE events
      SET title=$1, description=$2, event_date=$3, start_time=$4, end_time=$5,
          venue=$6, status=$7, checkin_cutoff=$8,
          registration_start=$9, registration_end=$10,
-         poster_url=$11, preset_url=$12,
+         slideshow_urls=$11, preset_url=$12,
          version=version+1, updated_at=NOW()
      WHERE event_id=$13 AND deleted_at IS NULL
      RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date`,
@@ -164,16 +175,14 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
       merged.title, merged.description, merged.event_date, merged.start_time,
       merged.end_time, merged.venue, merged.status,
       merged.checkin_cutoff, merged.registration_start, merged.registration_end,
-      merged.poster_url ?? null, merged.preset_url ?? null,
+      finalUrls, merged.preset_url ?? null,
       event_id
     ]
   )
 
   // ── Update event_branches if provided ──────────────────
   if (payload.event_branches && payload.event_branches.length > 0) {
-    // Delete old branches for this event
     await pool.query(`DELETE FROM event_branches WHERE event_id = $1`, [event_id])
-    // Insert new ones
     for (const branch of payload.event_branches) {
       await pool.query(
         `INSERT INTO event_branches (event_id, branch_name, team_names)
@@ -185,9 +194,7 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
 
   // ── Update staff permissions if provided ───────────────
   if (payload.staff_ids !== undefined) {
-    // Remove old permissions
     await pool.query(`DELETE FROM event_permissions WHERE event_id = $1`, [event_id])
-    // Insert new ones
     if (payload.staff_ids && payload.staff_ids.length > 0) {
       for (const uid of payload.staff_ids) {
         await pool.query(
@@ -271,9 +278,6 @@ export const getTrashedEventsService = async () => {
 }
 
 // ── BUG FIX: Also reset status if it was 'archived' before being trashed.
-//    Without this, restoring an event that was archived → trashed would leave
-//    status = 'archived', causing it to reappear in the Archive instead of
-//    the main EventManagement page.
 export const restoreEventService = async (event_id: number) => {
   const result = await pool.query(
     `UPDATE events
@@ -289,14 +293,12 @@ export const restoreEventService = async (event_id: number) => {
 }
 
 export const permanentDeleteEventService = async (event_id: number) => {
-  // Only allow permanent delete of already-soft-deleted events
   const check = await pool.query(
     `SELECT event_id FROM events WHERE event_id = $1 AND deleted_at IS NOT NULL`,
     [event_id]
   )
   if (!check.rows[0]) throw new Error('Event not found in trash')
 
-  // Cascade delete in order (respect foreign key constraints)
   await pool.query('DELETE FROM scan_logs WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM attendance_sessions WHERE event_id = $1', [event_id])
   await pool.query('DELETE FROM participants WHERE event_id = $1', [event_id])
