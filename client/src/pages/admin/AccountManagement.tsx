@@ -541,12 +541,13 @@ const ActionDropdown: React.FC<ActionDropdownProps> = ({ user, isSelf, onEdit, o
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0, dropUp: false })
   const btnRef = useRef<HTMLButtonElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!open) return
     const clickHandler = (e: MouseEvent) => {
       const el = e.target as HTMLElement
-      if (!el.closest('[data-dropdown]')) setOpen(false)
+      if (!btnRef.current?.contains(el) && !dropRef.current?.contains(el)) setOpen(false)
     }
     const scrollHandler = () => setOpen(false)
     document.addEventListener('mousedown', clickHandler)
@@ -577,6 +578,7 @@ const ActionDropdown: React.FC<ActionDropdownProps> = ({ user, isSelf, onEdit, o
       </button>
       {open && (
         <div
+          ref={dropRef}
           style={{
             position: 'fixed',
             top:    pos.dropUp ? undefined : pos.top,
