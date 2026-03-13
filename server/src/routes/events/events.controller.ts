@@ -5,7 +5,8 @@ import {
   updateEventService, softDeleteEventService, assignPermissionService,
   getTrashedEventsService, restoreEventService, permanentDeleteEventService,
   getEventStaffService, removeEventStaffService,
-  getArchivedEventsService, restoreArchivedEventService
+  getArchivedEventsService, restoreArchivedEventService,
+  copyEventService
 } from './events.service.js'
 
 const parseField = (val: any) => {
@@ -126,4 +127,13 @@ export const getArchivedEvents = asyncHandler(async (_req: Request, res: Respons
 export const restoreArchivedEvent = asyncHandler(async (req: Request, res: Response) => {
   const restored = await restoreArchivedEventService(Number(req.params.event_id))
   res.json({ message: `Event "${restored.title}" restored successfully`, event: restored })
+})
+
+// ── Copy Event ────────────────────────────────────────────────────────────────
+
+export const copyEvent = asyncHandler(async (req: Request, res: Response) => {
+  const event_id = Number(req.params.event_id)
+  const created_by = req.user!.user_id
+  const newEvent = await copyEventService(event_id, created_by)
+  res.status(201).json(newEvent)
 })
