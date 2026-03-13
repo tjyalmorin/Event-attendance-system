@@ -1,11 +1,42 @@
 import multer from 'multer'
 import path from 'path'
-import fs from 'fs'
+import cloudinary from 'cloudinary'
 
-// Use memory storage — file goes to Cloudinary directly, not disk
-const storage = multer.memoryStorage()
+// ── Configure Cloudinary ──────────────────────────────────
+cloudinary.v2.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:    process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+})
 
-const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+// ── Memory storage — all files go to Cloudinary ──────────
+const memoryStorage = multer.memoryStorage()
+
+// ── Helper: upload buffer to Cloudinary ──────────────────
+export const uploadToCloudinary = (
+  buffer: Buffer,
+  folder: string,
+  filename: string
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.v2.uploader.upload_stream(
+      {
+        folder,
+        public_id: filename,
+        resource_type: 'image',
+        overwrite: true,
+      },
+      (error, result) => {
+        if (error || !result) return reject(error)
+        resolve(result.secure_url)
+      }
+    )
+    stream.end(buffer)
+  })
+}
+
+// ── Photo upload (participant photos) ────────────────────
+const photoFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowed = ['.jpg', '.jpeg', '.png']
   const ext = path.extname(file.originalname).toLowerCase()
   if (allowed.includes(ext)) {
@@ -16,24 +47,12 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterC
 }
 
 export const uploadPhoto = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB max
+  storage: memoryStorage,
+  fileFilter: photoFileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
 })
 
-// ── Slideshow images — disk storage ──────────────────────────
-const SLIDESHOW_DIR = path.resolve('uploads/slideshow')
-if (!fs.existsSync(SLIDESHOW_DIR)) fs.mkdirSync(SLIDESHOW_DIR, { recursive: true })
-
-const slideshowStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, SLIDESHOW_DIR),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase()
-    const name = `slide-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`
-    cb(null, name)
-  },
-})
-
+// ── Slideshow/poster upload ───────────────────────────────
 const slideshowFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowed = ['.jpg', '.jpeg', '.png', '.webp']
   const ext = path.extname(file.originalname).toLowerCase()
@@ -44,13 +63,11 @@ const slideshowFileFilter = (_req: any, file: Express.Multer.File, cb: multer.Fi
   }
 }
 
-// uploadSlideshow handles both single poster (legacy) and multiple slideshow_images
 export const uploadSlideshow = multer({
-  storage: slideshowStorage,
+  storage: memoryStorage,
   fileFilter: slideshowFileFilter,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
 })
 
 // Keep uploadPoster as alias so events.routes.ts import doesn't break
-// — it now points to the same multer instance
 export const uploadPoster = uploadSlideshow

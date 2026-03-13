@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import asyncHandler from '../../middlewares/asyncHandler.js'
+import { uploadToCloudinary } from '../../middlewares/upload.js'
 import {
   createEventService, getAllEventsService, getEventByIdService,
   updateEventService, softDeleteEventService, assignPermissionService,
@@ -17,12 +18,22 @@ const parseField = (val: any) => {
   return val
 }
 
+// ── Helper: upload slideshow files to Cloudinary ─────────
+const uploadSlideshowFiles = async (files: Express.Multer.File[]): Promise<string[]> => {
+  const urls: string[] = []
+  for (const file of files) {
+    const filename = `slide-${Date.now()}-${Math.round(Math.random() * 1e6)}`
+    const url = await uploadToCloudinary(file.buffer, 'primelog/slideshow', filename)
+    urls.push(url)
+  }
+  return urls
+}
+
 export const createEvent = asyncHandler(async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[] | undefined
 
-  // Collect all uploaded slideshow images (field name: slideshow_images)
   const slideshowFiles = files?.filter(f => f.fieldname === 'slideshow_images') ?? []
-  const slideshowUrls = slideshowFiles.map(f => `/uploads/slideshow/${f.filename}`)
+  const slideshowUrls = await uploadSlideshowFiles(slideshowFiles)
 
   const body = {
     ...req.body,
@@ -56,11 +67,9 @@ export const getEventById = asyncHandler(async (req: Request, res: Response) => 
 export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[] | undefined
 
-  // New slideshow images uploaded in this request
   const newSlideshowFiles = files?.filter(f => f.fieldname === 'slideshow_images') ?? []
-  const newSlideshowUrls = newSlideshowFiles.map(f => `/uploads/slideshow/${f.filename}`)
+  const newSlideshowUrls = await uploadSlideshowFiles(newSlideshowFiles)
 
-  // URLs the frontend wants removed from the existing array
   const removeSlideshowUrls: string[] = parseField(req.body.remove_slideshow_urls)
 
   const body = {
@@ -69,7 +78,6 @@ export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
     staff_ids:             parseField(req.body.staff_ids),
     new_slideshow_urls:    newSlideshowUrls,
     remove_slideshow_urls: removeSlideshowUrls,
-    // preset_url: empty string means remove, otherwise use value from body
     preset_url: req.body.preset_url === ''
       ? null
       : req.body.preset_url ?? undefined,
@@ -118,8 +126,6 @@ export const removeEventStaff = asyncHandler(async (req: Request, res: Response)
   res.json({ message: 'Staff removed from event' })
 })
 
-// ── Archive ───────────────────────────────────────────────────────────────────
-
 export const getArchivedEvents = asyncHandler(async (_req: Request, res: Response) => {
   const events = await getArchivedEventsService()
   res.json(events)
@@ -129,8 +135,6 @@ export const restoreArchivedEvent = asyncHandler(async (req: Request, res: Respo
   const restored = await restoreArchivedEventService(Number(req.params.event_id))
   res.json({ message: `Event "${restored.title}" restored successfully`, event: restored })
 })
-
-// ── Copy Event ────────────────────────────────────────────────────────────────
 
 export const copyEvent = asyncHandler(async (req: Request, res: Response) => {
   const event_id = Number(req.params.event_id)
