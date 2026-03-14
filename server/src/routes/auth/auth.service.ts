@@ -18,10 +18,8 @@ export const loginService = async (email: string, password: string) => {
   )
   const user = result.rows[0]
 
-  // ── FIX #1: Use UnauthorizedError so errorHandler returns 401 ────────────
   if (!user) throw new UnauthorizedError('Invalid email or password')
 
-  // ── FIX #1: Wrap bcrypt.compare in try-catch, throw 401 on mismatch ─────
   let isMatch: boolean
   try {
     isMatch = await bcrypt.compare(password, user.password_hash)
@@ -30,7 +28,6 @@ export const loginService = async (email: string, password: string) => {
   }
   if (!isMatch) throw new UnauthorizedError('Invalid email or password')
 
-  // ── Block deactivated accounts ──────────────────────────────────────────
   if (!user.is_active) throw new AppError('Your account has been deactivated. Please contact your administrator.', 403)
 
   const token = jwt.sign(
@@ -61,12 +58,21 @@ const sendEmail = async (to: string, subject: string, html: string) => {
       pass: process.env.EMAIL_PASS
     }
   })
-  await transporter.sendMail({
-    from: `"PrimeLog" <${process.env.EMAIL_USER}>`,
-    to,
-    subject,
-    html
-  })
+
+  try {
+    await transporter.sendMail({
+      from: `"PrimeLog" <${process.env.EMAIL_USER}>`,
+      to,
+      subject,
+      html
+    })
+    console.log(`✅ Email sent to ${to}`)
+  } catch (err: any) {
+    console.error('❌ Email send error:', err.message)
+    console.error('EMAIL_USER:', process.env.EMAIL_USER)
+    console.error('EMAIL_PASS set:', !!process.env.EMAIL_PASS)
+    throw new AppError('Failed to send email. Please try again later.', 500)
+  }
 }
 
 // ── Step 1: Send OTP ───────────────────────────────────────
@@ -74,13 +80,13 @@ export const sendOtpService = async (email: string) => {
   if (!email?.trim()) throw new ValidationError('Email is required')
 
   const result = await pool.query(
-    `SELECT * FROM users WHERE email = $1 AND deleted_at IS NULL AND role = 'admin'`,
+    `SELECT * FROM users WHERE email = $1 AND deleted_at IS NULL`,
     [email.trim().toLowerCase()]
   )
   const user = result.rows[0]
 
   // Always return success even if not found (security best practice)
-  if (!user) return { message: 'If that admin email exists, an OTP has been sent.' }
+  if (!user) return { message: 'If that email exists, an OTP has been sent.' }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString()
   const expires = new Date(Date.now() + 1000 * 60 * 10)
@@ -95,11 +101,11 @@ export const sendOtpService = async (email: string) => {
     'Your PrimeLog OTP Code',
     `
     <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto;">
-      <h2 style="color: #1d4ed8;">PrimeLog - Password Reset OTP</h2>
+      <h2 style="color: #DC143C;">PrimeLog - Password Reset OTP</h2>
       <p>Hi ${user.full_name},</p>
       <p>Use this OTP to reset your password. It expires in <strong>10 minutes</strong>.</p>
       <div style="text-align:center; margin: 24px 0;">
-        <span style="font-size: 40px; font-weight: bold; letter-spacing: 12px; color: #1d4ed8;">
+        <span style="font-size: 40px; font-weight: bold; letter-spacing: 12px; color: #DC143C;">
           ${otp}
         </span>
       </div>
@@ -108,7 +114,7 @@ export const sendOtpService = async (email: string) => {
     `
   )
 
-  return { message: 'If that admin email exists, an OTP has been sent.' }
+  return { message: 'If that email exists, an OTP has been sent.' }
 }
 
 // ── Step 2: Verify OTP ─────────────────────────────────────
@@ -121,13 +127,11 @@ export const verifyOtpService = async (email: string, otp: string) => {
      WHERE email = $1
      AND otp_code = $2
      AND otp_expires > NOW()
-     AND deleted_at IS NULL
-     AND role = 'admin'`,
+     AND deleted_at IS NULL`,
     [email.trim().toLowerCase(), otp.trim()]
   )
   const user = result.rows[0]
 
-  // ── FIX #3: Use ValidationError so errorHandler returns 400 ─────────────
   if (!user) throw new ValidationError('Invalid or expired OTP. Please try again.')
 
   await pool.query(
@@ -148,8 +152,7 @@ export const resetPasswordService = async (email: string, newPassword: string) =
      WHERE email = $1
      AND otp_verified = TRUE
      AND otp_expires > NOW()
-     AND deleted_at IS NULL
-     AND role = 'admin'`,
+     AND deleted_at IS NULL`,
     [email.trim().toLowerCase()]
   )
   const user = result.rows[0]
