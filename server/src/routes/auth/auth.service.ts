@@ -51,12 +51,16 @@ export const getMeService = async (user_id: string) => {
 
 // ── Helper: send email ─────────────────────────────────────
 const sendEmail = async (to: string, subject: string, html: string) => {
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
+  const transporter = (nodemailer as any).createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    family: 4,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS
-    }
+    },
+    tls: { rejectUnauthorized: false }
   })
 
   try {
@@ -85,7 +89,6 @@ export const sendOtpService = async (email: string) => {
   )
   const user = result.rows[0]
 
-  // Always return success even if not found (security best practice)
   if (!user) return { message: 'If that email exists, an OTP has been sent.' }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString()
