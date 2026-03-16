@@ -97,6 +97,19 @@ const HistoryIcon = () => (
     <line x1="12" y1="7" x2="12" y2="12"/><line x1="12" y1="12" x2="15" y2="14"/>
   </svg>
 )
+const GearIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+  </svg>
+)
+
+const WarnIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>
+)
 
 // ── Scrollbar styles ───────────────────────────────────────
 
@@ -535,9 +548,10 @@ interface ActionDropdownProps {
   onEdit: () => void
   onToggle: () => void
   onDelete: () => void
+  onProfileSettings: () => void
 }
 
-const ActionDropdown: React.FC<ActionDropdownProps> = ({ user, isSelf, onEdit, onToggle, onDelete }) => {
+const ActionDropdown: React.FC<ActionDropdownProps> = ({ user, isSelf, onEdit, onToggle, onDelete, onProfileSettings }) => {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0, dropUp: false })
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -571,6 +585,20 @@ const ActionDropdown: React.FC<ActionDropdownProps> = ({ user, isSelf, onEdit, o
     setOpen(p => !p)
   }
 
+  // Own row: show a single "Profile Settings" gear button instead of the dropdown
+  if (isSelf) {
+    return (
+      <button
+        onClick={onProfileSettings}
+        title="Profile Settings"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C] dark:hover:border-[#DC143C] dark:hover:text-[#DC143C] transition-all text-xs font-semibold shadow-sm"
+      >
+        <GearIcon />
+        <span>Profile Settings</span>
+      </button>
+    )
+  }
+
   return (
     <div data-dropdown>
       <button ref={btnRef} onClick={handleOpen} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors rounded">
@@ -592,14 +620,14 @@ const ActionDropdown: React.FC<ActionDropdownProps> = ({ user, isSelf, onEdit, o
             <EditIcon />Edit Account
           </button>
           <div className="h-px bg-gray-100 dark:bg-[#2a2a2a] mx-2" />
-          <button onClick={() => { setOpen(false); onToggle() }} disabled={isSelf}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          <button onClick={() => { setOpen(false); onToggle() }}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#252525] transition-colors">
             {user.is_active ? <BanIcon /> : <CheckCircleIcon />}
             {user.is_active ? 'Deactivate' : 'Reactivate'}
           </button>
           <div className="h-px bg-gray-100 dark:bg-[#2a2a2a] mx-2" />
-          <button onClick={() => { setOpen(false); onDelete() }} disabled={isSelf}
-            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          <button onClick={() => { setOpen(false); onDelete() }}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
             <TrashIcon />Delete Account
           </button>
         </div>
@@ -637,6 +665,7 @@ export default function AccountManagement() {
   const [showRetentionModal, setShowRetentionModal] = useState(false)
   const [retentionDays, setRetentionDays] = useState(90)
   const [histActionLoading, setHistActionLoading] = useState(false)
+  const [expandedHistRows, setExpandedHistRows] = useState<Set<number>>(new Set())
 
   const loadHistory = async () => {
     setHistoryLoading(true)
@@ -651,6 +680,7 @@ export default function AccountManagement() {
   const [toast, setToast] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [form, setForm] = useState<UserFormState>(EMPTY_FORM)
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
 
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
   const userRole = storedUser?.role || 'staff'
@@ -720,11 +750,39 @@ export default function AccountManagement() {
       })
     } else { setForm(EMPTY_FORM) }
   }
-  const closeModal = () => { setModalType(null); setSelectedUser(null) }
+  const closeModal = () => { setModalType(null); setSelectedUser(null); setShowDiscardConfirm(false) }
+
+  // Returns true if the form has been touched vs its initial state
+  const hasChanges = (): boolean => {
+    if (modalType === 'create') {
+      return Object.values(form).some(v => v !== '' && v !== 'staff')
+    }
+    if (modalType === 'edit' && selectedUser) {
+      return (
+        form.full_name  !== (selectedUser.full_name ?? '') ||
+        form.email      !== (selectedUser.email ?? '') ||
+        form.agent_code !== (selectedUser.agent_code ?? '') ||
+        form.branch_name !== ((selectedUser as any).branch_name ?? '') ||
+        form.team_name  !== ((selectedUser as any).team_name ?? '') ||
+        form.role       !== (selectedUser.role ?? 'staff') ||
+        form.password   !== ''
+      )
+    }
+    return false
+  }
+
+  const handleModalClose = () => {
+    if ((modalType === 'create' || modalType === 'edit') && hasChanges()) {
+      setShowDiscardConfirm(true)
+    } else {
+      closeModal()
+    }
+  }
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault(); setModalLoading(true); setModalError('')
     if (form.agent_code && form.agent_code.length !== 8) { setModalError('Agent code must be exactly 8 digits'); setModalLoading(false); return }
+    if (!form.branch_name.trim()) { setModalError('Branch is required'); setModalLoading(false); return }
     try {
       const payload: any = {
         full_name: form.full_name, email: form.email, password: form.password,
@@ -749,6 +807,7 @@ export default function AccountManagement() {
   const handleEdit = async (e: React.FormEvent) => {
     e.preventDefault(); setModalLoading(true); setModalError('')
     if (form.agent_code && form.agent_code.length !== 8) { setModalError('Agent code must be exactly 8 digits'); setModalLoading(false); return }
+    if (!form.branch_name.trim()) { setModalError('Branch is required'); setModalLoading(false); return }
     try {
       const payload: any = { agent_code: form.agent_code.trim() || '', full_name: form.full_name, email: form.email, branch_name: form.branch_name, role: form.role, team_name: form.team_name.trim() || null }
       if (form.password.trim()) payload.password = form.password
@@ -760,7 +819,9 @@ export default function AccountManagement() {
       if (form.full_name !== prev.full_name) changes.push(`Name: "${prev.full_name}" → "${form.full_name}"`)
       if (form.email !== prev.email) changes.push(`Email changed`)
       if (form.branch_name !== (prev as any).branch_name) changes.push(`Branch: "${(prev as any).branch_name || '—'}" → "${form.branch_name || '—'}"`)
-      if (form.team_name !== (prev as any).team_name) changes.push(`Team: "${(prev as any).team_name || '—'}" → "${form.team_name || '—'}"`)
+      const prevTeam = (prev as any).team_name || ''
+      const newTeam  = form.team_name.trim() || ''
+      if (newTeam !== prevTeam) changes.push(`Team: "${prevTeam || '—'}" → "${newTeam || '—'}"`)
       if (form.role !== prev.role) changes.push(`Role: "${prev.role}" → "${form.role}"`)
       if (form.password.trim()) changes.push('Password changed')
       await addHistory({
@@ -1030,13 +1091,18 @@ export default function AccountManagement() {
                                   {u.full_name.slice(0, 2).toUpperCase()}
                                 </div>
                                 <div>
-                                  <div className="font-semibold text-gray-900 dark:text-white text-sm">{u.full_name}</div>
+                                  <div className="flex items-baseline gap-1">
+                                    <span className="font-semibold text-gray-900 dark:text-white text-sm">{u.full_name}</span>
+                                    {u.user_id === storedUser?.user_id && (
+                                      <span className="font-semibold text-gray-400 dark:text-gray-500 text-sm">(You)</span>
+                                    )}
+                                  </div>
                                   <div className="text-xs text-gray-400">{u.email}</div>
                                 </div>
                               </div>
                             </td>
                             <td className={`px-5 py-3.5 ${inactive ? 'opacity-40' : ''}`}>
-                              <span className="inline-block px-2.5 py-1 rounded-md bg-gray-100 dark:bg-[#2a2a2a] text-gray-600 dark:text-gray-300 text-xs font-medium">
+                              <span className="text-sm text-gray-600 dark:text-gray-400">
                                 {(u as any).branch_name || '—'}
                               </span>
                             </td>
@@ -1069,6 +1135,7 @@ export default function AccountManagement() {
                                   onEdit={() => openModal('edit', u)}
                                   onToggle={() => openModal('toggle', u)}
                                   onDelete={() => openModal('delete', u)}
+                                  onProfileSettings={() => navigate('/admin/settings/profile')}
                                 />
                               </div>
                             </td>
@@ -1288,9 +1355,36 @@ export default function AccountManagement() {
                                     </div>
                                   </td>
                                   <td className="px-3 py-3.5 max-w-[260px]">
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2">
-                                      {entry.details || <span className="italic text-gray-300 dark:text-gray-600">—</span>}
-                                    </p>
+                                    {(() => {
+                                      if (!entry.details) return <span className="italic text-xs text-gray-300 dark:text-gray-600">—</span>
+                                      const parts = entry.details.split(' · ').filter(Boolean)
+                                      if (parts.length <= 1) return (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{entry.details}</p>
+                                      )
+                                      const isExpanded = expandedHistRows.has(entry.log_id)
+                                      return (
+                                        <div className="flex flex-col gap-1">
+                                          {isExpanded ? (
+                                            <div className="flex flex-col gap-1">
+                                              {parts.map((part, i) => (
+                                                <div key={i} className="flex items-start gap-1.5">
+                                                  <span className="mt-1.5 w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
+                                                  <span className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{part}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-1">{parts[0]}{parts.length > 1 && <span className="text-gray-300 dark:text-gray-600"> +{parts.length - 1} more</span>}</p>
+                                          )}
+                                          <button
+                                            onClick={e => { e.stopPropagation(); setExpandedHistRows(prev => { const n = new Set(prev); isExpanded ? n.delete(entry.log_id) : n.add(entry.log_id); return n }) }}
+                                            className="text-[11px] font-semibold text-[#DC143C] hover:underline w-fit"
+                                          >
+                                            {isExpanded ? 'Show less' : `Show all ${parts.length}`}
+                                          </button>
+                                        </div>
+                                      )
+                                    })()}
                                   </td>
                                   <td className="px-3 py-3.5">
                                     <div className="flex items-center gap-2">
@@ -1469,17 +1563,47 @@ export default function AccountManagement() {
 
       {/* ── MODALS ── */}
 
+      {/* ── Discard Changes Confirm ── */}
+      {showDiscardConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full max-w-md mx-4 overflow-clip">
+            <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+              <div className="flex items-center gap-3">
+                <span className="text-yellow-500 dark:text-yellow-400"><WarnIcon /></span>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Discard Changes?</h2>
+              </div>
+              <button onClick={() => setShowDiscardConfirm(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors">
+                <XIcon />
+              </button>
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+              Your edits will be lost if you leave now.
+            </div>
+            <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
+            <div className="flex items-center justify-end gap-2 px-5 py-4 bg-gray-50 dark:bg-[#242424]">
+              <CancelBtn onClick={() => setShowDiscardConfirm(false)} />
+              <button onClick={closeModal}
+                className="px-4 py-2 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-xl transition-all">
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Create / Edit */}
       {(modalType === 'create' || modalType === 'edit') && (
         <ModalShell
-          onClose={closeModal}
+          onClose={handleModalClose}
           icon={modalType === 'create' ? <PlusIcon /> : <EditIcon />}
           title={modalType === 'create' ? 'Create Account' : 'Edit Account'}
           subtitle={modalType === 'edit' ? selectedUser?.full_name : undefined}
           wide
           footer={
             <>
-              <CancelBtn onClick={closeModal} />
+              <CancelBtn onClick={handleModalClose} />
               <button form="account-form" type="submit" disabled={modalLoading}
                 className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
                 {modalLoading
@@ -1493,12 +1617,25 @@ export default function AccountManagement() {
           <form id="account-form" onSubmit={isEdit ? handleEdit : handleCreate} className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5 col-span-2">
-                <label className={labelClass}>Full Name</label>
+                <label className={labelClass}>Full Name <span className="text-[#DC143C]">*</span></label>
                 <input className={inputClass} value={form.full_name} onChange={e => setForm(p => ({...p, full_name: e.target.value}))} placeholder="Full name" required />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
-                <label className={labelClass}>Email</label>
-                <input className={inputClass} type="email" value={form.email} onChange={e => setForm(p => ({...p, email: e.target.value}))} placeholder="email@example.com" required />
+                <label className={labelClass}>Email <span className="text-[#DC143C]">*</span></label>
+                <div className="flex h-[44px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f] overflow-hidden transition-all focus-within:border-[#DC143C] focus-within:bg-white dark:focus-within:bg-[#0f0f0f] focus-within:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]">
+                  <input
+                    className="flex-1 min-w-0 bg-transparent px-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400"
+                    type="text"
+                    value={form.email.replace(/@gmail\.com$/, '')}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/@gmail\.com$/, '').replace(/@/g, '')
+                      setForm(p => ({ ...p, email: raw ? raw + '@gmail.com' : '' }))
+                    }}
+                    placeholder="name"
+                    required
+                  />
+                  <span className="flex items-center pr-4 text-sm text-gray-400 dark:text-gray-500 select-none flex-shrink-0">@gmail.com</span>
+                </div>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}>Agent Code <span className="normal-case font-normal text-gray-400">(optional)</span></label>
@@ -1510,7 +1647,7 @@ export default function AccountManagement() {
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}>Role</label>
+                <label className={labelClass}>Role <span className="text-[#DC143C]">*</span></label>
                 <CustomSelect
                   value={form.role}
                   onChange={val => setForm(p => ({ ...p, role: val as 'admin' | 'staff' }))}
@@ -1519,7 +1656,7 @@ export default function AccountManagement() {
                 />
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
-                <label className={labelClass}>Branch</label>
+                <label className={labelClass}>Branch <span className="text-[#DC143C]">*</span></label>
                 <CustomSelect
                   value={form.branch_name}
                   onChange={val => setForm(p => ({ ...p, branch_name: val, team_name: '' }))}
@@ -1541,7 +1678,7 @@ export default function AccountManagement() {
               </div>
               <div className="flex flex-col gap-1.5 col-span-2">
                 <label className={labelClass}>
-                  {isEdit ? <>New Password <span className="ml-1 normal-case font-normal text-gray-400">(leave blank to keep current)</span></> : 'Password'}
+                  {isEdit ? <>New Password <span className="ml-1 normal-case font-normal text-gray-400">(leave blank to keep current)</span></> : <>Password <span className="text-[#DC143C]">*</span></>}
                 </label>
                 <div className="relative">
                   <input className={`${inputClass} pr-11`} type={showPassword ? 'text' : 'password'} value={form.password}

@@ -23,7 +23,7 @@ api.interceptors.request.use(
 );
 
 // Public routes that should never trigger an auth redirect
-const PUBLIC_PATHS = ['/register', '/confirmation'];
+const PUBLIC_PATHS = ['/register', '/confirmation', '/admin/login', '/admin/forgot-password'];
 
 const isPublicRoute = () =>
   PUBLIC_PATHS.some((path) => window.location.pathname.startsWith(path));

@@ -144,11 +144,11 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
         type="button"
         onClick={handleOpen}
         disabled={disabled}
-        className={`h-[46px] w-full rounded-xl border-[1.5px] bg-gray-50 dark:bg-[#1c1c1c] px-4 text-sm outline-none transition-all flex items-center justify-between
+        className={`h-[46px] w-full rounded-xl border-[1.5px] bg-gray-50 dark:bg-[#0f0f0f] px-4 text-sm outline-none transition-all flex items-center justify-between
           ${disabled
             ? 'border-gray-200 dark:border-[#2a2a2a] text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-60'
             : open
-              ? 'border-[#DC143C] bg-white dark:bg-[#1c1c1c] shadow-[0_0_0_3px_rgba(220,20,60,0.08)]'
+              ? 'border-[#DC143C] bg-white dark:bg-[#0f0f0f] shadow-[0_0_0_3px_rgba(220,20,60,0.08)]'
               : 'border-gray-200 dark:border-[#2a2a2a] text-gray-800 dark:text-white hover:border-gray-300 dark:hover:border-[#3a3a3a] cursor-pointer'
           }`}
       >
@@ -302,7 +302,7 @@ export default function ProfileSettingsPage() {
     }
   }
 
-  const inputClass = "h-[46px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#1c1c1c] px-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-[#1c1c1c] focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
+  const inputClass = "h-[46px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f] px-4 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-[#0f0f0f] focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
   const labelClass = "text-[11px] font-bold uppercase tracking-[1px] text-gray-500 dark:text-gray-400"
 
   // Avatar: red for admin, blue for staff
