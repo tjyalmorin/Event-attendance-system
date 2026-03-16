@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Event, Participant, AttendanceSession, ScanLog } from '../../types'
 
 // ─────────────────────────────────────────────────────────────
@@ -263,6 +264,94 @@ const UsersIcon = () => (
 // ─────────────────────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────────────────────
+function ScanlogsTypeDropdown({ value, onChange, open, setOpen }: {
+  value: 'all' | 'check_in' | 'check_out' | 'denied'
+  onChange: (v: 'all' | 'check_in' | 'check_out' | 'denied') => void
+  open: boolean
+  setOpen: (v: boolean) => void
+}) {
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ top: 0, bottom: 0, left: 0, dropUp: false })
+  const options = [
+    { value: 'all'       as const, label: 'All Types' },
+    { value: 'check_in'  as const, label: 'Check In' },
+    { value: 'check_out' as const, label: 'Check Out' },
+    { value: 'denied'    as const, label: 'Denied' },
+  ]
+  const label = options.find(o => o.value === value)?.label ?? 'All Types'
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      const dropUp = window.innerHeight - rect.bottom < 220
+      setPos({ top: rect.bottom + 4, bottom: window.innerHeight - rect.top + 4, left: rect.left, dropUp })
+    }
+    setOpen(!open)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (btnRef.current?.contains(e.target as Node)) return
+      if (panelRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = () => setOpen(false)
+    window.addEventListener('scroll', handler, true)
+    return () => window.removeEventListener('scroll', handler, true)
+  }, [open])
+
+  return (
+    <div className="relative">
+      <button ref={btnRef} onClick={handleOpen}
+        className={`flex items-center gap-2 h-9 px-3 rounded-xl border text-sm font-semibold transition-all ${
+          value !== 'all'
+            ? 'border-[#DC143C] text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10'
+            : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+        }`}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <span className="text-xs">{label}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && createPortal(
+        <div ref={panelRef} style={{ position: 'fixed', top: pos.dropUp ? undefined : pos.top, bottom: pos.dropUp ? pos.bottom : undefined, left: pos.left, zIndex: 9999 }}
+          className="bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[150px]">
+          <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filter by Type</span>
+          </div>
+          {options.map(opt => (
+            <button key={opt.value} onClick={() => { onChange(opt.value); setOpen(false) }}
+              className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
+                value === opt.value
+                  ? 'text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10 font-semibold'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+              }`}>
+              {opt.label}
+              {value === opt.value && (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0 ml-2">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
 function AttendanceRowMenu({ onEditTimes, onLabel }: {
   onEditTimes: () => void
   onLabel?: () => void
@@ -433,17 +522,47 @@ function PaginationBar({ page, totalPages, onChange }: { page: number; totalPage
   )
 }
 
-function SortDropdown({ options, value, onChange, dropdownRef, open, setOpen }: {
+function SortDropdown({ options, value, onChange, open, setOpen }: {
   options: { value: string; label: string }[]
   value: string
   onChange: (v: string) => void
-  dropdownRef: React.RefObject<HTMLDivElement>
   open: boolean
   setOpen: (v: boolean) => void
 }) {
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ top: 0, bottom: 0, left: 0, dropUp: false })
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      const dropUp = window.innerHeight - rect.bottom < 200
+      setPos({ top: rect.bottom + 4, bottom: window.innerHeight - rect.top + 4, left: rect.left, dropUp })
+    }
+    setOpen(!open)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (btnRef.current?.contains(e.target as Node)) return
+      if (panelRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = () => setOpen(false)
+    window.addEventListener('scroll', handler, true)
+    return () => window.removeEventListener('scroll', handler, true)
+  }, [open])
+
   return (
-    <div className="relative" ref={dropdownRef}>
-      <button onClick={() => setOpen(!open)}
+    <div className="relative">
+      <button ref={btnRef} onClick={handleOpen}
         className="flex items-center gap-2 h-9 px-3 rounded-xl border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-sm text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C] transition-all">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
           <line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="9" y1="18" x2="15" y2="18"/>
@@ -453,8 +572,9 @@ function SortDropdown({ options, value, onChange, dropdownRef, open, setOpen }: 
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
-      {open && (
-        <div className="absolute left-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
+      {open && createPortal(
+        <div ref={panelRef} style={{ position: 'fixed', top: pos.dropUp ? undefined : pos.top, bottom: pos.dropUp ? pos.bottom : undefined, left: pos.left, zIndex: 9999 }}
+          className="bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
           <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Sort by</span>
           </div>
@@ -473,24 +593,55 @@ function SortDropdown({ options, value, onChange, dropdownRef, open, setOpen }: 
               )}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
 }
 
-function BranchFilterDropdown({ branches, value, onChange, dropdownRef, open, setOpen }: {
+function BranchFilterDropdown({ branches, value, onChange, open, setOpen }: {
   branches: string[]
   value: string
   onChange: (v: string) => void
-  dropdownRef: React.RefObject<HTMLDivElement>
   open: boolean
   setOpen: (v: boolean) => void
 }) {
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ top: 0, bottom: 0, left: 0, dropUp: false })
   const label = value === 'all' ? 'All Branches' : value
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      const dropUp = window.innerHeight - rect.bottom < 280
+      setPos({ top: rect.bottom + 4, bottom: window.innerHeight - rect.top + 4, left: rect.left, dropUp })
+    }
+    setOpen(!open)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (btnRef.current?.contains(e.target as Node)) return
+      if (panelRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = () => setOpen(false)
+    window.addEventListener('scroll', handler, true)
+    return () => window.removeEventListener('scroll', handler, true)
+  }, [open])
+
   return (
-    <div className="relative" ref={dropdownRef}>
-      <button onClick={() => setOpen(!open)}
+    <div className="relative">
+      <button ref={btnRef} onClick={handleOpen}
         className={`flex items-center gap-2 h-9 px-3 rounded-xl border text-sm font-semibold transition-all ${
           value !== 'all'
             ? 'border-[#DC143C] text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10'
@@ -504,8 +655,9 @@ function BranchFilterDropdown({ branches, value, onChange, dropdownRef, open, se
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
-      {open && (
-        <div className="absolute left-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl min-w-[200px] max-h-64 flex flex-col">
+      {open && createPortal(
+        <div ref={panelRef} style={{ position: 'fixed', top: pos.dropUp ? undefined : pos.top, bottom: pos.dropUp ? pos.bottom : undefined, left: pos.left, zIndex: 9999 }}
+          className="bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl min-w-[200px] max-h-64 flex flex-col">
           <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] rounded-t-xl flex-shrink-0">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filter by Branch</span>
           </div>
@@ -526,7 +678,8 @@ function BranchFilterDropdown({ branches, value, onChange, dropdownRef, open, se
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -545,18 +698,48 @@ const AGENT_TYPE_STYLES: Record<string, { bg: string; text: string; darkBg: stri
 const getAgentTypeStyle = (type: string) =>
   AGENT_TYPE_STYLES[type] ?? { bg: 'bg-gray-100', text: 'text-gray-600', darkBg: 'dark:bg-gray-800', darkText: 'dark:text-gray-400' }
 
-function AgentTypeFilterDropdown({ types, value, onChange, dropdownRef, open, setOpen }: {
+function AgentTypeFilterDropdown({ types, value, onChange, open, setOpen }: {
   types: string[]
   value: string
   onChange: (v: string) => void
-  dropdownRef: React.RefObject<HTMLDivElement>
   open: boolean
   setOpen: (v: boolean) => void
 }) {
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ top: 0, bottom: 0, left: 0, dropUp: false })
   const label = value === 'all' ? 'Agent Type' : value
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      const dropUp = window.innerHeight - rect.bottom < 260
+      setPos({ top: rect.bottom + 4, bottom: window.innerHeight - rect.top + 4, left: rect.left, dropUp })
+    }
+    setOpen(!open)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (btnRef.current?.contains(e.target as Node)) return
+      if (panelRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = () => setOpen(false)
+    window.addEventListener('scroll', handler, true)
+    return () => window.removeEventListener('scroll', handler, true)
+  }, [open])
+
   return (
-    <div className="relative" ref={dropdownRef}>
-      <button onClick={() => setOpen(!open)}
+    <div className="relative">
+      <button ref={btnRef} onClick={handleOpen}
         className={`flex items-center gap-2 h-9 px-3 rounded-xl border text-sm font-semibold transition-all ${
           value !== 'all'
             ? 'border-[#DC143C] text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10'
@@ -570,8 +753,9 @@ function AgentTypeFilterDropdown({ types, value, onChange, dropdownRef, open, se
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
-      {open && (
-        <div className="absolute left-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[190px]">
+      {open && createPortal(
+        <div ref={panelRef} style={{ position: 'fixed', top: pos.dropUp ? undefined : pos.top, bottom: pos.dropUp ? pos.bottom : undefined, left: pos.left, zIndex: 9999 }}
+          className="bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[190px]">
           <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filter by Agent Type</span>
           </div>
@@ -596,20 +780,23 @@ function AgentTypeFilterDropdown({ types, value, onChange, dropdownRef, open, se
               </button>
             )
           })}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
 }
 
-function StatusFilterDropdown({ value, onChange, ended, dropdownRef, open, setOpen }: {
+function StatusFilterDropdown({ value, onChange, ended, open, setOpen }: {
   value: string
   onChange: (v: string) => void
   ended: boolean
-  dropdownRef: React.RefObject<HTMLDivElement>
   open: boolean
   setOpen: (v: boolean) => void
 }) {
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ top: 0, bottom: 0, left: 0, dropUp: false })
   const options = [
     { value: 'all',         label: 'All Status' },
     { value: 'checked_in',  label: 'Checked In' },
@@ -618,9 +805,37 @@ function StatusFilterDropdown({ value, onChange, ended, dropdownRef, open, setOp
     { value: 'no_show',     label: ended ? 'No-Show' : 'Waiting' },
   ]
   const label = options.find(o => o.value === value)?.label ?? 'All Status'
+
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      const dropUp = window.innerHeight - rect.bottom < 240
+      setPos({ top: rect.bottom + 4, bottom: window.innerHeight - rect.top + 4, left: rect.left, dropUp })
+    }
+    setOpen(!open)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (btnRef.current?.contains(e.target as Node)) return
+      if (panelRef.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handler = () => setOpen(false)
+    window.addEventListener('scroll', handler, true)
+    return () => window.removeEventListener('scroll', handler, true)
+  }, [open])
+
   return (
-    <div className="relative" ref={dropdownRef}>
-      <button onClick={() => setOpen(!open)}
+    <div className="relative">
+      <button ref={btnRef} onClick={handleOpen}
         className={`flex items-center gap-2 h-9 px-3 rounded-xl border text-sm font-semibold transition-all ${
           value !== 'all'
             ? 'border-[#DC143C] text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10'
@@ -634,8 +849,9 @@ function StatusFilterDropdown({ value, onChange, ended, dropdownRef, open, setOp
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
-      {open && (
-        <div className="absolute left-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
+      {open && createPortal(
+        <div ref={panelRef} style={{ position: 'fixed', top: pos.dropUp ? undefined : pos.top, bottom: pos.dropUp ? pos.bottom : undefined, left: pos.left, zIndex: 9999 }}
+          className="bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[160px]">
           <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filter by Status</span>
           </div>
@@ -654,7 +870,8 @@ function StatusFilterDropdown({ value, onChange, ended, dropdownRef, open, setOp
               )}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -734,34 +951,25 @@ export default function EventDetailTabs({
   const [registrantsSearch, setRegistrantsSearch] = useState('')
   const [registrantsSort, setRegistrantsSort] = useState<'name' | 'date'>('date')
   const [registrantsSortOpen, setRegistrantsSortOpen] = useState(false)
-  const registrantsSortRef = useRef<HTMLDivElement>(null)
   const [registrantsBranchFilter, setRegistrantsBranchFilter] = useState<string>('all')
   const [registrantsBranchOpen, setRegistrantsBranchOpen] = useState(false)
-  const registrantsBranchRef = useRef<HTMLDivElement>(null)
   const [registrantsAgentTypeFilter, setRegistrantsAgentTypeFilter] = useState<string>('all')
   const [registrantsAgentTypeOpen, setRegistrantsAgentTypeOpen] = useState(false)
-  const registrantsAgentTypeRef = useRef<HTMLDivElement>(null)
 
   const [attendanceSearch, setAttendanceSearch] = useState('')
   const [attendanceSort, setAttendanceSort] = useState<'checkin' | 'name'>('checkin')
   const [attendanceSortOpen, setAttendanceSortOpen] = useState(false)
-  const attendanceSortRef = useRef<HTMLDivElement>(null)
   const [attendanceBranchFilter, setAttendanceBranchFilter] = useState<string>('all')
   const [attendanceBranchOpen, setAttendanceBranchOpen] = useState(false)
-  const attendanceBranchRef = useRef<HTMLDivElement>(null)
   const [attendanceAgentTypeFilter, setAttendanceAgentTypeFilter] = useState<string>('all')
   const [attendanceAgentTypeOpen, setAttendanceAgentTypeOpen] = useState(false)
-  const attendanceAgentTypeRef = useRef<HTMLDivElement>(null)
   const [attendanceStatusOpen, setAttendanceStatusOpen] = useState(false)
-  const attendanceStatusRef = useRef<HTMLDivElement>(null)
 
   const [scanlogsSearch, setScanlogsSearch] = useState('')
   const [scanlogsSort, setScanlogsSort] = useState<'latest' | 'oldest'>('latest')
   const [scanlogsSortOpen, setScanlogsSortOpen] = useState(false)
   const [scanlogsType, setScanlogsType] = useState<'all' | 'check_in' | 'check_out' | 'denied'>('all')
-  const scanlogsSortRef = useRef<HTMLDivElement>(null)
   const [scanlogsTypeOpen, setScanlogsTypeOpen] = useState(false)
-  const scanlogsTypeRef = useRef<HTMLDivElement>(null)
 
   const [trashSearch, setTrashSearch] = useState('')
 
@@ -770,23 +978,6 @@ export default function EventDetailTabs({
   const [scanlogsPage,    setScanlogsPage]      = useState(1)
   const [staffPage,       setStaffPage]         = useState(1)
   const [trashPage,       setTrashPage]         = useState(1)
-
-  // Close sort dropdowns on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (registrantsSortRef.current && !registrantsSortRef.current.contains(e.target as Node)) setRegistrantsSortOpen(false)
-      if (registrantsBranchRef.current && !registrantsBranchRef.current.contains(e.target as Node)) setRegistrantsBranchOpen(false)
-      if (registrantsAgentTypeRef.current && !registrantsAgentTypeRef.current.contains(e.target as Node)) setRegistrantsAgentTypeOpen(false)
-      if (attendanceSortRef.current  && !attendanceSortRef.current.contains(e.target as Node))  setAttendanceSortOpen(false)
-      if (attendanceBranchRef.current && !attendanceBranchRef.current.contains(e.target as Node)) setAttendanceBranchOpen(false)
-      if (attendanceAgentTypeRef.current && !attendanceAgentTypeRef.current.contains(e.target as Node)) setAttendanceAgentTypeOpen(false)
-      if (attendanceStatusRef.current && !attendanceStatusRef.current.contains(e.target as Node)) setAttendanceStatusOpen(false)
-      if (scanlogsSortRef.current    && !scanlogsSortRef.current.contains(e.target as Node))    setScanlogsSortOpen(false)
-      if (scanlogsTypeRef.current    && !scanlogsTypeRef.current.contains(e.target as Node))    setScanlogsTypeOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
 
   // Reset pages on filter/sort change
   useEffect(() => { setRegistrantsPage(1) }, [registrantsSearch, registrantsSort, registrantsBranchFilter, registrantsAgentTypeFilter])
@@ -906,7 +1097,6 @@ export default function EventDetailTabs({
     ] : []),
   ]
 
-
   // ── Pagination ──
   const PAGE_SIZE = 20
   const registrantsTotalPages = Math.max(1, Math.ceil(filteredRegistrants.length / PAGE_SIZE))
@@ -955,7 +1145,6 @@ export default function EventDetailTabs({
                     branches={registrantBranches}
                     value={registrantsBranchFilter}
                     onChange={setRegistrantsBranchFilter}
-                    dropdownRef={registrantsBranchRef}
                     open={registrantsBranchOpen}
                     setOpen={setRegistrantsBranchOpen}
                   />
@@ -964,7 +1153,6 @@ export default function EventDetailTabs({
                   types={registrantAgentTypes}
                   value={registrantsAgentTypeFilter}
                   onChange={setRegistrantsAgentTypeFilter}
-                  dropdownRef={registrantsAgentTypeRef}
                   open={registrantsAgentTypeOpen}
                   setOpen={setRegistrantsAgentTypeOpen}
                 />
@@ -972,7 +1160,6 @@ export default function EventDetailTabs({
                   options={[{ value: 'date', label: 'Date Registered' }, { value: 'name', label: 'Name A–Z' }]}
                   value={registrantsSort}
                   onChange={v => setRegistrantsSort(v as any)}
-                  dropdownRef={registrantsSortRef}
                   open={registrantsSortOpen}
                   setOpen={setRegistrantsSortOpen}
                 />
@@ -1059,7 +1246,6 @@ export default function EventDetailTabs({
                   value={filterStatus}
                   onChange={v => setFilterStatus(v as any)}
                   ended={ended}
-                  dropdownRef={attendanceStatusRef}
                   open={attendanceStatusOpen}
                   setOpen={setAttendanceStatusOpen}
                 />
@@ -1068,7 +1254,6 @@ export default function EventDetailTabs({
                     branches={attendanceBranches}
                     value={attendanceBranchFilter}
                     onChange={setAttendanceBranchFilter}
-                    dropdownRef={attendanceBranchRef}
                     open={attendanceBranchOpen}
                     setOpen={setAttendanceBranchOpen}
                   />
@@ -1077,7 +1262,6 @@ export default function EventDetailTabs({
                   types={attendanceAgentTypes}
                   value={attendanceAgentTypeFilter}
                   onChange={setAttendanceAgentTypeFilter}
-                  dropdownRef={attendanceAgentTypeRef}
                   open={attendanceAgentTypeOpen}
                   setOpen={setAttendanceAgentTypeOpen}
                 />
@@ -1085,7 +1269,6 @@ export default function EventDetailTabs({
                   options={[{ value: 'checkin', label: 'Check-in Time' }, { value: 'name', label: 'Name A–Z' }]}
                   value={attendanceSort}
                   onChange={v => setAttendanceSort(v as any)}
-                  dropdownRef={attendanceSortRef}
                   open={attendanceSortOpen}
                   setOpen={setAttendanceSortOpen}
                 />
@@ -1242,55 +1425,15 @@ export default function EventDetailTabs({
                   options={[{ value: 'latest', label: 'Latest First' }, { value: 'oldest', label: 'Oldest First' }]}
                   value={scanlogsSort}
                   onChange={v => setScanlogsSort(v as any)}
-                  dropdownRef={scanlogsSortRef}
                   open={scanlogsSortOpen}
                   setOpen={setScanlogsSortOpen}
                 />
-                <div className="relative" ref={scanlogsTypeRef}>
-                  <button onClick={() => setScanlogsTypeOpen(o => !o)}
-                    className={`flex items-center gap-2 h-9 px-3 rounded-xl border text-sm font-semibold transition-all ${
-                      scanlogsType !== 'all'
-                        ? 'border-[#DC143C] text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10'
-                        : 'border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
-                    }`}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0">
-                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                    </svg>
-                    <span className="text-xs">
-                      {scanlogsType === 'all' ? 'All Types' : scanlogsType === 'check_in' ? 'Check In' : scanlogsType === 'check_out' ? 'Check Out' : 'Denied'}
-                    </span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 flex-shrink-0 transition-transform ${scanlogsTypeOpen ? 'rotate-180' : ''}`}>
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </button>
-                  {scanlogsTypeOpen && (
-                    <div className="absolute left-0 top-11 z-30 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden min-w-[150px]">
-                      <div className="px-4 py-2 border-b border-gray-100 dark:border-[#2a2a2a]">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Filter by Type</span>
-                      </div>
-                      {([
-                        { value: 'all',       label: 'All Types' },
-                        { value: 'check_in',  label: 'Check In' },
-                        { value: 'check_out', label: 'Check Out' },
-                        { value: 'denied',    label: 'Denied' },
-                      ] as const).map(opt => (
-                        <button key={opt.value} onClick={() => { setScanlogsType(opt.value); setScanlogsTypeOpen(false) }}
-                          className={`w-full flex items-center justify-between px-4 py-2.5 text-sm transition-colors ${
-                            scanlogsType === opt.value
-                              ? 'text-[#DC143C] bg-red-50 dark:bg-[#DC143C]/10 font-semibold'
-                              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
-                          }`}>
-                          {opt.label}
-                          {scanlogsType === opt.value && (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 flex-shrink-0 ml-2">
-                              <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <ScanlogsTypeDropdown
+                  value={scanlogsType}
+                  onChange={setScanlogsType}
+                  open={scanlogsTypeOpen}
+                  setOpen={setScanlogsTypeOpen}
+                />
                 <div className="relative flex-1 min-w-[180px]">
                   <input value={scanlogsSearch} onChange={e => setScanlogsSearch(e.target.value)}
                     placeholder="Search name, agent code…"

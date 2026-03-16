@@ -70,7 +70,13 @@ export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
   const newSlideshowFiles = files?.filter(f => f.fieldname === 'slideshow_images') ?? []
   const newSlideshowUrls = await uploadSlideshowFiles(newSlideshowFiles)
 
+  // ── DEBUG ──
+  console.log('=== CONTROLLER DEBUG ===')
+  console.log('raw remove_slideshow_urls:', req.body.remove_slideshow_urls)
+  console.log('type:', typeof req.body.remove_slideshow_urls)
+
   const removeSlideshowUrls: string[] = parseField(req.body.remove_slideshow_urls)
+  console.log('parsed removeSlideshowUrls:', JSON.stringify(removeSlideshowUrls))
 
   const body = {
     ...req.body,
