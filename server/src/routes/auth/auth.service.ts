@@ -1,8 +1,11 @@
 import pool from '../../config/database.js'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 import { UnauthorizedError, ValidationError, AppError } from '../../errors/AppError.js'
+
+// ── Resend client ──────────────────────────────────────────
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 export const loginService = async (email: string, password: string) => {
   if (!email || typeof email !== 'string') throw new ValidationError('Valid email is required')
@@ -49,36 +52,6 @@ export const getMeService = async (user_id: string) => {
   return result.rows[0]
 }
 
-// ── Helper: send email ─────────────────────────────────────
-const sendEmail = async (to: string, subject: string, html: string) => {
-  const transporter = (nodemailer as any).createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    family: 4,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    },
-    tls: { rejectUnauthorized: false }
-  })
-
-  try {
-    await transporter.sendMail({
-      from: `"PrimeLog" <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      html
-    })
-    console.log(`✅ Email sent to ${to}`)
-  } catch (err: any) {
-    console.error('❌ Email send error:', err.message)
-    console.error('EMAIL_USER:', process.env.EMAIL_USER)
-    console.error('EMAIL_PASS set:', !!process.env.EMAIL_PASS)
-    throw new AppError('Failed to send email. Please try again later.', 500)
-  }
-}
-
 // ── Step 1: Send OTP ───────────────────────────────────────
 export const sendOtpService = async (email: string) => {
   if (!email?.trim()) throw new ValidationError('Email is required')
@@ -89,33 +62,44 @@ export const sendOtpService = async (email: string) => {
   )
   const user = result.rows[0]
 
+  // Always return same message to prevent email enumeration
   if (!user) return { message: 'If that email exists, an OTP has been sent.' }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString()
-  const expires = new Date(Date.now() + 1000 * 60 * 10)
+  const expires = new Date(Date.now() + 1000 * 60 * 10) // 10 minutes
 
   await pool.query(
     `UPDATE users SET otp_code = $1, otp_expires = $2, otp_verified = FALSE WHERE user_id = $3`,
     [otp, expires, user.user_id]
   )
 
-  await sendEmail(
-    user.email,
-    'Your PrimeLog OTP Code',
-    `
-    <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto;">
-      <h2 style="color: #DC143C;">PrimeLog - Password Reset OTP</h2>
-      <p>Hi ${user.full_name},</p>
-      <p>Use this OTP to reset your password. It expires in <strong>10 minutes</strong>.</p>
-      <div style="text-align:center; margin: 24px 0;">
-        <span style="font-size: 40px; font-weight: bold; letter-spacing: 12px; color: #DC143C;">
-          ${otp}
-        </span>
-      </div>
-      <p style="color:#888; font-size:12px;">If you didn't request this, you can safely ignore this email.</p>
-    </div>
-    `
-  )
+  // ── Send via Resend ────────────────────────────────────────
+  try {
+    await resend.emails.send({
+      from: 'PrimeLog <onboarding@resend.dev>',
+      to: user.email,
+      subject: 'Your PrimeLog OTP Code',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 24px;">
+          <h2 style="color: #DC143C;">PrimeLog — Password Reset</h2>
+          <p>Hi ${user.full_name},</p>
+          <p>Use this OTP to reset your password. It expires in <strong>10 minutes</strong>.</p>
+          <div style="text-align:center; margin: 32px 0; padding: 24px; background: #fff5f5; border-radius: 12px;">
+            <span style="font-size: 40px; font-weight: bold; letter-spacing: 12px; color: #DC143C;">
+              ${otp}
+            </span>
+          </div>
+          <p style="color: #888; font-size: 12px;">
+            If you didn't request this, you can safely ignore this email.
+          </p>
+        </div>
+      `
+    })
+    console.log(`✅ OTP email sent to ${user.email} via Resend`)
+  } catch (err: any) {
+    console.error('❌ Resend email error:', err.message)
+    throw new AppError('Failed to send email. Please try again later.', 500)
+  }
 
   return { message: 'If that email exists, an OTP has been sent.' }
 }
