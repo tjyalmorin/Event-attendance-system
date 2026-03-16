@@ -141,45 +141,37 @@ export const getEventByIdService = async (event_id: number) => {
   return result.rows[0]
 }
 
-const getEventDetailsForStaffService = async (event_id: number) => {
-  const event = await getEventByIdService(event_id)
-  const branchesResult = await pool.query(
-    `SELECT branch_name, team_names FROM event_branches WHERE event_id = $1 ORDER BY branch_name`,
-    [event_id]
-  )
-  event.event_branches = branchesResult.rows
-  return event
-}
-
 export const updateEventService = async (event_id: number, payload: UpdateEventPayload) => {
   validateEventId(event_id)
   const current = await getEventByIdService(event_id)
   const merged = { ...current, ...payload }
 
-  // ── Compute new slideshow_urls array ───────────────────
+  // ── Compute new slideshow_urls array ───────────────────────────────────────
+  // current.slideshow_urls comes from DB (always a real array due to COALESCE)
   const existingUrls: string[] = Array.isArray(current.slideshow_urls)
     ? current.slideshow_urls
     : []
 
+  // remove_slideshow_urls: already parsed into string[] by Zod + controller
+  // No need to JSON.parse again — just use it directly
   const removedUrls: string[] = Array.isArray(payload.remove_slideshow_urls)
     ? payload.remove_slideshow_urls
-    : (typeof payload.remove_slideshow_urls === 'string'
-        ? JSON.parse(payload.remove_slideshow_urls)
-        : [])
+    : []
 
   const newUrls: string[] = Array.isArray(payload.new_slideshow_urls)
     ? payload.new_slideshow_urls
     : []
 
-  console.log('=== SLIDESHOW DEBUG ===')
-  console.log('existingUrls:', JSON.stringify(existingUrls))
-  console.log('removedUrls:', JSON.stringify(removedUrls))
+  console.log('=== SERVICE SLIDESHOW DEBUG ===')
+  console.log('existingUrls:', existingUrls)
+  console.log('removedUrls:', removedUrls)
+  console.log('newUrls:', newUrls)
 
   const keptUrls = existingUrls.filter(url => !removedUrls.includes(url))
   const finalUrls = [...keptUrls, ...newUrls].slice(0, 5)
 
-  console.log('keptUrls:', JSON.stringify(keptUrls))
-  console.log('finalUrls:', JSON.stringify(finalUrls))
+  console.log('keptUrls:', keptUrls)
+  console.log('finalUrls:', finalUrls)
 
   const result = await pool.query(
     `UPDATE events

@@ -217,18 +217,23 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
   const [registrationEnd, setRegistrationEnd] = useState<Date | null>(safeDate(event.registration_end));
 
   // ── Slideshow images ──
+  // A preview is an EXISTING saved URL if it does NOT start with "blob:"
+  // blob: URLs are created locally by URL.createObjectURL() for newly picked files.
+  // Cloudinary URLs always start with "https://" — this check survives reloads and
+  // stale parent props because it depends only on the URL string itself, not a ref.
+  const isExistingUrl = (src: string) => !src.startsWith('blob:');
+
   const [slideshowFiles, setSlideshowFiles] = useState<File[]>([]);
-  const [slideshowPreviews, setSlideshowPreviews] = useState<string[]>(() => {
-    const existing = (event as any).slideshow_urls;
-    return Array.isArray(existing) ? existing : [];
-  });
+  const [slideshowPreviews, setSlideshowPreviews] = useState<string[]>(
+    Array.isArray(event.slideshow_urls) ? event.slideshow_urls : []
+  );
   const [removedSlideshowUrls, setRemovedSlideshowUrls] = useState<string[]>([]);
   const slideshowInputRef = useRef<HTMLInputElement>(null);
 
   // ── Preset (Card image) ──
   const [selectedPreset, setSelectedPreset] = useState<string | null>(
-    (event as any).preset_url
-      ? (PRESET_IMAGES.find(p => p.url === (event as any).preset_url)?.id ?? null)
+    event.preset_url
+      ? (PRESET_IMAGES.find(p => p.url === event.preset_url)?.id ?? null)
       : null
   );
   const [removePreset, setRemovePreset] = useState(false);
@@ -421,7 +426,7 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
       slideshowFiles.length > 0 ||
       removedSlideshowUrls.length > 0 ||
       removePreset ||
-      selectedPreset !== ((event as any).preset_url ? (PRESET_IMAGES.find(p => p.url === (event as any).preset_url)?.id ?? null) : null) ||
+      selectedPreset !== (event.preset_url ? (PRESET_IMAGES.find(p => p.url === event.preset_url)?.id ?? null) : null) ||
       branchesChanged ||
       staffChanged
     );
@@ -615,13 +620,16 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                           <button
                             type="button"
                             onClick={() => {
-                              const existingUrls: string[] = (event as any).slideshow_urls ?? [];
-                              // Determine if this preview is an existing URL or a new file
-                              if (existingUrls.includes(src)) {
+                              if (isExistingUrl(src)) {
+                                // It's a saved Cloudinary URL (https://) — tell backend to remove it
                                 setRemovedSlideshowUrls(prev => [...prev, src]);
                               } else {
-                                const newFileIdx = slideshowPreviews.filter(p => !existingUrls.includes(p)).indexOf(src);
-                                setSlideshowFiles(prev => prev.filter((_, i) => i !== newFileIdx));
+                                // It's a local blob: URL — remove the corresponding File from state
+                                const blobPreviews = slideshowPreviews.filter(p => !isExistingUrl(p));
+                                const newFileIdx = blobPreviews.indexOf(src);
+                                if (newFileIdx !== -1) {
+                                  setSlideshowFiles(prev => prev.filter((_, i) => i !== newFileIdx));
+                                }
                               }
                               setSlideshowPreviews(prev => prev.filter((_, i) => i !== idx));
                             }}
@@ -662,22 +670,26 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                     </svg>
                     <span className="text-sm font-semibold text-gray-400 dark:text-gray-500">Click to upload first image</span>
                     <span className="text-xs text-gray-300 dark:text-gray-600">JPG, PNG, WEBP · Max 5MB each · Up to 5 images</span>
+                    {/* FIX: setError('') at the top so stale errors are cleared on new pick */}
                     <input type="file" accept="image/*" className="sr-only"
                       onChange={e => {
+                        setError('');
                         const file = e.target.files?.[0] ?? null;
+                        e.target.value = '';
                         if (!file) return;
                         if (file.size > 5 * 1024 * 1024) { setError('Each image must be under 5MB.'); return; }
                         if (slideshowPreviews.length >= 5) return;
                         setSlideshowFiles(prev => [...prev, file]);
                         setSlideshowPreviews(prev => [...prev, URL.createObjectURL(file)]);
-                        setError('');
                       }} />
                   </label>
                 )}
 
                 {/* Hidden input for Add button */}
+                {/* FIX: setError('') at the top so stale errors are cleared on new pick */}
                 <input ref={slideshowInputRef} type="file" accept="image/*" className="sr-only"
                   onChange={e => {
+                    setError('');
                     const file = e.target.files?.[0] ?? null;
                     e.target.value = '';
                     if (!file) return;
@@ -685,7 +697,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                     if (slideshowPreviews.length >= 5) return;
                     setSlideshowFiles(prev => [...prev, file]);
                     setSlideshowPreviews(prev => [...prev, URL.createObjectURL(file)]);
-                    setError('');
                   }} />
               </div>
 

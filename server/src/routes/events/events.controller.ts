@@ -67,16 +67,21 @@ export const getEventById = asyncHandler(async (req: Request, res: Response) => 
 export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[] | undefined
 
+  // Upload any new slideshow images to Cloudinary
   const newSlideshowFiles = files?.filter(f => f.fieldname === 'slideshow_images') ?? []
   const newSlideshowUrls = await uploadSlideshowFiles(newSlideshowFiles)
 
-  // ── DEBUG ──
-  console.log('=== CONTROLLER DEBUG ===')
-  console.log('raw remove_slideshow_urls:', req.body.remove_slideshow_urls)
-  console.log('type:', typeof req.body.remove_slideshow_urls)
+  // remove_slideshow_urls: Zod already parsed it from JSON string → string[]
+  // via the jsonStringArrayField preprocess in updateEventSchema.
+  // We just read it directly — no need to re-parse.
+  const removeSlideshowUrls: string[] = Array.isArray(req.body.remove_slideshow_urls)
+    ? req.body.remove_slideshow_urls
+    : []
 
-  const removeSlideshowUrls: string[] = parseField(req.body.remove_slideshow_urls)
-  console.log('parsed removeSlideshowUrls:', JSON.stringify(removeSlideshowUrls))
+  console.log('=== UPDATE EVENT DEBUG ===')
+  console.log('remove_slideshow_urls from req.body:', req.body.remove_slideshow_urls)
+  console.log('removeSlideshowUrls (final):', removeSlideshowUrls)
+  console.log('newSlideshowUrls:', newSlideshowUrls)
 
   const body = {
     ...req.body,

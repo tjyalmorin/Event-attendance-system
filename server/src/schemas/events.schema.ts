@@ -22,6 +22,16 @@ const jsonArrayField = <T extends z.ZodTypeAny>(itemSchema: T) =>
     return val
   }, z.array(itemSchema).optional().nullable())
 
+// Handles remove_slideshow_urls — arrives as a JSON string from multipart FormData
+// e.g. '["https://res.cloudinary.com/..."]'
+const jsonStringArrayField = z.preprocess(val => {
+  if (!val) return []
+  if (typeof val === 'string') {
+    try { return JSON.parse(val) } catch { return [] }
+  }
+  return val
+}, z.array(z.string()).optional())
+
 export const createEventSchema = z.object({
   title:              z.string().min(1).max(255),
   description:        emptyToNull,
@@ -43,5 +53,10 @@ export const createEventSchema = z.object({
 })
 
 export const updateEventSchema = createEventSchema.partial().extend({
-  status: z.enum(['draft', 'open', 'closed', 'completed', 'archived']).optional()
+  status:                z.enum(['draft', 'open', 'closed', 'completed', 'archived']).optional(),
+  // These two fields are only present on updates (not on create) — must be
+  // explicitly declared here or Zod strips them from req.body before the
+  // controller can read them (Zod removes unknown keys by default)
+  remove_slideshow_urls: jsonStringArrayField,
+  new_slideshow_urls:    jsonArrayField(z.string()),
 })

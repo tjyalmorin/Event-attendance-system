@@ -49,6 +49,8 @@ export interface Event {
   created_at: string
   updated_at: string
   poster_url: string | null
+  preset_url?: string | null       // stock photo preset for event card
+  slideshow_urls?: string[]        // Cloudinary URLs shown on registration page
 }
 
 export interface CreateEventPayload {
@@ -79,7 +81,7 @@ export interface Participant {
   agent_type: AgentType | null
   registration_status: 'confirmed' | 'cancelled'
   registered_at: string
-  label: boolean
+  label: string | null             // string label e.g. "Awardee", NOT boolean
   label_description: string | null
 }
 
