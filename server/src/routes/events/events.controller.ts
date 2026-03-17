@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import asyncHandler from '../../middlewares/asyncHandler.js'
+import cloudinary from '../../config/cloudinary.js'
 import { uploadToCloudinary } from '../../middlewares/upload.js'
 import {
   createEventService, getAllEventsService, getEventByIdService,
@@ -18,21 +19,46 @@ const parseField = (val: any) => {
   return val
 }
 
-// ── Helper: upload slideshow files to Cloudinary ─────────
-const uploadSlideshowFiles = async (files: Express.Multer.File[]): Promise<string[]> => {
-  const urls: string[] = []
-  for (const file of files) {
-    const filename = `slide-${Date.now()}-${Math.round(Math.random() * 1e6)}`
-    const url = await uploadToCloudinary(file.buffer, 'primelog/slideshow', filename)
-    urls.push(url)
-  }
-  return urls
+// ── Helper: extract Cloudinary public_id from a secure_url ───
+const extractPublicId = (url: string): string => {
+  // e.g. https://res.cloudinary.com/xxx/image/upload/v123/primelog/slideshow/slide-abc.jpg
+  // → primelog/slideshow/slide-abc
+  const parts = url.split('/upload/')
+  if (parts.length < 2) return ''
+  return parts[1].replace(/^v\d+\//, '').replace(/\.[^.]+$/, '')
+}
+
+// ── Helper: upload slideshow files in parallel ───────────────
+const uploadSlideshowFiles = async (
+  files: Express.Multer.File[],
+  eventId?: number
+): Promise<string[]> => {
+  return Promise.all(
+    files.map((file, i) => {
+      const filename = eventId
+        ? `events/${eventId}/slide-${i}-${Date.now()}`
+        : `slide-${Date.now()}-${Math.round(Math.random() * 1e6)}-${i}`
+      return uploadToCloudinary(file.buffer, 'primelog/slideshow', filename)
+    })
+  )
+}
+
+// ── Helper: delete Cloudinary assets by URL ──────────────────
+const deleteCloudinaryUrls = async (urls: string[]): Promise<void> => {
+  await Promise.all(
+    urls.map(url => {
+      const publicId = extractPublicId(url)
+      if (!publicId) return Promise.resolve()
+      return cloudinary.uploader.destroy(publicId).catch(() => {})
+    })
+  )
 }
 
 export const createEvent = asyncHandler(async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[] | undefined
-
   const slideshowFiles = files?.filter(f => f.fieldname === 'slideshow_images') ?? []
+
+  // Upload to Cloudinary first
   const slideshowUrls = await uploadSlideshowFiles(slideshowFiles)
 
   const body = {
@@ -49,8 +75,14 @@ export const createEvent = asyncHandler(async (req: Request, res: Response) => {
     preset_url:         req.body.preset_url || null,
   }
 
-  const event = await createEventService(req.user!.user_id, body)
-  res.status(201).json(event)
+  try {
+    const event = await createEventService(req.user!.user_id, body)
+    res.status(201).json(event)
+  } catch (dbErr) {
+    // DB failed — clean up already-uploaded Cloudinary assets
+    await deleteCloudinaryUrls(slideshowUrls)
+    throw dbErr
+  }
 })
 
 export const getAllEvents = asyncHandler(async (req: Request, res: Response) => {
@@ -67,22 +99,16 @@ export const getEventById = asyncHandler(async (req: Request, res: Response) => 
 
 export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[] | undefined
+  const eventId = Number(req.params.event_id)
 
-  // Upload any new slideshow images to Cloudinary
   const newSlideshowFiles = files?.filter(f => f.fieldname === 'slideshow_images') ?? []
-  const newSlideshowUrls = await uploadSlideshowFiles(newSlideshowFiles)
 
-  // remove_slideshow_urls: Zod already parsed it from JSON string → string[]
-  // via the jsonStringArrayField preprocess in updateEventSchema.
-  // We just read it directly — no need to re-parse.
+  // Upload new slideshow images in parallel
+  const newSlideshowUrls = await uploadSlideshowFiles(newSlideshowFiles, eventId)
+
   const removeSlideshowUrls: string[] = Array.isArray(req.body.remove_slideshow_urls)
     ? req.body.remove_slideshow_urls
     : []
-
-  console.log('=== UPDATE EVENT DEBUG ===')
-  console.log('remove_slideshow_urls from req.body:', req.body.remove_slideshow_urls)
-  console.log('removeSlideshowUrls (final):', removeSlideshowUrls)
-  console.log('newSlideshowUrls:', newSlideshowUrls)
 
   const body = {
     ...req.body,
@@ -95,8 +121,20 @@ export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
       : req.body.preset_url ?? undefined,
   }
 
-  const event = await updateEventService(Number(req.params.event_id), body)
-  res.json(event)
+  try {
+    const event = await updateEventService(eventId, body)
+
+    // DB succeeded — now delete removed images from Cloudinary
+    if (removeSlideshowUrls.length > 0) {
+      await deleteCloudinaryUrls(removeSlideshowUrls)
+    }
+
+    res.json(event)
+  } catch (dbErr) {
+    // DB failed — clean up newly uploaded images
+    await deleteCloudinaryUrls(newSlideshowUrls)
+    throw dbErr
+  }
 })
 
 export const deleteEvent = asyncHandler(async (req: Request, res: Response) => {
@@ -121,7 +159,17 @@ export const restoreEvent = asyncHandler(async (req: Request, res: Response) => 
 })
 
 export const permanentDeleteEvent = asyncHandler(async (req: Request, res: Response) => {
+  // Fetch slideshow URLs before deleting so we can clean up Cloudinary
+  const event = await getEventByIdService(Number(req.params.event_id))
+  const slideshowUrls: string[] = Array.isArray(event.slideshow_urls) ? event.slideshow_urls : []
+
   await permanentDeleteEventService(Number(req.params.event_id))
+
+  // Clean up Cloudinary assets after successful DB delete
+  if (slideshowUrls.length > 0) {
+    await deleteCloudinaryUrls(slideshowUrls)
+  }
+
   res.json({ message: 'Event permanently deleted' })
 })
 
