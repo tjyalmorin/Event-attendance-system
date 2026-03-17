@@ -1,5 +1,12 @@
 import pool from '../../config/database.js'
 import { AppError, NotFoundError, ValidationError } from '../../errors/AppError.js'
+import { cacheGet, cacheSet, cacheDel } from '../../utils/cache.js'
+
+const SESSIONS_CACHE_TTL = 10 // 10 seconds — short enough for live feel
+
+const invalidateSessionsCache = async (event_id: number) => {
+  await cacheDel(`sessions:event:${event_id}`)
+}
 
 export const lookupParticipantService = async (query: string, event_id: number, branch_name?: string | null) => {
   if (!query?.trim()) throw new ValidationError('Agent code or surname is required')
@@ -13,7 +20,7 @@ export const lookupParticipantService = async (query: string, event_id: number, 
   const event = eventResult.rows[0]
   if (!event) throw new AppError('Event not found.', 404)
 
-  // ── Cutoff check in SQL using DB timezone (Asia/Manila) ──────────────────
+  // ── Cutoff check in SQL using DB timezone ─────────────────────────────────
   if (event.checkin_cutoff) {
     const cutoffResult = await pool.query(
       `SELECT (NOW()::time > $1::time) AS is_past`,
@@ -24,7 +31,6 @@ export const lookupParticipantService = async (query: string, event_id: number, 
 
   const isNumeric = /^\d+$/.test(query.trim())
 
-  // ── Single combined query instead of two sequential queries ──────────────
   const participantResult = await pool.query(
     `SELECT p.*, a.photo_url
      FROM participants p
@@ -43,7 +49,6 @@ export const lookupParticipantService = async (query: string, event_id: number, 
 
   let participantRows = participantResult.rows
 
-  // ── Fallback: if numeric but no agent code match, try full name too ───────
   if (isNumeric && participantRows.length === 0) {
     const fallback = await pool.query(
       `SELECT p.*, a.photo_url
@@ -215,8 +220,18 @@ export const scanAgentCodeService = async (
     throw new AppError('Event not found.', 404)
   }
 
-  // ── Cutoff check in SQL using DB timezone ─────────────────────────────────
-  if (event.checkin_cutoff) {
+  const existingSession = await pool.query(
+    `SELECT * FROM attendance_sessions
+     WHERE participant_id = $1 AND event_id = $2
+     ORDER BY created_at DESC LIMIT 1`,
+    [participant.participant_id, event_id]
+  )
+
+  const session = existingSession.rows[0] ?? null
+  const isCheckedIn = session?.check_in_time && !session?.check_out_time
+
+  // ── Only enforce cutoff for check-in, not check-out ───────────────────────
+  if (!isCheckedIn && event.checkin_cutoff) {
     const cutoffResult = await pool.query(
       `SELECT (NOW()::time > $1::time) AS is_past`,
       [event.checkin_cutoff]
@@ -228,23 +243,17 @@ export const scanAgentCodeService = async (
   }
 
   const participantPayload = {
-    full_name: participant.full_name,
-    agent_code: participant.agent_code,
+    full_name:   participant.full_name,
+    agent_code:  participant.agent_code,
     branch_name: participant.branch_name,
-    team_name: participant.team_name,
-    photo_url: participant.photo_url || null,
-    agent_type: participant.agent_type || null
+    team_name:   participant.team_name,
+    photo_url:   participant.photo_url || null,
+    agent_type:  participant.agent_type || null
   }
 
-  const existingSession = await pool.query(
-    `SELECT * FROM attendance_sessions
-     WHERE participant_id = $1 AND event_id = $2
-     ORDER BY created_at DESC LIMIT 1`,
-    [participant.participant_id, event_id]
-  )
-
-  if (existingSession.rows.length === 0) {
-    const session = await pool.query(
+  // ── Check in ──────────────────────────────────────────────────────────────
+  if (!session) {
+    const newSession = await pool.query(
       `INSERT INTO attendance_sessions
         (participant_id, event_id, check_in_time, check_in_method, created_at, updated_at)
        VALUES ($1, $2, NOW(), 'manual', NOW(), NOW())
@@ -252,17 +261,17 @@ export const scanAgentCodeService = async (
       [participant.participant_id, event_id]
     )
     await logScan('check_in')
+    await invalidateSessionsCache(event_id)
     return {
       action: 'check_in',
       message: 'Check-in successful',
       participant: participantPayload,
-      session: session.rows[0]
+      session: newSession.rows[0]
     }
   }
 
-  const session = existingSession.rows[0]
-
-  if (session.check_in_time && !session.check_out_time) {
+  // ── Check out ─────────────────────────────────────────────────────────────
+  if (isCheckedIn) {
     const checkOutMethod = is_early_out ? 'early_out' : 'manual'
     const reason = is_early_out ? (early_out_reason?.trim() || 'Early departure') : null
 
@@ -277,6 +286,7 @@ export const scanAgentCodeService = async (
       [checkOutMethod, reason, session.session_id]
     )
     await logScan('check_out')
+    await invalidateSessionsCache(event_id)
     return {
       action: 'check_out',
       message: is_early_out ? 'Early out recorded' : 'Check-out successful',
@@ -306,6 +316,11 @@ export const logDenialService = async (agent_code: string, event_id: number, rea
 }
 
 export const getSessionsByEventService = async (event_id: number) => {
+  // ── Cache sessions — invalidated on every scan ────────────────────────────
+  const cacheKey = `sessions:event:${event_id}`
+  const cached = await cacheGet<any[]>(cacheKey)
+  if (cached) return cached
+
   const result = await pool.query(
     `SELECT
        a.session_id, a.participant_id, a.check_in_time, a.check_out_time,
@@ -319,6 +334,8 @@ export const getSessionsByEventService = async (event_id: number) => {
      ORDER BY a.check_in_time DESC NULLS LAST`,
     [event_id]
   )
+
+  await cacheSet(cacheKey, result.rows, SESSIONS_CACHE_TTL)
   return result.rows
 }
 
@@ -349,7 +366,7 @@ export const updateSessionTimesService = async (
   if (checkOut && checkOut <= checkIn)       throw new ValidationError('check_out_time must be after check_in_time')
 
   const existing = await pool.query(
-    `SELECT session_id FROM attendance_sessions WHERE session_id = $1`,
+    `SELECT session_id, event_id FROM attendance_sessions WHERE session_id = $1`,
     [session_id]
   )
   if (!existing.rows[0]) throw new NotFoundError('Session not found')
@@ -366,6 +383,8 @@ export const updateSessionTimesService = async (
        check_in_method, check_out_method, early_out_reason`,
     [checkIn.toISOString(), checkOut ? checkOut.toISOString() : null, session_id]
   )
+
+  await invalidateSessionsCache(existing.rows[0].event_id)
   return result.rows[0]
 }
 
@@ -373,6 +392,13 @@ export const bulkCheckOutService = async (event_id: number, session_ids: number[
   if (!Array.isArray(session_ids) || session_ids.length === 0) {
     throw new ValidationError('session_ids must be a non-empty array')
   }
+
+  // ── Verify event exists ───────────────────────────────────────────────────
+  const eventCheck = await pool.query(
+    `SELECT event_id FROM events WHERE event_id = $1 AND deleted_at IS NULL`,
+    [event_id]
+  )
+  if (!eventCheck.rows[0]) throw new NotFoundError('Event not found')
 
   const result = await pool.query(
     `UPDATE attendance_sessions
@@ -386,6 +412,8 @@ export const bulkCheckOutService = async (event_id: number, session_ids: number[
      RETURNING session_id`,
     [session_ids, event_id]
   )
+
+  await invalidateSessionsCache(event_id)
 
   return {
     checked_out: result.rowCount ?? 0,

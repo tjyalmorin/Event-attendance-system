@@ -1,20 +1,28 @@
-// client/src/hooks/useBranches.ts
-// Drop-in replacement for the old hardcoded branchData.ts
-// Usage: const { branches, loading } = useBranches()
-
 import { useState, useEffect } from 'react'
 import { getAllBranchesApi, BranchItem } from '../api/branches.api'
 
-let cache: BranchItem[] | null = null // simple module-level cache
+let cache: BranchItem[] | null = null
+let cacheTime = 0
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 export function useBranches() {
-  const [branches, setBranches] = useState<BranchItem[]>(cache ?? [])
-  const [loading, setLoading]   = useState(!cache)
+  const isStale = () => Date.now() - cacheTime > CACHE_TTL
+
+  const [branches, setBranches] = useState<BranchItem[]>(!isStale() && cache ? cache : [])
+  const [loading, setLoading]   = useState(isStale() || !cache)
 
   useEffect(() => {
-    if (cache) { setBranches(cache); setLoading(false); return }
+    if (cache && !isStale()) {
+      setBranches(cache)
+      setLoading(false)
+      return
+    }
     getAllBranchesApi()
-      .then(data => { cache = data; setBranches(data) })
+      .then(data => {
+        cache     = data
+        cacheTime = Date.now()
+        setBranches(data)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -27,8 +35,7 @@ export function useBranches() {
   return { branches, branchNames, getTeamsForBranch, loading }
 }
 
-// Call this after any create/update/delete in BranchManagement
-// so the next hook usage re-fetches fresh data
 export function invalidateBranchCache() {
-  cache = null
+  cache     = null
+  cacheTime = 0
 }

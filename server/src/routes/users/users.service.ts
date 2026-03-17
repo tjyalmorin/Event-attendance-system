@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
 import { CreateUserPayload } from '../../types/user.types.js'
 import { NotFoundError, ValidationError, UnauthorizedError, AppError } from '../../errors/AppError.js'
+import { invalidateUserActiveCache } from '../../middlewares/authenticate.js'
 
 const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 
@@ -55,11 +56,15 @@ export const getAllUsersService = async () => {
 export const softDeleteUserService = async (user_id: string) => {
   if (!user_id?.trim()) throw new ValidationError('User ID is required')
   const result = await pool.query(
-    `UPDATE users SET deleted_at = NOW(), updated_at = NOW() WHERE user_id = $1 AND deleted_at IS NULL RETURNING user_id`,
+    `UPDATE users SET deleted_at = NOW(), updated_at = NOW()
+     WHERE user_id = $1 AND deleted_at IS NULL RETURNING user_id`,
     [user_id]
   )
-  // ── FIX #14: Use NotFoundError so errorHandler returns 404 ───────────────
   if (!result.rows[0]) throw new NotFoundError('User not found')
+
+  // Invalidate cache so deleted user is blocked on next request
+  await invalidateUserActiveCache(user_id)
+
   return result.rows[0]
 }
 
@@ -95,11 +100,13 @@ export const changePasswordService = async (user_id: string, currentPassword: st
   if (!currentPassword) throw new ValidationError('Current password is required')
   if (!newPassword || newPassword.length < 6) throw new ValidationError('New password must be at least 6 characters')
 
-  const result = await pool.query('SELECT * FROM users WHERE user_id = $1 AND deleted_at IS NULL', [user_id])
+  const result = await pool.query(
+    'SELECT * FROM users WHERE user_id = $1 AND deleted_at IS NULL',
+    [user_id]
+  )
   const user = result.rows[0]
   if (!user) throw new NotFoundError('User not found')
 
-  // ── FIX #15: Wrap bcrypt.compare in try-catch, throw 401 on mismatch ────
   let isMatch: boolean
   try {
     isMatch = await bcrypt.compare(currentPassword, user.password_hash)
@@ -109,16 +116,25 @@ export const changePasswordService = async (user_id: string, currentPassword: st
   if (!isMatch) throw new ValidationError('Current password is incorrect')
 
   const password_hash = await bcrypt.hash(newPassword, 10)
-  await pool.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2', [password_hash, user_id])
+  await pool.query(
+    'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2',
+    [password_hash, user_id]
+  )
   return { message: 'Password changed successfully' }
 }
 
 export const adminResetPasswordService = async (user_id: string, newPassword: string) => {
   if (!newPassword || newPassword.length < 6) throw new ValidationError('Password must be at least 6 characters')
-  const result = await pool.query('SELECT user_id FROM users WHERE user_id = $1 AND deleted_at IS NULL', [user_id])
+  const result = await pool.query(
+    'SELECT user_id FROM users WHERE user_id = $1 AND deleted_at IS NULL',
+    [user_id]
+  )
   if (!result.rows[0]) throw new NotFoundError('User not found')
   const password_hash = await bcrypt.hash(newPassword, 10)
-  await pool.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2', [password_hash, user_id])
+  await pool.query(
+    'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE user_id = $2',
+    [password_hash, user_id]
+  )
   return { message: 'Password reset successfully' }
 }
 
@@ -156,7 +172,11 @@ export const updateUserService = async (user_id: string, payload: {
   if (branch_name)              { fields.push(`branch_name = $${idx++}`); values.push(branch_name.trim()) }
   if (role)                     { fields.push(`role = $${idx++}`);        values.push(role) }
   if ('team_name' in payload)   { fields.push(`team_name = $${idx++}`);   values.push(team_name?.trim() || null) }
-  if (password)                 { const h = await bcrypt.hash(password, 10); fields.push(`password_hash = $${idx++}`); values.push(h) }
+  if (password)                 {
+    const h = await bcrypt.hash(password, 10)
+    fields.push(`password_hash = $${idx++}`)
+    values.push(h)
+  }
 
   if (fields.length === 0) throw new ValidationError('No fields to update')
   fields.push(`updated_at = NOW()`)
@@ -180,5 +200,9 @@ export const toggleUserActiveService = async (user_id: string) => {
     [user_id]
   )
   if (!result.rows[0]) throw new NotFoundError('User not found')
+
+  // Invalidate cache so deactivated user is blocked on next request within 30 seconds
+  await invalidateUserActiveCache(user_id)
+
   return result.rows[0]
 }
