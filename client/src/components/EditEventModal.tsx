@@ -43,7 +43,6 @@ const ChevronDownIcon = () => (
   </svg>
 );
 
-
 // ── Preset Images (Cloudinary) ──
 const PRESET_IMAGES = [
   { id: 'stock1',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224134/primelog/presets/stock1.jpg' },
@@ -217,10 +216,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
   const [registrationEnd, setRegistrationEnd] = useState<Date | null>(safeDate(event.registration_end));
 
   // ── Slideshow images ──
-  // A preview is an EXISTING saved URL if it does NOT start with "blob:"
-  // blob: URLs are created locally by URL.createObjectURL() for newly picked files.
-  // Cloudinary URLs always start with "https://" — this check survives reloads and
-  // stale parent props because it depends only on the URL string itself, not a ref.
   const isExistingUrl = (src: string) => !src.startsWith('blob:');
 
   const [slideshowFiles, setSlideshowFiles] = useState<File[]>([]);
@@ -255,7 +250,7 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
   const [fieldErrors, setFieldErrors] = useState<{ title?: string; eventDate?: string; venue?: string }>({});
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
-  // Initialize branches + staff — fetch full event first if event_branches not in prop
+  // Initialize branches + staff
   useEffect(() => {
     if (branches.length === 0) return;
     if (!isInitializing) return;
@@ -264,7 +259,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
       const safeBranches = eventBranches.map(b => {
         const hookBranch = branches.find(hb => hb.name === b.branch_name);
         const allTeamNames = (hookBranch?.teams ?? []).map((t: any) => t.name);
-        // Backend returns team_names, frontend uses teams — normalize both
         const rawTeams = Array.isArray(b.teams) ? b.teams
           : Array.isArray(b.team_names) ? b.team_names
           : [];
@@ -459,7 +453,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
     }
     setLoading(true);
     try {
-      // Always use multipart to support slideshow image uploads
       const fd = new FormData();
       fd.append('title', title);
       fd.append('description', description || '');
@@ -473,14 +466,30 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
       fd.append('registration_start', registrationStart ? registrationStart.toISOString() : '');
       fd.append('registration_end', registrationEnd ? registrationEnd.toISOString() : '');
       fd.append('event_branches', JSON.stringify(selectedBranches));
-      fd.append('staff_ids', JSON.stringify(selectedStaffIds));
+
+      // ── Staff: only send if initialization is complete ────────────────────
+      // Prevents wiping existing staff if the admin saves before async fetch finishes
+      if (!isInitializing) {
+        fd.append('staff_ids', JSON.stringify(selectedStaffIds));
+      }
+
       slideshowFiles.forEach(f => fd.append('slideshow_images', f));
       if (removedSlideshowUrls.length > 0) fd.append('remove_slideshow_urls', JSON.stringify(removedSlideshowUrls));
-      if (selectedPreset) {
+
+      // ── Preset: always send the effective value to prevent silent wipe ─────
+      // Priority: explicit remove > new selection > preserve existing
+      if (removePreset) {
+        fd.append('preset_url', '');
+      } else if (selectedPreset) {
         const preset = PRESET_IMAGES.find(p => p.id === selectedPreset);
         if (preset) fd.append('preset_url', preset.url);
+      } else if (event.preset_url) {
+        // Admin did not touch the preset — send the existing URL to preserve it
+        fd.append('preset_url', event.preset_url);
       }
-      if (removePreset) fd.append('preset_url', '');
+      // If no preset was ever set and none was chosen, omit preset_url entirely
+      // so the backend skips it (no preset to preserve)
+
       await api.put(`/events/${event.event_id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       onSuccess();
     } catch (err: any) {
@@ -595,7 +604,7 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                 </div>
               )}
 
-              {/* ── Slideshow Images (Registration Page) ── */}
+              {/* ── Slideshow Images ── */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
@@ -609,44 +618,38 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                   Shown as a slideshow on the <span className="font-semibold text-gray-500 dark:text-gray-400">Registration Page</span>. If none, the default Pru Life slides will show instead.
                 </p>
 
-                {/* Image thumbnails */}
                 {slideshowPreviews.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-3">
-                    {slideshowPreviews.map((src, idx) => {
-                      return (
-                        <div key={idx} className="relative w-[90px] h-[68px] rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a] group flex-shrink-0">
-                          <img src={src} alt={`Slide ${idx + 1}`} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all" />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isExistingUrl(src)) {
-                                // It's a saved Cloudinary URL (https://) — tell backend to remove it
-                                setRemovedSlideshowUrls(prev => [...prev, src]);
-                              } else {
-                                // It's a local blob: URL — remove the corresponding File from state
-                                const blobPreviews = slideshowPreviews.filter(p => !isExistingUrl(p));
-                                const newFileIdx = blobPreviews.indexOf(src);
-                                if (newFileIdx !== -1) {
-                                  setSlideshowFiles(prev => prev.filter((_, i) => i !== newFileIdx));
-                                }
+                    {slideshowPreviews.map((src, idx) => (
+                      <div key={idx} className="relative w-[90px] h-[68px] rounded-xl overflow-hidden border border-gray-200 dark:border-[#2a2a2a] group flex-shrink-0">
+                        <img src={src} alt={`Slide ${idx + 1}`} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isExistingUrl(src)) {
+                              setRemovedSlideshowUrls(prev => [...prev, src]);
+                            } else {
+                              const blobPreviews = slideshowPreviews.filter(p => !isExistingUrl(p));
+                              const newFileIdx = blobPreviews.indexOf(src);
+                              if (newFileIdx !== -1) {
+                                setSlideshowFiles(prev => prev.filter((_, i) => i !== newFileIdx));
                               }
-                              setSlideshowPreviews(prev => prev.filter((_, i) => i !== idx));
-                            }}
-                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
-                              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                            </svg>
-                          </button>
-                          <span className="absolute bottom-1 left-1.5 text-[9px] font-bold text-white/80 drop-shadow">
-                            {idx + 1}
-                          </span>
-                        </div>
-                      );
-                    })}
+                            }
+                            setSlideshowPreviews(prev => prev.filter((_, i) => i !== idx));
+                          }}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                          </svg>
+                        </button>
+                        <span className="absolute bottom-1 left-1.5 text-[9px] font-bold text-white/80 drop-shadow">
+                          {idx + 1}
+                        </span>
+                      </div>
+                    ))}
 
-                    {/* Add more button */}
                     {slideshowPreviews.length < 5 && (
                       <button
                         type="button"
@@ -662,7 +665,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                   </div>
                 )}
 
-                {/* Empty state */}
                 {slideshowPreviews.length === 0 && (
                   <label className="flex flex-col items-center justify-center gap-2 w-full py-7 bg-gray-50 dark:bg-[#0f0f0f] border-2 border-dashed border-gray-200 dark:border-[#2a2a2a] rounded-xl cursor-pointer hover:border-[#DC143C] hover:bg-red-50/20 dark:hover:bg-[#DC143C]/5 transition-all">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7 text-gray-300 dark:text-gray-600">
@@ -670,7 +672,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                     </svg>
                     <span className="text-sm font-semibold text-gray-400 dark:text-gray-500">Click to upload first image</span>
                     <span className="text-xs text-gray-300 dark:text-gray-600">JPG, PNG, WEBP · Max 5MB each · Up to 5 images</span>
-                    {/* FIX: setError('') at the top so stale errors are cleared on new pick */}
                     <input type="file" accept="image/*" className="sr-only"
                       onChange={e => {
                         setError('');
@@ -685,8 +686,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                   </label>
                 )}
 
-                {/* Hidden input for Add button */}
-                {/* FIX: setError('') at the top so stale errors are cleared on new pick */}
                 <input ref={slideshowInputRef} type="file" accept="image/*" className="sr-only"
                   onChange={e => {
                     setError('');
@@ -700,7 +699,7 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                   }} />
               </div>
 
-              {/* ── Card Preset (EventManagement) ── */}
+              {/* ── Card Preset ── */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
@@ -815,7 +814,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
 
                     return (
                       <div key={branch.branch_id} className={bi > 0 ? 'border-t border-gray-100 dark:border-[#2a2a2a]' : ''}>
-                        {/* Branch row */}
                         <div className={`flex items-center gap-3 px-4 py-3.5 transition-colors ${checked ? 'bg-white dark:bg-[#DC143C]/5' : 'bg-white dark:bg-[#1c1c1c]'}`}>
                           <div onClick={() => userRole === 'admin' && toggleBranch(branch.name)}
                             className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${userRole === 'admin' ? 'cursor-pointer' : 'cursor-default'} ${checked || userRole === 'staff' ? 'border-[#DC143C] bg-[#DC143C]' : 'border-gray-300 dark:border-[#444] bg-white dark:bg-[#0f0f0f] hover:border-[#DC143C]'}`}>
@@ -850,7 +848,6 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                           )}
                         </div>
 
-                        {/* Teams panel */}
                         {checked && expanded && teams.length > 0 && (
                           <div className="bg-gray-100 dark:bg-[#161616] border-t border-gray-200 dark:border-[#252525] px-4 py-3.5">
                             <div className="flex items-center justify-between mb-3">

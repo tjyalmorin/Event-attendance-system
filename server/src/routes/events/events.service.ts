@@ -9,7 +9,6 @@ const validateEventId = (id: number) => {
   }
 }
 
-// ── Shared registered_count subquery ──────────────────────────────────────────
 const registeredCountJoin = `
   LEFT JOIN (
     SELECT event_id, COUNT(*)::int AS registered_count
@@ -42,7 +41,6 @@ export const createEventService = async (created_by: string, payload: CreateEven
 
   const event = result.rows[0]
 
-  // ── Bulk insert branches ───────────────────────────────────────────────────
   if (payload.event_branches && payload.event_branches.length > 0) {
     for (const b of payload.event_branches) {
       await pool.query(
@@ -54,7 +52,6 @@ export const createEventService = async (created_by: string, payload: CreateEven
     }
   }
 
-  // ── Bulk insert staff in one query ────────────────────────────────────────
   if (payload.staff_ids && payload.staff_ids.length > 0) {
     const staffValues = payload.staff_ids
       .map((_, i) => `($1, $${i + 2})`)
@@ -102,7 +99,6 @@ export const getAllEventsService = async (userId?: string, userRole?: string, _u
     return result.rows
   }
 
-  // ── No valid role — reject instead of leaking all events ─────────────────
   throw new AppError('Invalid user role', 403)
 }
 
@@ -170,6 +166,14 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
   const keptUrls = existingUrls.filter(url => !removedUrls.includes(url))
   const finalUrls = [...keptUrls, ...newUrls].slice(0, 5)
 
+  // ── preset_url: only overwrite when explicitly present in the payload ──────
+  // 'preset_url' in payload = controller explicitly sent it (admin touched it)
+  // 'preset_url' not in payload = controller omitted it (admin didn't touch it)
+  // This prevents silently wiping the preset on every save.
+  const finalPresetUrl = 'preset_url' in payload
+    ? (payload.preset_url ?? null)
+    : (current.preset_url ?? null)
+
   const result = await pool.query(
     `UPDATE events
      SET title=$1, description=$2, event_date=$3, start_time=$4, end_time=$5,
@@ -183,7 +187,7 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
       merged.title, merged.description, merged.event_date, merged.start_time,
       merged.end_time, merged.venue, merged.status,
       merged.checkin_cutoff, merged.registration_start, merged.registration_end,
-      finalUrls, merged.preset_url ?? null,
+      finalUrls, finalPresetUrl,
       event_id
     ]
   )
@@ -199,8 +203,10 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
     }
   }
 
-  // ── Only update staff if explicitly provided and not null ─────────────────
-  // Prevents silent wipe when staff_ids is [] from a non-staff-editing context
+  // ── Staff: only update when staff_ids was explicitly sent by the client ────
+  // undefined = omitted from FormData = modal was still loading = skip update
+  // [] = explicitly sent empty = admin removed all staff = clear all
+  // [...] = explicitly sent list = update to this list
   if (payload.staff_ids !== undefined && payload.staff_ids !== null) {
     await pool.query(`DELETE FROM event_permissions WHERE event_id = $1`, [event_id])
     if (payload.staff_ids.length > 0) {

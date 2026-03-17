@@ -19,16 +19,12 @@ const parseField = (val: any) => {
   return val
 }
 
-// ── Helper: extract Cloudinary public_id from a secure_url ───
 const extractPublicId = (url: string): string => {
-  // e.g. https://res.cloudinary.com/xxx/image/upload/v123/primelog/slideshow/slide-abc.jpg
-  // → primelog/slideshow/slide-abc
   const parts = url.split('/upload/')
   if (parts.length < 2) return ''
   return parts[1].replace(/^v\d+\//, '').replace(/\.[^.]+$/, '')
 }
 
-// ── Helper: upload slideshow files in parallel ───────────────
 const uploadSlideshowFiles = async (
   files: Express.Multer.File[],
   eventId?: number
@@ -43,7 +39,6 @@ const uploadSlideshowFiles = async (
   )
 }
 
-// ── Helper: delete Cloudinary assets by URL ──────────────────
 const deleteCloudinaryUrls = async (urls: string[]): Promise<void> => {
   await Promise.all(
     urls.map(url => {
@@ -58,7 +53,6 @@ export const createEvent = asyncHandler(async (req: Request, res: Response) => {
   const files = req.files as Express.Multer.File[] | undefined
   const slideshowFiles = files?.filter(f => f.fieldname === 'slideshow_images') ?? []
 
-  // Upload to Cloudinary first
   const slideshowUrls = await uploadSlideshowFiles(slideshowFiles)
 
   const body = {
@@ -79,7 +73,6 @@ export const createEvent = asyncHandler(async (req: Request, res: Response) => {
     const event = await createEventService(req.user!.user_id, body)
     res.status(201).json(event)
   } catch (dbErr) {
-    // DB failed — clean up already-uploaded Cloudinary assets
     await deleteCloudinaryUrls(slideshowUrls)
     throw dbErr
   }
@@ -102,36 +95,45 @@ export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
   const eventId = Number(req.params.event_id)
 
   const newSlideshowFiles = files?.filter(f => f.fieldname === 'slideshow_images') ?? []
-
-  // Upload new slideshow images in parallel
   const newSlideshowUrls = await uploadSlideshowFiles(newSlideshowFiles, eventId)
 
   const removeSlideshowUrls: string[] = Array.isArray(req.body.remove_slideshow_urls)
     ? req.body.remove_slideshow_urls
     : []
 
+  // ── staff_ids: only include in payload when explicitly sent by the client ──
+  // When omitted (e.g. modal still initializing), undefined tells the service
+  // to skip the staff update entirely and preserve existing assignments.
+  const staffIdsPayload = req.body.staff_ids !== undefined
+    ? { staff_ids: parseField(req.body.staff_ids) }
+    : {}
+
+  // ── preset_url: distinguish three cases ───────────────────────────────────
+  // ''  (empty string) → admin explicitly cleared it → pass null to service
+  // URL string         → admin set or preserved it   → pass URL to service
+  // undefined          → field absent from FormData   → omit so service keeps existing
+  const presetPayload = req.body.preset_url !== undefined
+    ? { preset_url: req.body.preset_url === '' ? null : req.body.preset_url }
+    : {}
+
   const body = {
     ...req.body,
+    ...staffIdsPayload,
+    ...presetPayload,
     event_branches:        parseField(req.body.event_branches),
-    staff_ids:             parseField(req.body.staff_ids),
     new_slideshow_urls:    newSlideshowUrls,
     remove_slideshow_urls: removeSlideshowUrls,
-    preset_url: req.body.preset_url === ''
-      ? null
-      : req.body.preset_url ?? undefined,
   }
 
   try {
     const event = await updateEventService(eventId, body)
 
-    // DB succeeded — now delete removed images from Cloudinary
     if (removeSlideshowUrls.length > 0) {
       await deleteCloudinaryUrls(removeSlideshowUrls)
     }
 
     res.json(event)
   } catch (dbErr) {
-    // DB failed — clean up newly uploaded images
     await deleteCloudinaryUrls(newSlideshowUrls)
     throw dbErr
   }
@@ -159,13 +161,11 @@ export const restoreEvent = asyncHandler(async (req: Request, res: Response) => 
 })
 
 export const permanentDeleteEvent = asyncHandler(async (req: Request, res: Response) => {
-  // Fetch slideshow URLs before deleting so we can clean up Cloudinary
   const event = await getEventByIdService(Number(req.params.event_id))
   const slideshowUrls: string[] = Array.isArray(event.slideshow_urls) ? event.slideshow_urls : []
 
   await permanentDeleteEventService(Number(req.params.event_id))
 
-  // Clean up Cloudinary assets after successful DB delete
   if (slideshowUrls.length > 0) {
     await deleteCloudinaryUrls(slideshowUrls)
   }
