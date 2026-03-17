@@ -161,13 +161,11 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
       }
 
     `}</style>
-    <div className={`${isCollapsed ? 'w-[60px]' : 'w-[260px]'} sticky top-0 h-screen bg-white dark:bg-[#1c1c1c] border-r border-gray-200 dark:border-[#2a2a2a] flex flex-col transition-all duration-300 flex-shrink-0`}>
+    <div className={`${isCollapsed ? 'w-[60px]' : 'w-[260px]'} sticky top-0 h-screen bg-white dark:bg-[#1c1c1c] border-r border-gray-200 dark:border-[#2a2a2a] flex flex-col transition-all duration-300 flex-shrink-0 z-[100]`}>
       {/* Header */}
       <div className={`h-[77px] border-b border-gray-200 dark:border-[#2a2a2a] flex items-center ${isCollapsed ? 'justify-center p-2' : 'justify-between p-5'}`}>
         {!isCollapsed && (
-          <div className="text-xl font-bold">
-            <span className="text-gray-900 dark:text-white">Prime</span><span className="text-[#DC143C]">Log</span>
-          </div>
+          <div className="text-xl font-bold text-gray-900 dark:text-white">PrimeLog</div>
         )}
         <button onClick={toggleCollapsed}
           className="p-2 hover:bg-gray-100 dark:hover:bg-[#333333] rounded-lg transition-colors text-gray-500 dark:text-gray-400">
@@ -189,8 +187,8 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
       <div className="p-3 border-t border-gray-200 dark:border-[#2a2a2a] space-y-1">
         {/* Dark Mode */}
         <button onClick={toggleDarkMode}
-          className={`w-full flex items-center rounded-lg text-gray-600 dark:text-gray-400 transition-colors ${isCollapsed ? 'justify-center px-1.5 py-2.5' : 'gap-3 px-3 py-2.5'}`}>
-          <span className="text-gray-400 dark:text-gray-500 transition-transform duration-300 ease-in-out"
+          className={`w-full flex items-center rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#333333] transition-colors ${isCollapsed ? 'justify-center px-1.5 py-2.5' : 'gap-3 px-3 py-2.5'}`}>
+          <span className="text-gray-400 dark:text-gray-500 transition-transform duration-300 ease-in-out sidebar-icon-bounce"
             style={{ transform: isDarkMode ? 'rotate(0deg)' : 'rotate(-20deg)' }}>
             {isDarkMode ? <SunIcon /> : <MoonIcon />}
           </span>
@@ -217,7 +215,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
         <div className="relative" ref={dropupRef}>
           {/* Dropup Menu */}
           {dropupOpen && (
-            <div className="absolute bottom-full left-0 mb-2 w-48 bg-white dark:bg-[#252525] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden z-50">
+            <div className="absolute bottom-full left-0 mb-2 w-48 bg-white dark:bg-[#252525] border border-gray-200 dark:border-[#2a2a2a] rounded-xl shadow-2xl overflow-hidden z-[9999]">
               <button
                 onClick={() => { setDropupOpen(false); navigate('/admin/settings/profile'); }}
                 className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#333333] transition-colors"
