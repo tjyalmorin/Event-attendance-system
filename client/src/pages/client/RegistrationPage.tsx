@@ -795,7 +795,6 @@ export default function RegistrationPage() {
                   value={form.branch_name}
                   onChange={val => setForm(prev => ({ ...prev, branch_name: val, team_name: '' }))}
                   placeholder="— Select branch —"
-                  centered
                   options={availableBranches.map(b => ({ label: b.name, value: b.name }))}
                 />
               </div>
@@ -806,7 +805,6 @@ export default function RegistrationPage() {
                   onChange={val => setForm(prev => ({ ...prev, team_name: val }))}
                   placeholder={form.branch_name ? '— Select team —' : '— Select branch first —'}
                   disabled={!form.branch_name}
-                  centered
                   options={getTeamsForSelectedBranch(form.branch_name).map(t => ({ label: t, value: t }))}
                 />
               </div>
