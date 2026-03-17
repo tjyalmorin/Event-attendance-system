@@ -637,17 +637,17 @@ const EventManagement: React.FC = () => {
     <div className="flex-1 overflow-auto">
         {/* Header */}
         <div className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a]">
-          <div className="px-12 h-[76px] flex items-center">
+          <div className="px-4 md:px-12 h-14 md:h-[76px] flex items-center">
             <div className="flex items-center justify-between w-full">
-              <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
+              <h1 className="text-xl md:text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
                 Event<span className="text-[#DC143C]">.</span>Management
               </h1>
               {user.role === 'admin' && (
                 <button
                   onClick={() => navigate('/admin/events/create')}
-                  className="flex items-center gap-2 bg-[#DC143C] text-white px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b01030] transition-all hover:shadow-lg">
+                  className="flex items-center gap-2 bg-[#DC143C] text-white px-3 md:px-5 py-2 md:py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b01030] transition-all hover:shadow-lg">
                   <PlusIcon />
-                  Create Event
+                  <span>Create Event</span>
                 </button>
               )}
             </div>
@@ -655,18 +655,19 @@ const EventManagement: React.FC = () => {
         </div>
 
         {/* Filters + Search + Sort */}
-        <div className="max-w-[1400px] mx-auto px-8 py-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+        <div className="max-w-[1400px] mx-auto px-4 md:px-8 py-4 md:py-6 space-y-3">
+          {/* Filter pills — horizontally scrollable on mobile */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-1 pb-1">
               {[
-                { key: 'all', label: 'All Events' },
+                { key: 'all', label: 'All' },
                 { key: 'upcoming', label: 'Upcoming' },
                 { key: 'ongoing', label: 'Ongoing' },
                 { key: 'completed', label: 'Completed' },
                 ...(user.role === 'admin' ? [{ key: 'draft', label: 'Draft' }] : []),
               ].map(({ key, label }) => (
                 <button key={key} onClick={() => setFilter(key)}
-                  className={`px-4 py-2 rounded-full text-sm font-semibold border transition-all ${
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
                     filter === key
                       ? 'bg-[#DC143C] border-[#DC143C] text-white shadow-sm shadow-red-200'
                       : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#2a2a2a] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
@@ -674,32 +675,32 @@ const EventManagement: React.FC = () => {
                 >
                   {label}
                   {key !== 'all' && (
-                    <span className="ml-1.5 text-xs opacity-70">
+                    <span className="ml-1 opacity-70">
                       {key === 'draft' ? events.filter(e => e.status === 'draft').length : events.filter(e => getDisplayStatus(e) === key).length}
                     </span>
                   )}
                 </button>
               ))}
               {user.role === 'admin' && (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1 flex-shrink-0">
                   <button onClick={() => navigate('/admin/events/archive')} title="Archive"
-                    className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-400 hover:border-amber-400 hover:text-amber-500 dark:hover:border-amber-700 dark:hover:text-amber-400 transition-all">
+                    className="w-8 h-8 flex items-center justify-center rounded-full border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-400 hover:border-amber-400 hover:text-amber-500 transition-all">
                     <ArchiveIcon />
                   </button>
                   <button onClick={() => navigate('/admin/events/trash')} title="Trash"
-                    className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-400 hover:border-red-300 hover:text-red-500 dark:hover:border-red-800 dark:hover:text-red-400 transition-all">
+                    className="w-8 h-8 flex items-center justify-center rounded-full border border-gray-200 dark:border-[#2a2a2a] bg-white dark:bg-[#1c1c1c] text-gray-400 hover:border-red-300 hover:text-red-500 transition-all">
                     <TrashIcon />
                   </button>
                 </div>
               )}
             </div>
-            <div className="relative" ref={sortDropdownRef}>
+            <div className="relative flex-shrink-0" ref={sortDropdownRef}>
               <button onClick={() => setOpenSortDropdown(prev => !prev)}
-                className="flex items-center justify-between gap-2 px-4 py-2 w-[160px] bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-[#333333] transition-all shadow-sm">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400">
+                className="flex items-center justify-between gap-1.5 px-3 py-1.5 w-[130px] md:w-[160px] bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-xs md:text-sm font-semibold text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-[#333333] transition-all shadow-sm">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
                   <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="9" y2="18"/>
                 </svg>
-                <span>{sortBy}</span>
+                <span className="flex-1 text-left truncate">{sortBy}</span>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 text-gray-400 transition-transform duration-200 ${openSortDropdown ? 'rotate-180' : ''}`}>
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
@@ -731,7 +732,7 @@ const EventManagement: React.FC = () => {
           <div className="relative">
             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400"><SearchIcon /></div>
             <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search events by name or venue..."
+              placeholder="Search events..."
               className="w-full pl-11 pr-4 py-2.5 bg-white dark:bg-[#1c1c1c] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-700 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-[#DC143C] focus:ring-2 focus:ring-[#DC143C]/20 transition-all"
             />
             {searchQuery && (
@@ -743,7 +744,7 @@ const EventManagement: React.FC = () => {
         </div>
 
         {/* Event Cards */}
-        <div className="max-w-[1400px] mx-auto px-8 pb-12">
+        <div className="max-w-[1400px] mx-auto px-4 md:px-8 pb-24 md:pb-12">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#DC143C]"></div>
@@ -757,7 +758,7 @@ const EventManagement: React.FC = () => {
               {searchQuery && <button onClick={() => setSearchQuery('')} className="mt-2 text-sm text-[#DC143C] hover:underline">Clear search</button>}
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-4" ref={dropdownRef}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4" ref={dropdownRef}>
               {sortedEvents.map((event) => {
                 const phDate = new Date(new Date(event.event_date).getTime() + 8 * 60 * 60 * 1000);
                 const displayStatus = getDisplayStatus(event);

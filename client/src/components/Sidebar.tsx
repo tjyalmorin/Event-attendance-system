@@ -79,6 +79,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const { isCollapsed, toggleCollapsed } = useSidebar();
   const [dropupOpen, setDropupOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dropupRef = useRef<HTMLDivElement>(null);
 
   // Get user info from localStorage
@@ -147,6 +148,83 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
 
   return (
     <>
+    {/* ─── MOBILE BOTTOM NAV ─── */}
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#1c1c1c] border-t border-gray-200 dark:border-[#2a2a2a] flex items-stretch h-16 safe-area-pb">
+      {mainItems.filter(i => i.show).map(item => (
+        <button
+          key={item.path}
+          onClick={() => { navigate(item.path); setMobileMenuOpen(false); }}
+          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+            isActive(item.path)
+              ? 'text-[#DC143C]'
+              : 'text-gray-400 dark:text-gray-500'
+          }`}
+        >
+          {item.icon}
+          <span className="text-[10px] font-semibold leading-none truncate px-1">
+            {item.label.split(' ')[0]}
+          </span>
+          {isActive(item.path) && (
+            <span className="absolute bottom-0 w-10 h-0.5 bg-[#DC143C] rounded-t-full" />
+          )}
+        </button>
+      ))}
+      {/* More button for user/settings */}
+      <button
+        onClick={() => setMobileMenuOpen(p => !p)}
+        className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+          mobileMenuOpen ? 'text-[#DC143C]' : 'text-gray-400 dark:text-gray-500'
+        }`}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+          <circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/>
+        </svg>
+        <span className="text-[10px] font-semibold leading-none">More</span>
+      </button>
+    </div>
+
+    {/* Mobile "More" sheet — slides up from bottom */}
+    {mobileMenuOpen && (
+      <div className="md:hidden fixed inset-0 z-40" onClick={() => setMobileMenuOpen(false)}>
+        <div className="absolute inset-0 bg-black/40" />
+        <div
+          className="absolute bottom-16 left-0 right-0 bg-white dark:bg-[#1c1c1c] rounded-t-2xl border-t border-gray-200 dark:border-[#2a2a2a] shadow-2xl p-4 space-y-1"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-3 px-3 py-3 mb-2">
+            <div className={`w-10 h-10 rounded-xl ${avatarBg} flex items-center justify-center text-white font-bold`}>
+              {userInitial}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">{userName}</p>
+              <p className={`text-xs font-medium ${userRole === 'admin' ? 'text-[#DC143C]' : 'text-blue-600'}`}>
+                {userRole === 'admin' ? 'Admin' : 'Staff'}
+              </p>
+            </div>
+          </div>
+          <div className="h-px bg-gray-100 dark:bg-[#2a2a2a] mb-2" />
+          <button onClick={toggleDarkMode}
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors">
+            <span className="text-gray-400 dark:text-gray-500">{isDarkMode ? <SunIcon /> : <MoonIcon />}</span>
+            <span className="text-sm font-medium flex-1 text-left">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+            <span className={`relative inline-flex items-center h-[22px] w-[40px] rounded-full transition-colors ${isDarkMode ? 'bg-[#DC143C]' : 'bg-gray-300'}`}>
+              <span className={`inline-block h-[16px] w-[16px] rounded-full bg-white shadow transition-transform ${isDarkMode ? 'translate-x-[20px]' : 'translate-x-[3px]'}`} />
+            </span>
+          </button>
+          <button onClick={() => { setMobileMenuOpen(false); navigate('/admin/settings/profile'); }}
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors">
+            <GearIcon />
+            <span className="text-sm font-medium">Profile Settings</span>
+          </button>
+          <button onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-[#DC143C] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+            <LogOutIcon />
+            <span className="text-sm font-medium">Logout</span>
+          </button>
+        </div>
+      </div>
+    )}
+
     <style>{`
       @keyframes icon-tumble {
         0%   { transform: rotate(0deg)   scale(1);    }
@@ -161,7 +239,7 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
       }
 
     `}</style>
-    <div className={`${isCollapsed ? 'w-[60px]' : 'w-[260px]'} sticky top-0 h-screen bg-white dark:bg-[#1c1c1c] border-r border-gray-200 dark:border-[#2a2a2a] flex flex-col transition-all duration-300 flex-shrink-0`}>
+    <div className={`${isCollapsed ? 'w-[60px]' : 'w-[260px]'} hidden md:flex sticky top-0 h-screen bg-white dark:bg-[#1c1c1c] border-r border-gray-200 dark:border-[#2a2a2a] flex-col transition-all duration-300 flex-shrink-0`}>
       {/* Header */}
       <div className={`h-[77px] border-b border-gray-200 dark:border-[#2a2a2a] flex items-center ${isCollapsed ? 'justify-center p-2' : 'justify-between p-5'}`}>
         {!isCollapsed && (

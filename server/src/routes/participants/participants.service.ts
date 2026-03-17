@@ -18,7 +18,6 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (agent_code.length > 50) throw new ValidationError('Agent code too long')
   if (full_name.length > 100) throw new ValidationError('Full name too long')
 
-  // ── FIX #11: Use NotFoundError so errorHandler returns 404 ──────────────
   const eventResult = await pool.query(
     'SELECT * FROM events WHERE event_id = $1 AND deleted_at IS NULL',
     [event_id]
@@ -38,7 +37,6 @@ export const registerParticipantService = async (event_id: number, payload: Regi
     [event_id, agent_code.trim()]
   )
   if (duplicate.rows.length > 0) {
-    // ── FIX #12: Return 409 for duplicate instead of crashing ───────────
     throw new AppError('This agent is already registered for this event', 409)
   }
 
@@ -59,7 +57,6 @@ export const registerParticipantService = async (event_id: number, payload: Regi
 
     return { participant: result.rows[0] }
   } catch (err: any) {
-    // ── FIX #12: Catch DB unique constraint violation → 409 ─────────────
     if (err.code === '23505') {
       throw new AppError('This agent is already registered for this event', 409)
     }
@@ -74,14 +71,10 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
   let all = await cacheGet<any[]>(cacheKey)
 
   if (!all) {
-    // ── Pool pressure guard ──────────────────────────────────────────────────
-    // Under high load (75–100 VUs) this endpoint floods the pool with full
-    // table-scan queries. If the pool is already saturated, shed the load
-    // gracefully — returning [] is far better than queueing up and timing out,
-    // which was causing the unhandled rejection that crashed the server.
+    // ── Pool pressure guard — return 503 instead of empty array ──────────
     if (pool.waitingCount > 3) {
       console.warn(`⚠️  getParticipants skipped — pool pressure (waiting: ${pool.waitingCount})`)
-      return []
+      throw new AppError('Server is under high load, please retry in a moment', 503)
     }
 
     const result = await pool.query(
@@ -106,7 +99,6 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
       [event_id]
     )
     all = result.rows
-    // 60s TTL instead of SHORT (30s) — keeps cache warm longer under load
     await cacheSet(cacheKey, all, 60)
   }
 
@@ -123,7 +115,6 @@ export const cancelParticipantService = async (participant_id: number) => {
      RETURNING participant_id, event_id`,
     [participant_id]
   )
-  // ── FIX #13: Use NotFoundError so errorHandler returns 404 ──────────────
   if (!result.rows[0]) throw new NotFoundError('Participant not found')
 
   await invalidateParticipantCache(result.rows[0].event_id)

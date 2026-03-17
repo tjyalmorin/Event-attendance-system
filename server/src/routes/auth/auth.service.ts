@@ -4,7 +4,6 @@ import jwt from 'jsonwebtoken'
 import { Resend } from 'resend'
 import { UnauthorizedError, ValidationError, AppError } from '../../errors/AppError.js'
 
-// ── Resend client ──────────────────────────────────────────
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 export const loginService = async (email: string, password: string) => {
@@ -34,7 +33,7 @@ export const loginService = async (email: string, password: string) => {
   if (!user.is_active) throw new AppError('Your account has been deactivated. Please contact your administrator.', 403)
 
   const token = jwt.sign(
-    { user_id: user.user_id, role: user.role },
+    { user_id: user.user_id, role: user.role, branch_name: user.branch_name },
     process.env.JWT_SECRET!,
     { expiresIn: '8h' }
   )
@@ -52,7 +51,6 @@ export const getMeService = async (user_id: string) => {
   return result.rows[0]
 }
 
-// ── Step 1: Send OTP ───────────────────────────────────────
 export const sendOtpService = async (email: string) => {
   if (!email?.trim()) throw new ValidationError('Email is required')
 
@@ -62,18 +60,16 @@ export const sendOtpService = async (email: string) => {
   )
   const user = result.rows[0]
 
-  // Always return same message to prevent email enumeration
   if (!user) return { message: 'If that email exists, an OTP has been sent.' }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString()
-  const expires = new Date(Date.now() + 1000 * 60 * 10) // 10 minutes
+  const expires = new Date(Date.now() + 1000 * 60 * 10)
 
   await pool.query(
     `UPDATE users SET otp_code = $1, otp_expires = $2, otp_verified = FALSE WHERE user_id = $3`,
     [otp, expires, user.user_id]
   )
 
-  // ── Send via Resend ────────────────────────────────────────
   try {
     await resend.emails.send({
       from: 'PrimeLog <onboarding@resend.dev>',
@@ -104,7 +100,6 @@ export const sendOtpService = async (email: string) => {
   return { message: 'If that email exists, an OTP has been sent.' }
 }
 
-// ── Step 2: Verify OTP ─────────────────────────────────────
 export const verifyOtpService = async (email: string, otp: string) => {
   if (!email?.trim()) throw new ValidationError('Email is required')
   if (!otp?.trim()) throw new ValidationError('OTP is required')
@@ -129,7 +124,6 @@ export const verifyOtpService = async (email: string, otp: string) => {
   return { message: 'OTP verified successfully.' }
 }
 
-// ── Step 3: Reset Password ─────────────────────────────────
 export const resetPasswordService = async (email: string, newPassword: string) => {
   if (!email?.trim()) throw new ValidationError('Email is required')
   if (!newPassword || newPassword.length < 6) throw new ValidationError('Password must be at least 6 characters')

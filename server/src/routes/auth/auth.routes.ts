@@ -11,8 +11,8 @@ router.post('/login', authLimiter, validate(loginSchema), login)
 router.get('/me', authenticate, getMe)
 
 // ── Forgot Password (admin only) ───────────────────────────
-router.post('/forgot-password', validate(sendOtpSchema), sendOtp)
-router.post('/verify-otp', validate(verifyOtpSchema), verifyOtp)
+router.post('/forgot-password', authLimiter, validate(sendOtpSchema), sendOtp)
+router.post('/verify-otp', authLimiter, validate(verifyOtpSchema), verifyOtp)
 router.post('/reset-password', validate(resetPasswordSchema), resetPassword)
 
 export default router
