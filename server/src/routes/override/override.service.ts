@@ -1,16 +1,16 @@
 import pool from '../../config/database.js'
+import { AppError, NotFoundError, ValidationError } from '../../errors/AppError.js'
 import {
   FixCheckinPayload,
   ForceCheckoutPayload,
   EarlyOutPayload
 } from '../../types/override.types.js'
 
-// ── Fix Wrong Check-in Time / Manual Check-in ────────────
 export const fixCheckinService = async (payload: FixCheckinPayload, admin_id: string) => {
   const { session_id, participant_id, event_id, adjusted_time, reason } = payload
 
-  if (!adjusted_time) throw new Error('Adjusted time is required')
-  if (!reason?.trim()) throw new Error('Reason is required')
+  if (!adjusted_time) throw new ValidationError('Adjusted time is required')
+  if (!reason?.trim()) throw new ValidationError('Reason is required')
 
   if (!session_id || session_id === 0) {
     const existing = await pool.query(
@@ -18,7 +18,7 @@ export const fixCheckinService = async (payload: FixCheckinPayload, admin_id: st
        WHERE participant_id = $1 AND event_id = $2 AND check_out_time IS NULL`,
       [participant_id, event_id]
     )
-    if (existing.rows.length > 0) throw new Error('Participant already has an active session')
+    if (existing.rows.length > 0) throw new AppError('Participant already has an active session', 409)
 
     const newSession = await pool.query(
       `INSERT INTO attendance_sessions
@@ -49,7 +49,7 @@ export const fixCheckinService = async (payload: FixCheckinPayload, admin_id: st
     [session_id]
   )
   const session = sessionResult.rows[0]
-  if (!session) throw new Error('Attendance session not found')
+  if (!session) throw new NotFoundError('Attendance session not found')
 
   const original_time = session.check_in_time
 
@@ -73,21 +73,20 @@ export const fixCheckinService = async (payload: FixCheckinPayload, admin_id: st
   }
 }
 
-// ── Force Check-out ──────────────────────────────────────
 export const forceCheckoutService = async (payload: ForceCheckoutPayload, admin_id: string) => {
   const { session_id, participant_id, event_id, adjusted_time, reason } = payload
 
-  if (!session_id) throw new Error('Session ID is required')
-  if (!adjusted_time) throw new Error('Check-out time is required')
-  if (!reason?.trim()) throw new Error('Reason is required')
+  if (!session_id) throw new ValidationError('Session ID is required')
+  if (!adjusted_time) throw new ValidationError('Check-out time is required')
+  if (!reason?.trim()) throw new ValidationError('Reason is required')
 
   const sessionResult = await pool.query(
     'SELECT * FROM attendance_sessions WHERE session_id = $1',
     [session_id]
   )
   const session = sessionResult.rows[0]
-  if (!session) throw new Error('Attendance session not found')
-  if (session.check_out_time) throw new Error('Participant already has a check-out time')
+  if (!session) throw new NotFoundError('Attendance session not found')
+  if (session.check_out_time) throw new AppError('Participant already has a check-out time', 409)
 
   await pool.query(
     `UPDATE attendance_sessions
@@ -111,21 +110,20 @@ export const forceCheckoutService = async (payload: ForceCheckoutPayload, admin_
   }
 }
 
-// ── Mark Early Out ───────────────────────────────────────
 export const earlyOutService = async (payload: EarlyOutPayload, admin_id: string) => {
   const { session_id, participant_id, event_id, early_out_cutoff, adjusted_time, reason } = payload
 
-  if (!session_id) throw new Error('Session ID is required')
-  if (!early_out_cutoff) throw new Error('Early out cutoff time is required')
-  if (!adjusted_time) throw new Error('Adjusted check-out time is required')
-  if (!reason?.trim()) throw new Error('Reason is required')
+  if (!session_id) throw new ValidationError('Session ID is required')
+  if (!early_out_cutoff) throw new ValidationError('Early out cutoff time is required')
+  if (!adjusted_time) throw new ValidationError('Adjusted check-out time is required')
+  if (!reason?.trim()) throw new ValidationError('Reason is required')
 
   const sessionResult = await pool.query(
     'SELECT * FROM attendance_sessions WHERE session_id = $1',
     [session_id]
   )
   const session = sessionResult.rows[0]
-  if (!session) throw new Error('Attendance session not found')
+  if (!session) throw new NotFoundError('Attendance session not found')
 
   const original_time = session.check_out_time
 
@@ -155,8 +153,9 @@ export const earlyOutService = async (payload: EarlyOutPayload, admin_id: string
   }
 }
 
-// ── Get Override Logs by Event ───────────────────────────
 export const getOverrideLogsByEventService = async (event_id: number) => {
+  if (!event_id || isNaN(event_id)) throw new ValidationError('Valid event ID is required')
+
   const result = await pool.query(
     `SELECT
        o.override_id, o.override_type, o.reason,

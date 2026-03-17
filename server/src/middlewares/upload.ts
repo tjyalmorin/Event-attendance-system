@@ -1,13 +1,5 @@
 import multer from 'multer'
-import path from 'path'
-import cloudinary from 'cloudinary'
-
-// ── Configure Cloudinary ──────────────────────────────────
-cloudinary.v2.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-})
+import cloudinary from '../config/cloudinary.js'
 
 // ── Memory storage — all files go to Cloudinary ──────────
 const memoryStorage = multer.memoryStorage()
@@ -19,7 +11,7 @@ export const uploadToCloudinary = (
   filename: string
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
-    const stream = cloudinary.v2.uploader.upload_stream(
+    const stream = cloudinary.uploader.upload_stream(
       {
         folder,
         public_id: filename,
@@ -35,39 +27,40 @@ export const uploadToCloudinary = (
   })
 }
 
-// ── Photo upload (participant photos) ────────────────────
+// ── Shared mimetype validation ────────────────────────────
+const allowedMimes = ['image/jpeg', 'image/png', 'image/webp']
+
 const photoFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowed = ['.jpg', '.jpeg', '.png']
-  const ext = path.extname(file.originalname).toLowerCase()
-  if (allowed.includes(ext)) {
+  if (allowedMimes.includes(file.mimetype)) {
     cb(null, true)
   } else {
-    cb(new Error('Only JPG and PNG files are allowed'))
+    cb(new Error('Only JPG, PNG, or WEBP images are allowed'))
   }
 }
 
+const slideshowFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  if (allowedMimes.includes(file.mimetype)) {
+    cb(null, true)
+  } else {
+    cb(new Error('Only JPG, PNG, or WEBP images are allowed for slideshow images'))
+  }
+}
+
+// ── Photo upload (participant/agent photos) ───────────────
 export const uploadPhoto = multer({
   storage: memoryStorage,
   fileFilter: photoFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+  limits: { fileSize: 5 * 1024 * 1024 },
 })
 
 // ── Slideshow/poster upload ───────────────────────────────
-const slideshowFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowed = ['.jpg', '.jpeg', '.png', '.webp']
-  const ext = path.extname(file.originalname).toLowerCase()
-  if (allowed.includes(ext)) {
-    cb(null, true)
-  } else {
-    cb(new Error('Only JPG, PNG, or WEBP files are allowed for slideshow images'))
-  }
-}
-
 export const uploadSlideshow = multer({
   storage: memoryStorage,
   fileFilter: slideshowFileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 5,
+  },
 })
 
-// Keep uploadPoster as alias so events.routes.ts import doesn't break
 export const uploadPoster = uploadSlideshow

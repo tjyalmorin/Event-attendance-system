@@ -16,18 +16,14 @@ import { getCancelledParticipantsByEvent } from '../participants/participants.co
 
 const router = Router()
 
-// ── Static/named routes come FIRST — before /:event_id ───────
 router.get('/trash',    authenticate, roleGuard('admin'), getTrashedEvents)
 router.get('/archived', authenticate, roleGuard('admin'), getArchivedEvents)
 
-// ── Standard routes ───────────────────────────────────────────
 router.get('/', authenticate, getAllEvents)
 
-// uploadPoster.any() runs first (handles multipart), then Zod validates the body
 router.post('/', authenticate, roleGuard('admin'), uploadPoster.any(), validate(createEventSchema), createEvent)
 
-// ── Event-specific routes ─────────────────────────────────────
-router.get('/:event_id',    getEventById)  // ← PUBLIC: used by RegistrationPage
+router.get('/:event_id',    getEventById)
 router.put('/:event_id',    authenticate, roleGuard('admin'), uploadPoster.any(), validate(updateEventSchema), updateEvent)
 router.delete('/:event_id', authenticate, roleGuard('admin'), deleteEvent)
 
@@ -38,11 +34,9 @@ router.delete('/:event_id/permanent',       authenticate, roleGuard('admin'), pe
 router.post('/:event_id/permissions',       authenticate, roleGuard('admin'), assignPermission)
 router.get('/:event_id/admin-grants',       authenticate, roleGuard('admin'), getEventAdminGrants)
 
-// ── Staff management ──────────────────────────────────────────
 router.get('/:event_id/staff',              authenticate, roleGuard('admin'), getEventStaff)
 router.delete('/:event_id/staff/:user_id',  authenticate, roleGuard('admin'), removeEventStaff)
 
-// ── Cancelled participants (trash bin) ────────────────────────
 router.get('/:event_id/participants/cancelled', authenticate, roleGuard('admin'), getCancelledParticipantsByEvent)
 
 export default router

@@ -765,42 +765,69 @@ export default function EventDetail() {
 
         {/* ── HEADER ── */}
         <header className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a] shadow-sm flex-shrink-0">
-          <div className="px-12 h-[76px] flex items-center gap-4">
+          {/* Mobile header */}
+          <div className="md:hidden px-4 pt-3 pb-2">
+            <div className="flex items-center gap-2 mb-2">
+              <button onClick={() => navigate('/admin/events')}
+                className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors">
+                <ArrowLeftIcon />
+                <span className="font-medium">Back</span>
+              </button>
+              <div className="flex-1" />
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${getStatusBadge(event.status)}`}>
+                {event.status.toUpperCase()}
+              </span>
+              {ongoing && (
+                <span className="flex items-center gap-1 text-xs font-bold text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  LIVE
+                </span>
+              )}
+            </div>
+            <h1 className="text-lg font-extrabold text-gray-800 dark:text-white leading-tight mb-3 line-clamp-2">
+              {event.title}
+            </h1>
+            <div className="flex gap-2">
+              {isAdmin && (
+                <button onClick={() => setEditModalOpen(true)}
+                  className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 py-2 rounded-xl font-semibold text-sm hover:border-[#DC143C] hover:text-[#DC143C] transition-all">
+                  <EditIcon /> Edit
+                </button>
+              )}
+              <button onClick={() => navigate(`/admin/events/${eventId}/scanner`)}
+                className="flex-1 flex items-center justify-center gap-2 bg-[#DC143C] text-white py-2 rounded-xl font-semibold text-sm hover:bg-[#b01030] transition-all">
+                <ScannerIcon /> Check-in
+              </button>
+            </div>
+          </div>
+          {/* Desktop header */}
+          <div className="hidden md:flex px-12 h-[76px] items-center gap-4">
             <button onClick={() => navigate('/admin/events')}
               className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors mr-2">
               <ArrowLeftIcon />
               <span className="font-medium">Back</span>
             </button>
-
             <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
               {event.title}
             </h1>
-
             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getStatusBadge(event.status)}`}>
               {event.status.toUpperCase()}
             </span>
-
             {ongoing && (
               <span className="flex items-center gap-1.5 text-xs font-bold text-green-600 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                 LIVE
               </span>
             )}
-
             <div className="flex-1" />
-
-            {/* ── Edit Event Button (admin only) ── */}
             {isAdmin && (
-              <button
-                onClick={() => setEditModalOpen(true)}
+              <button onClick={() => setEditModalOpen(true)}
                 className="flex items-center gap-2 border border-gray-200 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 px-5 py-2.5 rounded-xl font-semibold text-sm hover:border-[#DC143C] hover:text-[#DC143C] dark:hover:border-[#DC143C] dark:hover:text-[#DC143C] transition-all">
                 <EditIcon />
                 Edit Event
               </button>
             )}
-
-            <button
-              onClick={() => navigate(`/admin/events/${eventId}/scanner`)}
+            <button onClick={() => navigate(`/admin/events/${eventId}/scanner`)}
               className="flex items-center gap-2 bg-[#DC143C] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#b01030] transition-all shadow-[0_4px_16px_rgba(220,20,60,0.22)]">
               <ScannerIcon />
               Check-in Station
@@ -809,7 +836,7 @@ export default function EventDetail() {
         </header>
 
         {/* ── EVENT INFO BAR ── */}
-        <div className="bg-[#fafafa] dark:bg-[#161616] border-b border-gray-200 dark:border-[#2a2a2a] px-12 py-2.5 flex items-center gap-5 flex-shrink-0">
+        <div className="bg-[#fafafa] dark:bg-[#161616] border-b border-gray-200 dark:border-[#2a2a2a] px-4 md:px-12 py-2.5 flex items-center gap-4 md:gap-5 flex-shrink-0 overflow-x-auto scrollbar-hide">
           <div className="flex items-center gap-2">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -837,10 +864,10 @@ export default function EventDetail() {
         </div>
 
         {/* ── MAIN CONTENT ── */}
-        <div className="flex-1 flex flex-col px-12 pt-5 pb-5 gap-3 overflow-hidden">
+        <div className="flex-1 flex flex-col px-4 md:px-12 pt-4 md:pt-5 pb-20 md:pb-5 gap-3 overflow-y-auto md:overflow-hidden">
 
           {/* ── TOP ROW: Stats + Recent Check-In ── */}
-          <div className="flex gap-3 flex-shrink-0">
+          <div className="flex flex-col lg:flex-row gap-3 flex-shrink-0">
 
             {/* Left: stat cards + registration window */}
             <div className="flex-1 flex flex-col gap-3">
@@ -853,6 +880,7 @@ export default function EventDetail() {
                 </div>
               )}
 
+              {/* Top 2 big stat cards */}
               <div className="grid grid-cols-2 gap-3">
                 <StatCard num={visibleConfirmedCount} label="Registered" accent={false} barWidth={100} icon={<UsersIcon />} />
                 <StatCard num={visibleCheckedInCount} label="Currently Inside" accent={true}
@@ -860,7 +888,8 @@ export default function EventDetail() {
                   icon={<CheckIcon />} iconRed />
               </div>
 
-              <div className="grid grid-cols-4 gap-3">
+              {/* Bottom 4 small stat cards — 2 cols on mobile, 4 on desktop */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <StatCard num={visibleCompletedCount} label="Checked Out" accent={false}
                   barWidth={visibleConfirmedCount ? Math.round((visibleCompletedCount / visibleConfirmedCount) * 100) : 0}
                   icon={<LogoutIcon />} />
@@ -961,8 +990,8 @@ export default function EventDetail() {
               </div>
             </div>
 
-            {/* Right: Recent Check-Ins panel */}
-            <div className="w-[280px] bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm flex flex-col overflow-hidden flex-shrink-0">
+            {/* Right: Recent Check-Ins panel — desktop only */}
+            <div className="hidden lg:flex w-[280px] bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm flex-col overflow-hidden flex-shrink-0">
               <div className="px-5 py-3.5 border-b border-gray-100 dark:border-[#2a2a2a] flex-shrink-0">
                 <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Recent Check-Ins</p>
               </div>

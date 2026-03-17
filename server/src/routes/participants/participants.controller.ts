@@ -42,13 +42,19 @@ export const uploadParticipantPhoto = asyncHandler(async (req: Request, res: Res
   const participant = result.rows[0]
   if (!participant) throw new AppError('Participant not found', 404)
 
-  const ext = path.extname(req.file.originalname).toLowerCase().replace('.', '')
   const publicId = `agents/${participant.agent_code}`
 
   const uploadResult = await new Promise<any>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { public_id: publicId, overwrite: true, resource_type: 'image', format: ext === 'jpg' ? 'jpg' : ext },
-      (error, result) => { if (error) reject(error); else resolve(result) }
+      {
+        public_id: publicId,
+        overwrite: true,
+        resource_type: 'image',
+      },
+      (error, result) => {
+        if (error) reject(error)
+        else resolve(result)
+      }
     )
     stream.end(req.file!.buffer)
   })

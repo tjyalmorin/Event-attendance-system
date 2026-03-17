@@ -1,38 +1,56 @@
 import pool from '../../config/database.js'
+import { AppError, NotFoundError, ValidationError } from '../../errors/AppError.js'
+import { cacheGet, cacheSet, cacheDel } from '../../utils/cache.js'
 
-// ── Lookup by agent code OR surname ──────────────────────────────────────────
+const SESSIONS_CACHE_TTL = 10 // 10 seconds — short enough for live feel
+
+const invalidateSessionsCache = async (event_id: number) => {
+  await cacheDel(`sessions:event:${event_id}`)
+}
+
 export const lookupParticipantService = async (query: string, event_id: number, branch_name?: string | null) => {
-  if (!query?.trim()) throw new Error('Agent code or surname is required')
-  if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
+  if (!query?.trim()) throw new ValidationError('Agent code or surname is required')
+  if (!event_id || isNaN(event_id)) throw new ValidationError('Valid event ID is required')
+  if (query.trim().length > 50) throw new ValidationError('Query too long')
 
   const eventResult = await pool.query(
     `SELECT * FROM events WHERE event_id = $1 AND deleted_at IS NULL`,
     [event_id]
   )
   const event = eventResult.rows[0]
-  if (!event) throw new Error('Event not found.')
+  if (!event) throw new AppError('Event not found.', 404)
 
-  const now = new Date()
-  const currentTime = now.toTimeString().split(' ')[0]
-  if (currentTime > event.checkin_cutoff) throw new Error('Check-in time has already passed.')
-
-  const isNumeric = /^\d+$/.test(query.trim())
-  let participantRows: any[] = []
-
-  if (isNumeric) {
-    const partial = await pool.query(
-      `SELECT p.*, a.photo_url
-       FROM participants p
-       LEFT JOIN agents a ON a.agent_code = p.agent_code
-       WHERE p.agent_code ILIKE $1 AND p.event_id = $2 AND p.deleted_at IS NULL
-         ${branch_name ? 'AND p.branch_name = $3' : ''}`,
-      branch_name ? [`%${query.trim()}%`, event_id, branch_name] : [`%${query.trim()}%`, event_id]
+  // ── Cutoff check in SQL using DB timezone ─────────────────────────────────
+  if (event.checkin_cutoff) {
+    const cutoffResult = await pool.query(
+      `SELECT (NOW()::time > $1::time) AS is_past`,
+      [event.checkin_cutoff]
     )
-    participantRows = partial.rows
+    if (cutoffResult.rows[0].is_past) throw new AppError('Check-in time has already passed.', 400)
   }
 
-  if (participantRows.length === 0) {
-    const byName = await pool.query(
+  const isNumeric = /^\d+$/.test(query.trim())
+
+  const participantResult = await pool.query(
+    `SELECT p.*, a.photo_url
+     FROM participants p
+     LEFT JOIN agents a ON a.agent_code = p.agent_code
+     WHERE p.event_id = $1
+       AND p.deleted_at IS NULL
+       AND (
+         ($2 AND p.agent_code ILIKE $3)
+         OR (NOT $2 AND p.full_name ILIKE $3)
+       )
+       ${branch_name ? 'AND p.branch_name = $4' : ''}`,
+    branch_name
+      ? [event_id, isNumeric, `%${query.trim()}%`, branch_name]
+      : [event_id, isNumeric, `%${query.trim()}%`]
+  )
+
+  let participantRows = participantResult.rows
+
+  if (isNumeric && participantRows.length === 0) {
+    const fallback = await pool.query(
       `SELECT p.*, a.photo_url
        FROM participants p
        LEFT JOIN agents a ON a.agent_code = p.agent_code
@@ -40,17 +58,13 @@ export const lookupParticipantService = async (query: string, event_id: number, 
          ${branch_name ? 'AND p.branch_name = $3' : ''}`,
       branch_name ? [event_id, `%${query.trim()}%`, branch_name] : [event_id, `%${query.trim()}%`]
     )
-    participantRows = byName.rows
+    participantRows = fallback.rows
   }
 
-  if (participantRows.length === 0) {
-    throw new Error('No participant found. Please check the agent code or surname.')
-  }
+  if (participantRows.length === 0) throw new AppError('No participant found. Please check the agent code or surname.', 404)
 
   const active = participantRows.filter(p => p.registration_status !== 'cancelled')
-  if (active.length === 0) {
-    throw new Error('Participant registration has been cancelled.')
-  }
+  if (active.length === 0) throw new AppError('Participant registration has been cancelled.', 400)
 
   if (active.length > 1) {
     return {
@@ -98,21 +112,24 @@ export const lookupParticipantService = async (query: string, event_id: number, 
   }
 }
 
-// ── Resolve after user picks from multiple matches ────────────────────────────
 export const resolveParticipantService = async (participant_id: number, event_id: number) => {
-  if (!participant_id || isNaN(participant_id)) throw new Error('Valid participant ID is required')
-  if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
+  if (!participant_id || isNaN(participant_id)) throw new ValidationError('Valid participant ID is required')
+  if (!event_id || isNaN(event_id)) throw new ValidationError('Valid event ID is required')
 
   const eventResult = await pool.query(
     `SELECT * FROM events WHERE event_id = $1 AND deleted_at IS NULL`,
     [event_id]
   )
   const event = eventResult.rows[0]
-  if (!event) throw new Error('Event not found.')
+  if (!event) throw new AppError('Event not found.', 404)
 
-  const now = new Date()
-  const currentTime = now.toTimeString().split(' ')[0]
-  if (currentTime > event.checkin_cutoff) throw new Error('Check-in time has already passed.')
+  if (event.checkin_cutoff) {
+    const cutoffResult = await pool.query(
+      `SELECT (NOW()::time > $1::time) AS is_past`,
+      [event.checkin_cutoff]
+    )
+    if (cutoffResult.rows[0].is_past) throw new AppError('Check-in time has already passed.', 400)
+  }
 
   const pResult = await pool.query(
     `SELECT p.*, a.photo_url
@@ -122,8 +139,8 @@ export const resolveParticipantService = async (participant_id: number, event_id
     [participant_id, event_id]
   )
   const participant = pResult.rows[0]
-  if (!participant) throw new Error('Participant not found.')
-  if (participant.registration_status === 'cancelled') throw new Error('This participant registration has been cancelled.')
+  if (!participant) throw new NotFoundError('Participant not found.')
+  if (participant.registration_status === 'cancelled') throw new AppError('This participant registration has been cancelled.', 400)
 
   const existingSession = await pool.query(
     `SELECT * FROM attendance_sessions
@@ -156,16 +173,15 @@ export const resolveParticipantService = async (participant_id: number, event_id
   }
 }
 
-// ── Scan (actual check-in / check-out) ───────────────────────────────────────
 export const scanAgentCodeService = async (
   agent_code: string,
   event_id: number,
   is_early_out: boolean = false,
   early_out_reason?: string | null
 ) => {
-  if (!agent_code?.trim()) throw new Error('Agent code is required')
-  if (!event_id || isNaN(event_id)) throw new Error('Valid event ID is required')
-  if (agent_code.length > 50) throw new Error('Invalid agent code')
+  if (!agent_code?.trim()) throw new ValidationError('Agent code is required')
+  if (!event_id || isNaN(event_id)) throw new ValidationError('Valid event ID is required')
+  if (agent_code.length > 50) throw new ValidationError('Invalid agent code')
 
   const participantResult = await pool.query(
     `SELECT p.*, a.photo_url
@@ -187,11 +203,11 @@ export const scanAgentCodeService = async (
 
   if (!participant) {
     await logScan('denied', 'Agent code not found for this event')
-    throw new Error('Agent code not found. Please check if agent is registered for this event.')
+    throw new AppError('Agent code not found. Please check if agent is registered for this event.', 404)
   }
   if (participant.registration_status === 'cancelled') {
     await logScan('denied', 'Participant registration is cancelled')
-    throw new Error('This participant registration has been cancelled.')
+    throw new AppError('This participant registration has been cancelled.', 400)
   }
 
   const eventResult = await pool.query(
@@ -199,22 +215,9 @@ export const scanAgentCodeService = async (
     [event_id]
   )
   const event = eventResult.rows[0]
-  if (!event) { await logScan('denied', 'Event not found'); throw new Error('Event not found.') }
-
-  const now = new Date()
-  const currentTime = now.toTimeString().split(' ')[0]
-  if (currentTime > event.checkin_cutoff) {
-    await logScan('denied', 'Check-in time has passed')
-    throw new Error('Check-in time has already passed.')
-  }
-
-  const participantPayload = {
-    full_name: participant.full_name,
-    agent_code: participant.agent_code,
-    branch_name: participant.branch_name,
-    team_name: participant.team_name,
-    photo_url: participant.photo_url || null,
-    agent_type: participant.agent_type || null
+  if (!event) {
+    await logScan('denied', 'Event not found')
+    throw new AppError('Event not found.', 404)
   }
 
   const existingSession = await pool.query(
@@ -224,9 +227,33 @@ export const scanAgentCodeService = async (
     [participant.participant_id, event_id]
   )
 
-  // ── CHECK IN ─────────────────────────────────────────────
-  if (existingSession.rows.length === 0) {
-    const session = await pool.query(
+  const session = existingSession.rows[0] ?? null
+  const isCheckedIn = session?.check_in_time && !session?.check_out_time
+
+  // ── Only enforce cutoff for check-in, not check-out ───────────────────────
+  if (!isCheckedIn && event.checkin_cutoff) {
+    const cutoffResult = await pool.query(
+      `SELECT (NOW()::time > $1::time) AS is_past`,
+      [event.checkin_cutoff]
+    )
+    if (cutoffResult.rows[0].is_past) {
+      await logScan('denied', 'Check-in time has passed')
+      throw new AppError('Check-in time has already passed.', 400)
+    }
+  }
+
+  const participantPayload = {
+    full_name:   participant.full_name,
+    agent_code:  participant.agent_code,
+    branch_name: participant.branch_name,
+    team_name:   participant.team_name,
+    photo_url:   participant.photo_url || null,
+    agent_type:  participant.agent_type || null
+  }
+
+  // ── Check in ──────────────────────────────────────────────────────────────
+  if (!session) {
+    const newSession = await pool.query(
       `INSERT INTO attendance_sessions
         (participant_id, event_id, check_in_time, check_in_method, created_at, updated_at)
        VALUES ($1, $2, NOW(), 'manual', NOW(), NOW())
@@ -234,18 +261,17 @@ export const scanAgentCodeService = async (
       [participant.participant_id, event_id]
     )
     await logScan('check_in')
+    await invalidateSessionsCache(event_id)
     return {
       action: 'check_in',
       message: 'Check-in successful',
       participant: participantPayload,
-      session: session.rows[0]
+      session: newSession.rows[0]
     }
   }
 
-  const session = existingSession.rows[0]
-
-  // ── CHECK OUT (with optional early out) ──────────────────
-  if (session.check_in_time && !session.check_out_time) {
+  // ── Check out ─────────────────────────────────────────────────────────────
+  if (isCheckedIn) {
     const checkOutMethod = is_early_out ? 'early_out' : 'manual'
     const reason = is_early_out ? (early_out_reason?.trim() || 'Early departure') : null
 
@@ -260,6 +286,7 @@ export const scanAgentCodeService = async (
       [checkOutMethod, reason, session.session_id]
     )
     await logScan('check_out')
+    await invalidateSessionsCache(event_id)
     return {
       action: 'check_out',
       message: is_early_out ? 'Early out recorded' : 'Check-out successful',
@@ -270,10 +297,9 @@ export const scanAgentCodeService = async (
   }
 
   await logScan('denied', 'Participant already completed check-in and check-out')
-  throw new Error('This participant has already checked in and checked out. No further entries allowed.')
+  throw new AppError('This participant has already checked in and checked out. No further entries allowed.', 400)
 }
 
-// ── Log denial ────────────────────────────────────────────────────────────────
 export const logDenialService = async (agent_code: string, event_id: number, reason: string) => {
   const participantResult = await pool.query(
     `SELECT participant_id FROM participants
@@ -289,8 +315,12 @@ export const logDenialService = async (agent_code: string, event_id: number, rea
   )
 }
 
-// ── Sessions & Logs ───────────────────────────────────────────────────────────
 export const getSessionsByEventService = async (event_id: number) => {
+  // ── Cache sessions — invalidated on every scan ────────────────────────────
+  const cacheKey = `sessions:event:${event_id}`
+  const cached = await cacheGet<any[]>(cacheKey)
+  if (cached) return cached
+
   const result = await pool.query(
     `SELECT
        a.session_id, a.participant_id, a.check_in_time, a.check_out_time,
@@ -304,6 +334,8 @@ export const getSessionsByEventService = async (event_id: number) => {
      ORDER BY a.check_in_time DESC NULLS LAST`,
     [event_id]
   )
+
+  await cacheSet(cacheKey, result.rows, SESSIONS_CACHE_TTL)
   return result.rows
 }
 
@@ -321,7 +353,6 @@ export const getScanLogsByEventService = async (event_id: number) => {
   return result.rows
 }
 
-// ── Update session check-in / check-out times (admin only) ───────────────────
 export const updateSessionTimesService = async (
   session_id: number,
   check_in_time: string,
@@ -330,15 +361,15 @@ export const updateSessionTimesService = async (
   const checkIn  = new Date(check_in_time)
   const checkOut = check_out_time ? new Date(check_out_time) : null
 
-  if (isNaN(checkIn.getTime()))              throw new Error('check_in_time is not a valid date')
-  if (checkOut && isNaN(checkOut.getTime())) throw new Error('check_out_time is not a valid date')
-  if (checkOut && checkOut <= checkIn)       throw new Error('check_out_time must be after check_in_time')
+  if (isNaN(checkIn.getTime()))              throw new ValidationError('check_in_time is not a valid date')
+  if (checkOut && isNaN(checkOut.getTime())) throw new ValidationError('check_out_time is not a valid date')
+  if (checkOut && checkOut <= checkIn)       throw new ValidationError('check_out_time must be after check_in_time')
 
   const existing = await pool.query(
-    `SELECT session_id FROM attendance_sessions WHERE session_id = $1`,
+    `SELECT session_id, event_id FROM attendance_sessions WHERE session_id = $1`,
     [session_id]
   )
-  if (!existing.rows[0]) throw new Error('Session not found')
+  if (!existing.rows[0]) throw new NotFoundError('Session not found')
 
   const result = await pool.query(
     `UPDATE attendance_sessions
@@ -352,14 +383,22 @@ export const updateSessionTimesService = async (
        check_in_method, check_out_method, early_out_reason`,
     [checkIn.toISOString(), checkOut ? checkOut.toISOString() : null, session_id]
   )
+
+  await invalidateSessionsCache(existing.rows[0].event_id)
   return result.rows[0]
 }
 
-// ── Bulk check-out ────────────────────────────────────────────────────────────
 export const bulkCheckOutService = async (event_id: number, session_ids: number[]) => {
   if (!Array.isArray(session_ids) || session_ids.length === 0) {
-    throw new Error('session_ids must be a non-empty array')
+    throw new ValidationError('session_ids must be a non-empty array')
   }
+
+  // ── Verify event exists ───────────────────────────────────────────────────
+  const eventCheck = await pool.query(
+    `SELECT event_id FROM events WHERE event_id = $1 AND deleted_at IS NULL`,
+    [event_id]
+  )
+  if (!eventCheck.rows[0]) throw new NotFoundError('Event not found')
 
   const result = await pool.query(
     `UPDATE attendance_sessions
@@ -373,6 +412,8 @@ export const bulkCheckOutService = async (event_id: number, session_ids: number[
      RETURNING session_id`,
     [session_ids, event_id]
   )
+
+  await invalidateSessionsCache(event_id)
 
   return {
     checked_out: result.rowCount ?? 0,

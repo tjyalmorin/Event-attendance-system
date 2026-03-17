@@ -3,12 +3,21 @@ import { v4 as uuidv4 } from 'uuid'
 import { CreateEventPayload, UpdateEventPayload } from '../../types/event.types.js'
 import { NotFoundError, ValidationError, AppError } from '../../errors/AppError.js'
 
-// ── ID validation helper ───────────────────────────────────
 const validateEventId = (id: number) => {
   if (!id || isNaN(id) || id < 1) {
     throw new ValidationError('Invalid event ID: must be a positive integer')
   }
 }
+
+const registeredCountJoin = `
+  LEFT JOIN (
+    SELECT event_id, COUNT(*)::int AS registered_count
+    FROM participants
+    WHERE deleted_at IS NULL
+      AND registration_status != 'cancelled'
+    GROUP BY event_id
+  ) pc ON pc.event_id = e.event_id
+`
 
 export const createEventService = async (created_by: string, payload: CreateEventPayload) => {
   const registration_link = `${uuidv4().split('-')[0]}-${Date.now()}`
@@ -44,37 +53,27 @@ export const createEventService = async (created_by: string, payload: CreateEven
   }
 
   if (payload.staff_ids && payload.staff_ids.length > 0) {
-    for (const uid of payload.staff_ids) {
-      await pool.query(
-        `INSERT INTO event_permissions (event_id, user_id)
-         VALUES ($1, $2)
-         ON CONFLICT (event_id, user_id) DO NOTHING`,
-        [event.event_id, uid]
-      )
-    }
+    const staffValues = payload.staff_ids
+      .map((_, i) => `($1, $${i + 2})`)
+      .join(',')
+    await pool.query(
+      `INSERT INTO event_permissions (event_id, user_id) VALUES ${staffValues}
+       ON CONFLICT (event_id, user_id) DO NOTHING`,
+      [event.event_id, ...payload.staff_ids]
+    )
   }
 
   return event
 }
 
 export const getAllEventsService = async (userId?: string, userRole?: string, _userBranch?: string) => {
-  const countJoin = `
-    LEFT JOIN (
-      SELECT event_id, COUNT(*)::int AS registered_count
-      FROM participants
-      WHERE deleted_at IS NULL
-        AND registration_status != 'cancelled'
-      GROUP BY event_id
-    ) pc ON pc.event_id = e.event_id
-  `
-
   if (userRole === 'admin') {
     const result = await pool.query(
       `SELECT e.*,
-              TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+              e.event_date::text AS event_date,
               COALESCE(pc.registered_count, 0) AS registered_count
        FROM events e
-       ${countJoin}
+       ${registeredCountJoin}
        WHERE e.deleted_at IS NULL
          AND e.status != 'archived'
        ORDER BY e.event_date DESC`
@@ -85,10 +84,10 @@ export const getAllEventsService = async (userId?: string, userRole?: string, _u
   if (userRole === 'staff' && userId) {
     const result = await pool.query(
       `SELECT DISTINCT e.*,
-              TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+              e.event_date::text AS event_date,
               COALESCE(pc.registered_count, 0) AS registered_count
        FROM events e
-       ${countJoin}
+       ${registeredCountJoin}
        INNER JOIN event_permissions ep
          ON ep.event_id = e.event_id
          AND ep.user_id = $1
@@ -100,25 +99,15 @@ export const getAllEventsService = async (userId?: string, userRole?: string, _u
     return result.rows
   }
 
-  const result = await pool.query(
-    `SELECT e.*,
-            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
-            COALESCE(pc.registered_count, 0) AS registered_count
-     FROM events e
-     ${countJoin}
-     WHERE e.deleted_at IS NULL
-       AND e.status != 'archived'
-     ORDER BY e.event_date DESC`
-  )
-  return result.rows
+  throw new AppError('Invalid user role', 403)
 }
 
-export const getEventByIdService = async (event_id: number) => {
+export const getEventByIdService = async (event_id: number, isPublic = false) => {
   validateEventId(event_id)
 
   const result = await pool.query(
     `SELECT e.*,
-            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+            e.event_date::text AS event_date,
             COALESCE(pc.registered_count, 0) AS registered_count,
             COALESCE(e.slideshow_urls, '{}') AS slideshow_urls,
             COALESCE(
@@ -138,7 +127,23 @@ export const getEventByIdService = async (event_id: number) => {
   )
 
   if (!result.rows[0]) throw new NotFoundError('Event not found')
-  return result.rows[0]
+
+  const event = result.rows[0]
+
+  if (isPublic) {
+    const {
+      created_by,
+      version,
+      registration_link,
+      created_at,
+      updated_at,
+      deleted_at,
+      ...publicEvent
+    } = event
+    return publicEvent
+  }
+
+  return event
 }
 
 export const updateEventService = async (event_id: number, payload: UpdateEventPayload) => {
@@ -146,14 +151,10 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
   const current = await getEventByIdService(event_id)
   const merged = { ...current, ...payload }
 
-  // ── Compute new slideshow_urls array ───────────────────────────────────────
-  // current.slideshow_urls comes from DB (always a real array due to COALESCE)
   const existingUrls: string[] = Array.isArray(current.slideshow_urls)
     ? current.slideshow_urls
     : []
 
-  // remove_slideshow_urls: already parsed into string[] by Zod + controller
-  // No need to JSON.parse again — just use it directly
   const removedUrls: string[] = Array.isArray(payload.remove_slideshow_urls)
     ? payload.remove_slideshow_urls
     : []
@@ -162,16 +163,16 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
     ? payload.new_slideshow_urls
     : []
 
-  console.log('=== SERVICE SLIDESHOW DEBUG ===')
-  console.log('existingUrls:', existingUrls)
-  console.log('removedUrls:', removedUrls)
-  console.log('newUrls:', newUrls)
-
   const keptUrls = existingUrls.filter(url => !removedUrls.includes(url))
   const finalUrls = [...keptUrls, ...newUrls].slice(0, 5)
 
-  console.log('keptUrls:', keptUrls)
-  console.log('finalUrls:', finalUrls)
+  // ── preset_url: only overwrite when explicitly present in the payload ──────
+  // 'preset_url' in payload = controller explicitly sent it (admin touched it)
+  // 'preset_url' not in payload = controller omitted it (admin didn't touch it)
+  // This prevents silently wiping the preset on every save.
+  const finalPresetUrl = 'preset_url' in payload
+    ? (payload.preset_url ?? null)
+    : (current.preset_url ?? null)
 
   const result = await pool.query(
     `UPDATE events
@@ -181,16 +182,17 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
          slideshow_urls=$11, preset_url=$12,
          version=version+1, updated_at=NOW()
      WHERE event_id=$13 AND deleted_at IS NULL
-     RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date`,
+     RETURNING *, event_date::text AS event_date`,
     [
       merged.title, merged.description, merged.event_date, merged.start_time,
       merged.end_time, merged.venue, merged.status,
       merged.checkin_cutoff, merged.registration_start, merged.registration_end,
-      finalUrls, merged.preset_url ?? null,
+      finalUrls, finalPresetUrl,
       event_id
     ]
   )
 
+  // ── Update branches ───────────────────────────────────────────────────────
   if (payload.event_branches && payload.event_branches.length > 0) {
     await pool.query(`DELETE FROM event_branches WHERE event_id = $1`, [event_id])
     for (const branch of payload.event_branches) {
@@ -201,15 +203,21 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
     }
   }
 
-  if (payload.staff_ids !== undefined) {
+  // ── Staff: only update when staff_ids was explicitly sent by the client ────
+  // undefined = omitted from FormData = modal was still loading = skip update
+  // [] = explicitly sent empty = admin removed all staff = clear all
+  // [...] = explicitly sent list = update to this list
+  if (payload.staff_ids !== undefined && payload.staff_ids !== null) {
     await pool.query(`DELETE FROM event_permissions WHERE event_id = $1`, [event_id])
-    if (payload.staff_ids && payload.staff_ids.length > 0) {
-      for (const uid of payload.staff_ids) {
-        await pool.query(
-          `INSERT INTO event_permissions (event_id, user_id) VALUES ($1, $2) ON CONFLICT (event_id, user_id) DO NOTHING`,
-          [event_id, uid]
-        )
-      }
+    if (payload.staff_ids.length > 0) {
+      const staffValues = payload.staff_ids
+        .map((_, i) => `($1, $${i + 2})`)
+        .join(',')
+      await pool.query(
+        `INSERT INTO event_permissions (event_id, user_id) VALUES ${staffValues}
+         ON CONFLICT (event_id, user_id) DO NOTHING`,
+        [event_id, ...payload.staff_ids]
+      )
     }
   }
 
@@ -262,16 +270,10 @@ export const removeEventStaffService = async (event_id: number, user_id: string)
 export const getTrashedEventsService = async () => {
   const result = await pool.query(
     `SELECT e.*,
-            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+            e.event_date::text AS event_date,
             COALESCE(pc.registered_count, 0) AS registered_count
      FROM events e
-     LEFT JOIN (
-       SELECT event_id, COUNT(*)::int AS registered_count
-       FROM participants
-       WHERE deleted_at IS NULL
-         AND registration_status != 'cancelled'
-       GROUP BY event_id
-     ) pc ON pc.event_id = e.event_id
+     ${registeredCountJoin}
      WHERE e.deleted_at IS NOT NULL
      ORDER BY e.deleted_at DESC`
   )
@@ -317,16 +319,10 @@ export const permanentDeleteEventService = async (event_id: number) => {
 export const getArchivedEventsService = async () => {
   const result = await pool.query(
     `SELECT e.*,
-            TO_CHAR(e.event_date, 'YYYY-MM-DD') AS event_date,
+            e.event_date::text AS event_date,
             COALESCE(pc.registered_count, 0) AS registered_count
      FROM events e
-     LEFT JOIN (
-       SELECT event_id, COUNT(*)::int AS registered_count
-       FROM participants
-       WHERE deleted_at IS NULL
-         AND registration_status != 'cancelled'
-       GROUP BY event_id
-     ) pc ON pc.event_id = e.event_id
+     ${registeredCountJoin}
      WHERE e.deleted_at IS NULL
        AND e.status = 'archived'
      ORDER BY e.updated_at DESC`
@@ -359,9 +355,9 @@ export const copyEventService = async (event_id: number, created_by: string) => 
     `INSERT INTO events
       (created_by, title, description, event_date, start_time, end_time,
        registration_start, registration_end, venue, checkin_cutoff,
-       registration_link, poster_url, preset_url, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft')
-     RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date, 0::int as registered_count`,
+       registration_link, poster_url, preset_url, slideshow_urls, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::text[],'draft')
+     RETURNING *, event_date::text AS event_date, 0::int as registered_count`,
     [
       created_by,
       `Copy of ${original.title}`,
@@ -376,6 +372,7 @@ export const copyEventService = async (event_id: number, created_by: string) => 
       registration_link,
       original.poster_url ?? null,
       original.preset_url ?? null,
+      original.slideshow_urls ?? [],
     ]
   )
 

@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
+import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 
 const api: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
@@ -6,38 +6,49 @@ const api: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-});
+})
 
-// Request interceptor
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('authToken')
     if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers.Authorization = `Bearer ${token}`
     }
-    return config;
+    return config
   },
   (error: AxiosError) => {
-    return Promise.reject(error);
+    return Promise.reject(error)
   }
-);
+)
 
-// Public routes that should never trigger an auth redirect
-const PUBLIC_PATHS = ['/register', '/confirmation', '/admin/login', '/admin/forgot-password'];
+const PUBLIC_PATHS = ['/register', '/confirmation', '/admin/login', '/admin/forgot-password']
 
 const isPublicRoute = () =>
-  PUBLIC_PATHS.some((path) => window.location.pathname.startsWith(path));
+  PUBLIC_PATHS.some((path) => window.location.pathname.startsWith(path))
 
-// Response interceptor
 api.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401 && !isPublicRoute()) {
-      localStorage.removeItem('authToken');
-      window.location.href = '/admin/login';
-    }
-    return Promise.reject(error);
-  }
-);
+    const status = error.response?.status
 
-export default api;
+    if (status === 401 && !isPublicRoute()) {
+      localStorage.removeItem('authToken')
+      window.location.href = '/admin/login'
+      return Promise.reject(error)
+    }
+
+    if (status === 503) {
+      console.warn('⚠️ Server is under high load. Please retry in a moment.')
+      return Promise.reject(new Error('Server is busy, please retry in a moment.'))
+    }
+
+    if (status === 500) {
+      console.error('❌ Internal server error.')
+      return Promise.reject(new Error('Something went wrong on the server. Please try again.'))
+    }
+
+    return Promise.reject(error)
+  }
+)
+
+export default api

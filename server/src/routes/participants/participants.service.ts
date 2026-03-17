@@ -2,7 +2,7 @@ import pool from '../../config/database.js'
 import { RegisterPayload } from '../../types/participant.types.js'
 import {
   cacheGet, cacheSet,
-  CK, TTL, invalidateParticipantCache
+  CK, invalidateParticipantCache
 } from '../../utils/cache.js'
 import { NotFoundError, ValidationError, AppError } from '../../errors/AppError.js'
 
@@ -18,7 +18,6 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (agent_code.length > 50) throw new ValidationError('Agent code too long')
   if (full_name.length > 100) throw new ValidationError('Full name too long')
 
-  // ── FIX #11: Use NotFoundError so errorHandler returns 404 ──────────────
   const eventResult = await pool.query(
     'SELECT * FROM events WHERE event_id = $1 AND deleted_at IS NULL',
     [event_id]
@@ -27,18 +26,22 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (!event) throw new NotFoundError('Event not found')
   if (event.status !== 'open') throw new ValidationError('Event registration is not open')
 
-  const now = new Date()
-  if (event.registration_start && now < new Date(event.registration_start))
-    throw new ValidationError('Registration has not started yet')
-  if (event.registration_end && now > new Date(event.registration_end))
-    throw new ValidationError('Registration has already closed')
+  // ── Registration window check in DB time (Asia/Manila) ───────────────────
+  // Avoids timezone mismatch between Railway (UTC) and Supabase (Asia/Manila)
+  const windowCheck = await pool.query(
+    `SELECT
+       ($1::timestamptz IS NULL OR NOW() >= $1::timestamptz) AS after_start,
+       ($2::timestamptz IS NULL OR NOW() <= $2::timestamptz) AS before_end`,
+    [event.registration_start, event.registration_end]
+  )
+  if (!windowCheck.rows[0].after_start) throw new ValidationError('Registration has not started yet')
+  if (!windowCheck.rows[0].before_end)  throw new ValidationError('Registration has already closed')
 
   const duplicate = await pool.query(
     'SELECT participant_id FROM participants WHERE event_id = $1 AND agent_code = $2 AND deleted_at IS NULL',
     [event_id, agent_code.trim()]
   )
   if (duplicate.rows.length > 0) {
-    // ── FIX #12: Return 409 for duplicate instead of crashing ───────────
     throw new AppError('This agent is already registered for this event', 409)
   }
 
@@ -59,7 +62,6 @@ export const registerParticipantService = async (event_id: number, payload: Regi
 
     return { participant: result.rows[0] }
   } catch (err: any) {
-    // ── FIX #12: Catch DB unique constraint violation → 409 ─────────────
     if (err.code === '23505') {
       throw new AppError('This agent is already registered for this event', 409)
     }
@@ -74,14 +76,9 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
   let all = await cacheGet<any[]>(cacheKey)
 
   if (!all) {
-    // ── Pool pressure guard ──────────────────────────────────────────────────
-    // Under high load (75–100 VUs) this endpoint floods the pool with full
-    // table-scan queries. If the pool is already saturated, shed the load
-    // gracefully — returning [] is far better than queueing up and timing out,
-    // which was causing the unhandled rejection that crashed the server.
     if (pool.waitingCount > 3) {
       console.warn(`⚠️  getParticipants skipped — pool pressure (waiting: ${pool.waitingCount})`)
-      return []
+      throw new AppError('Server is under high load, please retry in a moment', 503)
     }
 
     const result = await pool.query(
@@ -106,7 +103,6 @@ export const getParticipantsByEventService = async (event_id: number, branch_nam
       [event_id]
     )
     all = result.rows
-    // 60s TTL instead of SHORT (30s) — keeps cache warm longer under load
     await cacheSet(cacheKey, all, 60)
   }
 
@@ -123,7 +119,6 @@ export const cancelParticipantService = async (participant_id: number) => {
      RETURNING participant_id, event_id`,
     [participant_id]
   )
-  // ── FIX #13: Use NotFoundError so errorHandler returns 404 ──────────────
   if (!result.rows[0]) throw new NotFoundError('Participant not found')
 
   await invalidateParticipantCache(result.rows[0].event_id)
@@ -168,7 +163,8 @@ export const permanentDeleteParticipantService = async (participant_id: number) 
   if (!participant_id || isNaN(participant_id)) throw new ValidationError('Valid participant ID is required')
 
   const check = await pool.query(
-    `SELECT participant_id FROM participants WHERE participant_id = $1 AND registration_status = 'cancelled' AND deleted_at IS NOT NULL`,
+    `SELECT participant_id FROM participants
+     WHERE participant_id = $1 AND registration_status = 'cancelled' AND deleted_at IS NOT NULL`,
     [participant_id]
   )
   if (!check.rows[0]) throw new NotFoundError('Participant not found in trash')
