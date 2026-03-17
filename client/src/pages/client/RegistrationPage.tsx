@@ -1343,6 +1343,10 @@ function Styles() {
           grid-template-columns: 1fr !important;
           border-radius: 16px !important;
           min-height: unset !important;
+          overflow: hidden !important;
+        }
+        .pru-form-panel {
+          border-radius: 16px !important;
         }
         .pru-page {
           padding: 16px !important;
@@ -1396,7 +1400,6 @@ const s: Record<string, React.CSSProperties> = {
     maxWidth: 1240,
     minHeight: 580,
     borderRadius: 10,
-    overflow: 'hidden',
     boxShadow: '0 28px 80px rgba(220,20,60,0.08), 0 8px 24px rgba(0,0,0,0.08)',
     background: '#fff',
   },
@@ -1404,9 +1407,9 @@ const s: Record<string, React.CSSProperties> = {
   // ── Form Panel ─────────────────────────────────────────────
   formPanel: {
     padding: '36px 44px 40px',
-    overflowY: 'auto',
     display: 'flex',
     flexDirection: 'column',
+    borderRadius: '10px 0 0 10px',
   },
   logo: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 },
   logoMark: {
@@ -1520,6 +1523,7 @@ const s: Record<string, React.CSSProperties> = {
   // ── Visual Panel ───────────────────────────────────────────
   visualPanel: {
     position: 'relative', overflow: 'hidden', background: '#DC143C',
+    borderRadius: '0 10px 10px 0',
   },
 
   // ── Poster mode ────────────────────────────────────────────
