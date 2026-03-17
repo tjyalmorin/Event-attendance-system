@@ -373,7 +373,7 @@ export default function RegistrationPage() {
   useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setLightboxOpen(false); setIsPaused(false) } }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
@@ -574,6 +574,7 @@ export default function RegistrationPage() {
               onClick={() => {
                 if (!mobileBannerTapped) {
                   setLightboxOpen(true)
+                  setIsPaused(true)
                 }
                 setMobileBannerTapped(true)
                 if (mobileTapTimer.current) clearTimeout(mobileTapTimer.current)
@@ -794,6 +795,7 @@ export default function RegistrationPage() {
                   value={form.branch_name}
                   onChange={val => setForm(prev => ({ ...prev, branch_name: val, team_name: '' }))}
                   placeholder="— Select branch —"
+                  centered
                   options={availableBranches.map(b => ({ label: b.name, value: b.name }))}
                 />
               </div>
@@ -804,6 +806,7 @@ export default function RegistrationPage() {
                   onChange={val => setForm(prev => ({ ...prev, team_name: val }))}
                   placeholder={form.branch_name ? '— Select team —' : '— Select branch first —'}
                   disabled={!form.branch_name}
+                  centered
                   options={getTeamsForSelectedBranch(form.branch_name).map(t => ({ label: t, value: t }))}
                 />
               </div>
@@ -850,7 +853,7 @@ export default function RegistrationPage() {
           className="pru-visual-panel"
           onMouseEnter={() => setPanelHovered(true)}
           onMouseLeave={() => setPanelHovered(false)}
-          onClick={() => setLightboxOpen(true)}
+          onClick={() => { setLightboxOpen(true); setIsPaused(true) }}
         >
 
           {/* ── Prev / Next buttons (hover only) ── */}
@@ -1150,11 +1153,11 @@ export default function RegistrationPage() {
             background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(6px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
-          onClick={() => setLightboxOpen(false)}
+          onClick={() => { setLightboxOpen(false); setIsPaused(false) }}
         >
           {/* Close button */}
           <button
-            onClick={() => setLightboxOpen(false)}
+            onClick={() => { setLightboxOpen(false); setIsPaused(false) }}
             style={{
               position: 'absolute', top: 20, right: 20, zIndex: 10,
               width: 44, height: 44, borderRadius: '50%',
