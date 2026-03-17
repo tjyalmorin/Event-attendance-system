@@ -922,24 +922,36 @@ export default function EventDetail() {
               <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm px-5 py-3.5">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Registration Window</p>
-                    <div className="min-w-0">
-                      {event.registration_start && event.registration_end ? (
-                        <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-                          {new Date(event.registration_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                          {' at '}
-                          {new Date(event.registration_start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                          {' → '}
-                          {new Date(event.registration_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                          {' at '}
-                          {new Date(event.registration_end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                        </p>
-                      ) : (
-                        <p className="text-sm text-gray-400 dark:text-gray-500 italic">No registration window set</p>
-                      )}
-                    </div>
+                    <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1.5">Registration Window</p>
+                    {event.registration_start && event.registration_end ? (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Opens</span>
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            {new Date(event.registration_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            {new Date(event.registration_start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                          </span>
+                        </div>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-300 dark:text-gray-600 flex-shrink-0">
+                          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Closes</span>
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            {new Date(event.registration_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            {new Date(event.registration_end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 dark:text-gray-500 italic">No registration window set</p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <button onClick={handleCopy}
                       className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-[#2a2a2a] px-3 py-2 rounded-xl hover:border-[#DC143C] hover:text-[#DC143C] transition-all">
                       <CopyIcon />
@@ -954,17 +966,24 @@ export default function EventDetail() {
                       Open Link
                     </a>
                     {isAdmin && event.status !== 'draft' && (
-                      <div className="flex items-center gap-2.5">
-                        <span className={`text-xs font-semibold ${isOpen ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                          {statusToggling ? 'Updating...' : isOpen ? 'Registration Open' : 'Registration Closed'}
+                      <button
+                        onClick={handleStatusToggle}
+                        disabled={statusToggling}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap ${
+                          isOpen
+                            ? 'border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/20'
+                            : 'border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f] text-gray-600 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+                        }`}
+                      >
+                        {statusToggling
+                          ? <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                          : <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOpen ? 'bg-green-500' : 'bg-gray-400'}`} />
+                        }
+                        {statusToggling ? 'Updating...' : isOpen ? 'Registration Open' : 'Registration Closed'}
+                        <span className={`relative inline-flex items-center h-[18px] w-[32px] rounded-full transition-colors duration-300 flex-shrink-0 ${isOpen ? 'bg-green-500' : 'bg-gray-300 dark:bg-[#444]'}`}>
+                          <span className={`inline-block h-[12px] w-[12px] rounded-full bg-white shadow transition-transform duration-300 ${isOpen ? 'translate-x-[16px]' : 'translate-x-[3px]'}`} />
                         </span>
-                        <button
-                          onClick={handleStatusToggle}
-                          disabled={statusToggling}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${isOpen ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'} disabled:opacity-60`}>
-                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-300 ${isOpen ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
-                      </div>
+                      </button>
                     )}
                   </div>
                 </div>

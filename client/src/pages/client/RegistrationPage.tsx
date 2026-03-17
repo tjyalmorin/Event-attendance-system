@@ -373,7 +373,7 @@ export default function RegistrationPage() {
   useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setLightboxOpen(false); setIsPaused(false) } }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
@@ -574,6 +574,7 @@ export default function RegistrationPage() {
               onClick={() => {
                 if (!mobileBannerTapped) {
                   setLightboxOpen(true)
+                  setIsPaused(true)
                 }
                 setMobileBannerTapped(true)
                 if (mobileTapTimer.current) clearTimeout(mobileTapTimer.current)
@@ -850,7 +851,7 @@ export default function RegistrationPage() {
           className="pru-visual-panel"
           onMouseEnter={() => setPanelHovered(true)}
           onMouseLeave={() => setPanelHovered(false)}
-          onClick={() => setLightboxOpen(true)}
+          onClick={() => { setLightboxOpen(true); setIsPaused(true) }}
         >
 
           {/* ── Prev / Next buttons (hover only) ── */}
@@ -1150,11 +1151,11 @@ export default function RegistrationPage() {
             background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(6px)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
-          onClick={() => setLightboxOpen(false)}
+          onClick={() => { setLightboxOpen(false); setIsPaused(false) }}
         >
           {/* Close button */}
           <button
-            onClick={() => setLightboxOpen(false)}
+            onClick={() => { setLightboxOpen(false); setIsPaused(false) }}
             style={{
               position: 'absolute', top: 20, right: 20, zIndex: 10,
               width: 44, height: 44, borderRadius: '50%',

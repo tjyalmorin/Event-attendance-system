@@ -14,20 +14,18 @@ import {
 
 const router = Router()
 
-router.use(authenticate)
-
-// ── Public read (any logged-in user + public registration) ──
-// GET /api/branches — used by registration form, dropdowns everywhere
+// ── Public read — no auth required ─────────────────────────
+// Used by the public registration form (unauthenticated visitors)
 router.get('/', getAllBranches)
 router.get('/:branch_id/teams', getTeamsByBranch)
 
 // ── Admin-only write ────────────────────────────────────────
-router.post('/',                        roleGuard('admin'), createBranch)
-router.put('/:branch_id',               roleGuard('admin'), updateBranch)
-router.delete('/:branch_id',            roleGuard('admin'), deleteBranch)
+router.post('/',                        authenticate, roleGuard('admin'), createBranch)
+router.put('/:branch_id',               authenticate, roleGuard('admin'), updateBranch)
+router.delete('/:branch_id',            authenticate, roleGuard('admin'), deleteBranch)
 
-router.post('/:branch_id/teams',        roleGuard('admin'), createTeam)
-router.put('/teams/:team_id',           roleGuard('admin'), updateTeam)
-router.delete('/teams/:team_id',        roleGuard('admin'), deleteTeam)
+router.post('/:branch_id/teams',        authenticate, roleGuard('admin'), createTeam)
+router.put('/teams/:team_id',           authenticate, roleGuard('admin'), updateTeam)
+router.delete('/teams/:team_id',        authenticate, roleGuard('admin'), deleteTeam)
 
 export default router

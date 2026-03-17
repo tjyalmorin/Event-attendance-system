@@ -68,6 +68,13 @@ const CopyIcon = () => (
   </svg>
 );
 
+const ExternalLinkIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+    <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+  </svg>
+);
+
 const GlobeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
@@ -238,55 +245,65 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ event, onClose, o
 
         {/* Body */}
         <div className="px-5 py-5 space-y-4">
+          {/* URL row */}
           <div className="flex items-center gap-2 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl px-4 py-3">
             <p className="flex-1 text-sm text-[#DC143C] font-mono truncate">{registrationUrl}</p>
-            <button onClick={handleCopy}
-              className={`flex items-center gap-1.5 flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                copied
-                  ? 'bg-green-50 border-green-200 text-green-600 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400'
-                  : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#3a3a3a] text-gray-600 dark:text-gray-300 hover:border-[#DC143C] hover:text-[#DC143C]'
-              }`}>
-              {copied ? <><CheckIcon />Copied!</> : <><CopyIcon />Copy</>}
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={handleCopy}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                  copied
+                    ? 'bg-green-50 border-green-200 text-green-600 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400'
+                    : 'bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#3a3a3a] text-gray-600 dark:text-gray-300 hover:border-[#DC143C] hover:text-[#DC143C]'
+                }`}>
+                {copied ? <><CheckIcon />Copied!</> : <><CopyIcon />Copy</>}
+              </button>
+              <a
+                href={registrationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white dark:bg-[#1c1c1c] border-gray-200 dark:border-[#3a3a3a] text-gray-600 dark:text-gray-300 hover:border-[#DC143C] hover:text-[#DC143C] transition-all"
+              >
+                <ExternalLinkIcon />Open
+              </a>
+            </div>
           </div>
-          <div className="border border-gray-200 dark:border-[#2a2a2a] rounded-xl overflow-hidden">
-            <button onClick={() => !isOpen && !toggling && handleToggle()} disabled={toggling}
-              className={`w-full flex items-center gap-4 px-4 py-3.5 transition-all text-left ${isOpen ? 'bg-green-50 dark:bg-green-900/10' : 'hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'}`}>
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isOpen ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-400'}`}>
-                <GlobeIcon />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-semibold ${isOpen ? 'text-green-700 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}`}>Open Registration</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Anyone with the link can register</p>
-              </div>
-              {isOpen && <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0"><svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5"><polyline points="20 6 9 17 4 12"/></svg></div>}
-            </button>
-            <div className="h-px bg-gray-100 dark:bg-[#2a2a2a]" />
-            <button onClick={() => isOpen && !toggling && handleToggle()} disabled={toggling}
-              className={`w-full flex items-center gap-4 px-4 py-3.5 transition-all text-left ${!isOpen ? 'bg-gray-50 dark:bg-[#2a2a2a]/50' : 'hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'}`}>
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${!isOpen ? 'bg-gray-200 dark:bg-[#333] text-gray-500 dark:text-gray-400' : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-400'}`}>
-                <LockIcon />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-semibold ${!isOpen ? 'text-gray-700 dark:text-gray-300' : 'text-gray-500 dark:text-gray-500'}`}>Close Registration</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">New registrations are disabled</p>
-              </div>
-              {!isOpen && <div className="w-4 h-4 rounded-full bg-gray-400 dark:bg-gray-500 flex items-center justify-center flex-shrink-0"><svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5"><polyline points="20 6 9 17 4 12"/></svg></div>}
-            </button>
-          </div>
+
+          {/* Single toggle */}
+          <button
+            onClick={() => !toggling && handleToggle()}
+            disabled={toggling}
+            className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl border transition-all text-left ${
+              isOpen
+                ? 'border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20'
+                : 'border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f] hover:bg-gray-100 dark:hover:bg-[#1a1a1a]'
+            } disabled:opacity-60 disabled:cursor-not-allowed`}
+          >
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+              isOpen ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-gray-200 dark:bg-[#2a2a2a] text-gray-500 dark:text-gray-400'
+            }`}>
+              {toggling
+                ? <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                : isOpen ? <GlobeIcon /> : <LockIcon />
+              }
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm font-bold ${isOpen ? 'text-green-700 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                {isOpen ? 'Registration Open' : 'Registration Closed'}
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                {isOpen ? 'Click to close registration' : 'Click to open registration'}
+              </p>
+            </div>
+            {/* Toggle pill */}
+            <span className={`relative flex-shrink-0 inline-flex items-center h-[22px] w-[40px] rounded-full transition-colors duration-300 ${isOpen ? 'bg-green-500' : 'bg-gray-300 dark:bg-[#444]'}`}>
+              <span className={`inline-block h-[16px] w-[16px] rounded-full bg-white shadow transition-transform duration-300 ${isOpen ? 'translate-x-[20px]' : 'translate-x-[3px]'}`} />
+            </span>
+          </button>
         </div>
 
         <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
-        <div className="flex items-center justify-between px-5 py-4">
-          <div className="flex items-center gap-2">
-            <p className="text-xs text-gray-400 dark:text-gray-500">
-              Status:&nbsp;
-              <span className={`font-bold ${isOpen ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                {isOpen ? 'Registration Open' : 'Registration Closed'}
-              </span>
-            </p>
-            {toggling && <svg className="animate-spin h-3.5 w-3.5 text-gray-400" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>}
-          </div>
+        <div className="flex items-center justify-end px-5 py-4">
           <button onClick={onClose} className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-xl transition-colors">
             Done
           </button>
@@ -777,7 +794,7 @@ const EventManagement: React.FC = () => {
                         <img
                           src={(event as any).preset_url || event.poster_url || ''}
                           alt={event.title}
-                          className="absolute inset-0 w-full h-full object-cover"
+                          className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                         />
                       ) : (
                         <div className="absolute inset-0 flex items-center justify-center opacity-10">
