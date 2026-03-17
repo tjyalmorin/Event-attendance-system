@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Participant, Event } from '../../types'
 import pruLogo from '../../assets/pru.webp'
@@ -74,6 +75,13 @@ export default function ConfirmationPage() {
 
   const { participant, event } = state
 
+  useEffect(() => {
+    if (event) {
+      document.title = `${event.title} — Registration Form | A1 Prime Branch`
+    }
+    return () => { document.title = 'PrimeLog: Event Attendance System — A1 Prime Branch' }
+  }, [])
+
   return (
     <div style={s.page}>
       <Styles />
@@ -83,10 +91,10 @@ export default function ConfirmationPage() {
         <div style={s.headerInner}>
           <div style={s.logo}>
             <div style={s.logoMark}>
-              <img src={pruLogo} alt="PRU LIFE UK" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              <img src={pruLogo} alt="A1 PRIME" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             </div>
             <div>
-              <div style={s.logoName}>PRU<span style={{ color: '#DC143C' }}>LIFE</span> UK</div>
+              <div style={s.logoName}>A1<span style={{ color: '#DC143C' }}>PRIME</span></div>
               <div style={s.logoSub}>Event Registration</div>
             </div>
           </div>

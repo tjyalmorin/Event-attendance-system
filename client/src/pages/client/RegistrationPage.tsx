@@ -359,6 +359,7 @@ export default function RegistrationPage() {
   const [panelHovered, setPanelHovered] = useState(false)
   const [mobileBannerTapped, setMobileBannerTapped] = useState(false)
   const mobileTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
   const [form, setForm] = useState({
     agent_code: '',
     full_name: '',
@@ -372,11 +373,26 @@ export default function RegistrationPage() {
   useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  useEffect(() => {
     getEventByIdApi(Number(eventId))
       .then(data => setEvent(data as EventWithBranches))
       .catch(() => setError('Event not found'))
       .finally(() => setLoading(false))
   }, [eventId])
+
+  useEffect(() => {
+    if (event) {
+      document.title = `${event.title} — Registration Form | A1 Prime Branch`
+    } else {
+      document.title = 'Registration Form | A1 Prime Branch'
+    }
+    return () => { document.title = 'PrimeLog: Event Attendance System — A1 Prime Branch' }
+  }, [event])
 
   // Determine active slides — use event's slideshow_urls if present, else default slides
   const slideshowUrls: string[] = Array.isArray((event as any)?.slideshow_urls) && (event as any).slideshow_urls.length > 0
@@ -554,8 +570,11 @@ export default function RegistrationPage() {
           {/* ── Mobile-only banner slot — appears after logo, before event details ── */}
           <div className="pru-mobile-banner">
             <div
-              style={{ position: 'relative', width: '100%', aspectRatio: '3/4', background: '#111', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}
+              style={{ position: 'relative', width: '100%', aspectRatio: '3/4', background: '#111', borderRadius: 12, overflow: 'hidden', marginBottom: 20, cursor: 'zoom-in' }}
               onClick={() => {
+                if (!mobileBannerTapped) {
+                  setLightboxOpen(true)
+                }
                 setMobileBannerTapped(true)
                 if (mobileTapTimer.current) clearTimeout(mobileTapTimer.current)
                 mobileTapTimer.current = setTimeout(() => setMobileBannerTapped(false), 3000)
@@ -827,17 +846,18 @@ export default function RegistrationPage() {
 
         {/* ── RIGHT: SLIDESHOW (custom images or default fallback) ── */}
         <div
-          style={s.visualPanel}
+          style={{ ...s.visualPanel, cursor: 'zoom-in' }}
           className="pru-visual-panel"
           onMouseEnter={() => setPanelHovered(true)}
           onMouseLeave={() => setPanelHovered(false)}
+          onClick={() => setLightboxOpen(true)}
         >
 
           {/* ── Prev / Next buttons (hover only) ── */}
           {activeSlideCount > 1 && (
             <>
               <button
-                onClick={goPrev}
+                onClick={e => { e.stopPropagation(); goPrev() }}
                 style={{
                   position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
                   zIndex: 10, width: 40, height: 40, borderRadius: '50%',
@@ -855,7 +875,7 @@ export default function RegistrationPage() {
                 </svg>
               </button>
               <button
-                onClick={goNext}
+                onClick={e => { e.stopPropagation(); goNext() }}
                 style={{
                   position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
                   zIndex: 10, width: 40, height: 40, borderRadius: '50%',
@@ -875,7 +895,7 @@ export default function RegistrationPage() {
 
               {/* Pause / Play button */}
               <button
-                onClick={() => setIsPaused(p => !p)}
+                onClick={e => { e.stopPropagation(); setIsPaused(p => !p) }}
                 style={{
                   position: 'absolute', bottom: 16, right: 16,
                   zIndex: 10, width: 42, height: 42, borderRadius: 10,
@@ -1119,6 +1139,129 @@ export default function RegistrationPage() {
               </button>
             </div>
           </div>
+        </div>,
+        document.body
+      )}
+      {/* ── Lightbox ─────────────────────────────────────── */}
+      {lightboxOpen && createPortal(
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 999999,
+            background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={() => setLightboxOpen(false)}
+        >
+          {/* Close button */}
+          <button
+            onClick={() => setLightboxOpen(false)}
+            style={{
+              position: 'absolute', top: 20, right: 20, zIndex: 10,
+              width: 44, height: 44, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', backdropFilter: 'blur(8px)',
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+
+          {/* Slide counter */}
+          {activeSlideCount > 1 && (
+            <div style={{
+              position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)',
+              color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: 600,
+              letterSpacing: '0.05em',
+            }}>
+              {currentSlide + 1} / {activeSlideCount}
+            </div>
+          )}
+
+          {/* Image */}
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              maxWidth: '90vw', maxHeight: '90vh',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            {confirmedUseCustom ? (
+              <img
+                src={confirmedSlideshowUrls[currentSlide]}
+                alt=""
+                style={{
+                  maxWidth: '85vw', maxHeight: '85vh',
+                  objectFit: 'contain', borderRadius: 12,
+                  boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
+                  display: 'block',
+                }}
+              />
+            ) : (
+              <div style={{
+                width: '70vw', maxWidth: 800, height: '80vh',
+                backgroundImage: `url(${slides[currentSlide].image})`,
+                backgroundSize: 'cover', backgroundPosition: 'center',
+                borderRadius: 12,
+                boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
+              }} />
+            )}
+          </div>
+
+          {/* Prev / Next */}
+          {activeSlideCount > 1 && (
+            <>
+              <button
+                onClick={e => { e.stopPropagation(); goPrev() }}
+                style={{
+                  position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)',
+                  width: 48, height: 48, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', backdropFilter: 'blur(8px)',
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); goNext() }}
+                style={{
+                  position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)',
+                  width: 48, height: 48, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', backdropFilter: 'blur(8px)',
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+
+              {/* Dots */}
+              <div style={{
+                position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+                display: 'flex', gap: 8,
+              }}>
+                {Array.from({ length: activeSlideCount }).map((_, i) => (
+                  <div
+                    key={i}
+                    onClick={e => { e.stopPropagation(); goToSlide(i) }}
+                    style={{
+                      width: i === currentSlide ? 24 : 8, height: 8, borderRadius: 4,
+                      background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)',
+                      transition: 'width 0.3s ease, background 0.3s ease',
+                      cursor: 'pointer',
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>,
         document.body
       )}
