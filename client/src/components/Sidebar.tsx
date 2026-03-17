@@ -165,7 +165,9 @@ const Sidebar: React.FC<SidebarProps> = ({ userRole = 'admin' }) => {
       {/* Header */}
       <div className={`h-[77px] border-b border-gray-200 dark:border-[#2a2a2a] flex items-center ${isCollapsed ? 'justify-center p-2' : 'justify-between p-5'}`}>
         {!isCollapsed && (
-          <div className="text-xl font-bold text-gray-900 dark:text-white">PrimeLog</div>
+          <div className="text-xl font-bold">
+            <span className="text-gray-900 dark:text-white">Prime</span><span className="text-[#DC143C]">Log</span>
+          </div>
         )}
         <button onClick={toggleCollapsed}
           className="p-2 hover:bg-gray-100 dark:hover:bg-[#333333] rounded-lg transition-colors text-gray-500 dark:text-gray-400">
