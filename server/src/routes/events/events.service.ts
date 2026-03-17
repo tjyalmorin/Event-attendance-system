@@ -113,7 +113,7 @@ export const getAllEventsService = async (userId?: string, userRole?: string, _u
   return result.rows
 }
 
-export const getEventByIdService = async (event_id: number) => {
+export const getEventByIdService = async (event_id: number, isPublic = false) => {
   validateEventId(event_id)
 
   const result = await pool.query(
@@ -138,7 +138,24 @@ export const getEventByIdService = async (event_id: number) => {
   )
 
   if (!result.rows[0]) throw new NotFoundError('Event not found')
-  return result.rows[0]
+
+  const event = result.rows[0]
+
+  // Strip internal fields for public registration page
+  if (isPublic) {
+    const {
+      created_by,
+      version,
+      registration_link,
+      created_at,
+      updated_at,
+      deleted_at,
+      ...publicEvent
+    } = event
+    return publicEvent
+  }
+
+  return event
 }
 
 export const updateEventService = async (event_id: number, payload: UpdateEventPayload) => {

@@ -60,7 +60,8 @@ export const getAllEvents = asyncHandler(async (req: Request, res: Response) => 
 })
 
 export const getEventById = asyncHandler(async (req: Request, res: Response) => {
-  const event = await getEventByIdService(Number(req.params.event_id))
+  const isPublic = !req.headers.authorization
+  const event = await getEventByIdService(Number(req.params.event_id), isPublic)
   res.json(event)
 })
 
