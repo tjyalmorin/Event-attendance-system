@@ -9,9 +9,14 @@ import {
 } from './agent-types.service.js'
 
 export const getAllAgentTypes = asyncHandler(async (req: Request, res: Response) => {
-  // Admin gets all including inactive; public gets only active
-  const isAdmin = req.user?.role === 'admin'
-  const result = await getAllAgentTypesService(!isAdmin ? false : true)
+  // Public always gets only active agent types
+  const result = await getAllAgentTypesService(false)
+  res.json(result)
+})
+
+export const getAllAgentTypesAdmin = asyncHandler(async (req: Request, res: Response) => {
+  // Admin explicit endpoint gets all including inactive
+  const result = await getAllAgentTypesService(true)
   res.json(result)
 })
 

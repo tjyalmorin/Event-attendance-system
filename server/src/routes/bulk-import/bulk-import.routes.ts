@@ -16,10 +16,12 @@ const upload = multer({
 
 const router = Router()
 
+// Public route — browser direct download via <a> tag doesn't send JWT bearer tokens
+router.get('/template',                      downloadImportTemplate)
+
 router.use(authenticate)
 router.use(roleGuard('admin'))
 
-router.get('/template',                      downloadImportTemplate)
 router.post('/events/:event_id/import',      upload.single('file'), bulkImportParticipants)
 router.get('/events/:event_id/import-logs',  getBulkImportLogs)
 

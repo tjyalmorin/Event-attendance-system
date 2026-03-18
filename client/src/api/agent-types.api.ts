@@ -17,7 +17,7 @@ export const getAgentTypesApi = async (): Promise<AgentType[]> => {
 
 // Admin — returns all including inactive
 export const getAllAgentTypesApi = async (): Promise<AgentType[]> => {
-  const res = await api.get('/agent-types?include_inactive=true')
+  const res = await api.get('/agent-types/all')
   return res.data
 }
 

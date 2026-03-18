@@ -3,6 +3,7 @@ import authenticate from '../../middlewares/authenticate.js'
 import roleGuard from '../../middlewares/roleGuard.js'
 import {
   getAllAgentTypes,
+  getAllAgentTypesAdmin,
   createAgentType,
   updateAgentType,
   deleteAgentType,
@@ -13,6 +14,9 @@ const router = Router()
 
 // Public GET — used by registration form dropdown
 router.get('/', getAllAgentTypes)
+
+// Admin-only reads
+router.get('/all',                        authenticate, roleGuard('admin'), getAllAgentTypesAdmin)
 
 // Admin-only writes
 router.post('/',                          authenticate, roleGuard('admin'), createAgentType)
