@@ -361,7 +361,7 @@ export default function EventDetail() {
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/register/${event?.event_id}`)
+    navigator.clipboard.writeText(`${window.location.origin}/register/${event?.registration_link}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -957,7 +957,7 @@ export default function EventDetail() {
                       <CopyIcon />
                       {copied ? 'Copied!' : 'Copy Link'}
                     </button>
-                    <a href={`${window.location.origin}/register/${event.event_id}`} target="_blank" rel="noopener noreferrer"
+                    <a href={`${window.location.origin}/register/${event.registration_link}`} target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-[#2a2a2a] px-3 py-2 rounded-xl hover:border-[#DC143C] hover:text-[#DC143C] transition-all">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                         <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>

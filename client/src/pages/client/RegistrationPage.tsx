@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getEventByIdApi } from '../../api/events.api'
+import { getEventByTokenApi } from '../../api/events.api'
 import { registerParticipantApi } from '../../api/participants.api'
 import { Event } from '../../types'
 import { useBranches } from '../../hooks/useBranches'
@@ -348,7 +348,7 @@ const formatTime12h = (time: string) => {
 }
 
 export default function RegistrationPage() {
-  const { eventId } = useParams()
+  const { token } = useParams()
   const navigate = useNavigate()
   const [event, setEvent] = useState<EventWithBranches | null>(null)
   const [loading, setLoading] = useState(true)
@@ -379,11 +379,12 @@ export default function RegistrationPage() {
   }, [])
 
   useEffect(() => {
-    getEventByIdApi(Number(eventId))
+    if (!token) { setLoading(false); return }
+    getEventByTokenApi(token)
       .then(data => setEvent(data as EventWithBranches))
       .catch(() => setError('Event not found'))
       .finally(() => setLoading(false))
-  }, [eventId])
+  }, [token])
 
   useEffect(() => {
     if (event) {
@@ -486,7 +487,7 @@ export default function RegistrationPage() {
     setSubmitting(true)
     setError('')
     try {
-      const data = await registerParticipantApi(Number(eventId), form)
+      const data = await registerParticipantApi(event!.event_id, form)
       navigate('/confirmation', { state: { participant: data.participant, event } })
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.')

@@ -167,28 +167,12 @@ const migrate = async (): Promise<void> => {
       CREATE TABLE IF NOT EXISTS scan_logs (
         scan_id         SERIAL          PRIMARY KEY,
         participant_id  INT             REFERENCES participants(participant_id),
-        event_id        INT             NOT NULL REFERENCES events(event_id),
+        event_id        INT             REFERENCES events(event_id),
+        scan_type       VARCHAR(50),
+        scanned_by      UUID            REFERENCES users(user_id),
         scanned_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-        qr_token        VARCHAR(500)    NOT NULL,
-        scan_type       VARCHAR(50)     NOT NULL,
-        denial_reason   TEXT,
-        created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
-      );
-    `);
-
-    // ── account_audit_logs ─────────────────────────────────────────
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS account_audit_logs (
-        log_id        SERIAL        PRIMARY KEY,
-        actor_id      UUID          REFERENCES users(user_id) ON DELETE SET NULL,
-        actor_name    VARCHAR(255)  NOT NULL,
-        actor_role    VARCHAR(50)   NOT NULL,
-        action        VARCHAR(50)   NOT NULL,
-        target_id     UUID          REFERENCES users(user_id) ON DELETE SET NULL,
-        target_name   VARCHAR(255)  NOT NULL,
-        target_role   VARCHAR(50)   NOT NULL,
-        details       TEXT,
-        created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+        result          VARCHAR(50),
+        notes           TEXT
       );
     `);
 
@@ -226,12 +210,24 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
+    // ── account_audit_logs ─────────────────────────────────────────
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS account_audit_logs (
+        log_id      SERIAL        PRIMARY KEY,
+        actor_id    UUID          REFERENCES users(user_id),
+        target_id   UUID          REFERENCES users(user_id),
+        action      VARCHAR(100)  NOT NULL,
+        details     JSONB,
+        created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      );
+    `);
+
+    // ── Safe column additions for existing tables ──────────────────
     await pool.query(`
       ALTER TABLE participants
         ADD COLUMN IF NOT EXISTS agent_type VARCHAR(50);
     `);
 
-    // ── Safe column additions for existing tables ──────────────────
     await pool.query(`
       ALTER TABLE participants
         ADD COLUMN IF NOT EXISTS photo_url          VARCHAR(500);
@@ -290,6 +286,7 @@ const migrate = async (): Promise<void> => {
       CREATE INDEX IF NOT EXISTS idx_events_event_date             ON events(event_date);
       CREATE INDEX IF NOT EXISTS idx_events_status                 ON events(status);
       CREATE INDEX IF NOT EXISTS idx_events_deleted_at             ON events(deleted_at);
+      CREATE INDEX IF NOT EXISTS idx_events_registration_link      ON events(registration_link);
       CREATE INDEX IF NOT EXISTS idx_event_permissions_user_id     ON event_permissions(user_id);
       CREATE INDEX IF NOT EXISTS idx_event_permissions_event_id    ON event_permissions(event_id);
       CREATE INDEX IF NOT EXISTS idx_admin_grants_granted_to       ON admin_grants(granted_to_user_id);
@@ -405,6 +402,26 @@ const migrate = async (): Promise<void> => {
       }
     }
     console.log('✅ Branches & Teams seeded!');
+
+    // ── Backfill registration_link for events that have none ───────
+    // Only fills NULL tokens — existing tokens are never overwritten.
+    // New events auto-generate their own token in createEventService.
+    const { randomBytes } = await import('crypto');
+    const allEvents = await pool.query(
+      `SELECT event_id FROM events WHERE registration_link IS NULL AND deleted_at IS NULL`
+    );
+    if (allEvents.rows.length > 0) {
+      for (const row of allEvents.rows) {
+        const token = randomBytes(28).toString('hex'); // 56-char hex
+        await pool.query(
+          `UPDATE events SET registration_link = $1 WHERE event_id = $2`,
+          [token, row.event_id]
+        );
+      }
+      console.log(`✅ Backfilled registration_link for ${allEvents.rows.length} event(s).`);
+    } else {
+      console.log('ℹ️  All events already have a registration_link, skipping backfill.');
+    }
 
     console.log('');
     console.log('✅ Migration complete!');

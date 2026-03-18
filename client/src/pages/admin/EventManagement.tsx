@@ -209,7 +209,7 @@ interface RegistrationModalProps {
 const RegistrationModal: React.FC<RegistrationModalProps> = ({ event, onClose, onStatusChange }) => {
   const [copied, setCopied] = useState(false);
   const [toggling, setToggling] = useState(false);
-  const registrationUrl = `${window.location.origin}/register/${event.event_id}`;
+  const registrationUrl = `${window.location.origin}/register/${event.registration_link}`;
   const isOpen = event.status === 'open';
 
   const handleCopy = () => {
