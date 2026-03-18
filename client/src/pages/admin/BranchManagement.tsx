@@ -584,7 +584,6 @@ export default function BranchManagement() {
               })}
             </div>
           )}
-        </div>
 
           {/* ── AGENT TYPES ── */}
           <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm p-5">
@@ -673,6 +672,7 @@ export default function BranchManagement() {
               </div>
             )}
           </div>
+        </div>
 
       {/* ── DELETE AGENT TYPE CONFIRM ── */}
       {deleteAtTarget && (

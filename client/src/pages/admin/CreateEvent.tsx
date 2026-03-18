@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import api from '../../api/axios';
-import Sidebar from '../../components/Sidebar';
 import { useBranches } from '../../hooks/useBranches';
 import { getStaffByBranchesApi } from '../../api/events.api';
 import { createCustomFieldApi } from '../../api/custom-fields.api';
+import { getAgentTypesApi, AgentType } from '../../api/agent-types.api';
 import CustomFieldBuilder, { DraftField } from '../../components/CustomFieldBuilder';
 
 interface BranchSelection { branch_name: string; teams: string[] }
@@ -218,6 +218,14 @@ const CreateEvent: React.FC = () => {
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [draftFields, setDraftFields] = useState<DraftField[]>([]);
+  const [agentTypes, setAgentTypes] = useState<AgentType[]>([]);
+
+  // Fetch agent types for CustomFieldBuilder
+  useEffect(() => {
+    getAgentTypesApi()
+      .then(setAgentTypes)
+      .catch(console.error);
+  }, []);
 
   const PRESET_IMAGES = [
     { id: 'stock1',  url: 'https://res.cloudinary.com/dy9ncj3pj/image/upload/v1773224134/primelog/presets/stock1.jpg' },
@@ -308,7 +316,24 @@ const CreateEvent: React.FC = () => {
         const preset = PRESET_IMAGES.find(p => p.id === selectedPreset);
         if (preset) fd.append('preset_url', preset.url);
       }
-      await api.post('/events', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const eventRes = await api.post('/events', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const newEventId = eventRes.data?.event_id;
+
+      // Save custom fields if any were drafted
+      if (newEventId && draftFields.length > 0) {
+        for (let i = 0; i < draftFields.length; i++) {
+          const df = draftFields[i];
+          if (!df.label.trim()) continue;
+          await createCustomFieldApi(newEventId, {
+            label: df.label,
+            field_type: df.field_type,
+            options: df.options.length > 0 ? df.options : null,
+            is_required: df.is_required,
+            display_order: i + 1,
+            applicable_agent_types: df.applicable_agent_types,
+          });
+        }
+      }
       navigate('/admin/events', { state: { created: true } });
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to create event');
@@ -327,13 +352,14 @@ const CreateEvent: React.FC = () => {
     setCheckinCutoff(null); setRegistrationStart(null); setRegistrationEnd(null);
     setShowDescription(false); setFieldErrors({}); setError('');
     setPosterFile(null); setPosterPreview(null); setSelectedPreset(null);
+    setDraftFields([]);
   };
 
-  const advancedStep = userRole === 'admin' && selectedBranches.length > 0 ? 7 : 6;
-const customQuestionsStep = advancedStep - 1;
+  const customQuestionsStep = userRole === 'admin' && selectedBranches.length > 0 ? 6 : 5;
+  const advancedStep = customQuestionsStep + 1;
 
   return (
-    <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
+    <>
       <style>{`
         .react-datepicker { font-family: inherit; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); overflow: hidden; }
         .dark .react-datepicker { background: #1c1c1c; border-color: #2a2a2a; }
@@ -412,7 +438,7 @@ const customQuestionsStep = advancedStep - 1;
         </div>
       )}
 
-      <Sidebar userRole={userRole} />
+
 
       <div className="flex-1 overflow-auto">
         {/* Page header */}
@@ -757,6 +783,27 @@ const customQuestionsStep = advancedStep - 1;
                   </>
                 )}
 
+                {/* ── Custom Questions ── */}
+                <SectionDivider step={customQuestionsStep} label="Custom Questions" />
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                      Registration Questions <span className="text-gray-400 font-normal">(Optional)</span>
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+                    Add custom questions that participants must answer during registration. Max 15 questions per event.
+                  </p>
+
+                  <CustomFieldBuilder
+                    fields={draftFields}
+                    agentTypes={agentTypes}
+                    onChange={setDraftFields}
+                    maxFields={15}
+                  />
+                </div>
+
                 {/* ── Advanced Settings ── */}
                 <SectionDivider step={advancedStep} label="Advanced Settings" />
 
@@ -851,7 +898,7 @@ const customQuestionsStep = advancedStep - 1;
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

@@ -15,6 +15,7 @@ import { Event, Participant, AttendanceSession, ScanLog } from '../../types'
 import { useStaffProtection } from '../../hooks/useStaffProtection'
 import EventDetailTabs, { AssignedStaff, TabType } from './EventDetailTabs'
 import EditEventModal from '../../components/EditEventModal'
+import BulkImportModal from '../../components/BulkImportModal'
 
 // ─────────────────────────────────────────────────────────────
 // Constants / helpers
@@ -179,6 +180,9 @@ export default function EventDetail() {
   // ── Staff modal ──
   const [removingStaffId, setRemovingStaffId] = useState<string | null>(null)
   const [removeStaffModal, setRemoveStaffModal] = useState<{ open: boolean; staff: AssignedStaff | null }>({ open: false, staff: null })
+
+  // ── Bulk import modal ──
+  const [bulkImportOpen, setBulkImportOpen] = useState(false)
 
   // ─────────────────────────────────────────────────────────
   // Data fetching
@@ -827,6 +831,15 @@ export default function EventDetail() {
                 Edit Event
               </button>
             )}
+            {isAdmin && (
+              <button onClick={() => setBulkImportOpen(true)}
+                className="flex items-center gap-2 border border-gray-200 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 px-5 py-2.5 rounded-xl font-semibold text-sm hover:border-[#DC143C] hover:text-[#DC143C] dark:hover:border-[#DC143C] dark:hover:text-[#DC143C] transition-all">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                Bulk Import
+              </button>
+            )}
             <button onClick={() => navigate(`/admin/events/${eventId}/scanner`)}
               className="flex items-center gap-2 bg-[#DC143C] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#b01030] transition-all shadow-[0_4px_16px_rgba(220,20,60,0.22)]">
               <ScannerIcon />
@@ -1086,6 +1099,19 @@ export default function EventDetail() {
           onClose={() => setEditModalOpen(false)}
           onSuccess={() => {
             setEditModalOpen(false)
+            fetchData()
+          }}
+        />
+      )}
+
+      {/* ── BULK IMPORT MODAL ── */}
+      {bulkImportOpen && event && (
+        <BulkImportModal
+          eventId={event.event_id}
+          eventTitle={event.title}
+          onClose={() => setBulkImportOpen(false)}
+          onSuccess={() => {
+            setBulkImportOpen(false)
             fetchData()
           }}
         />
