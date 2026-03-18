@@ -55,7 +55,7 @@ function App() {
         <div className="min-h-screen bg-gray-50 dark:bg-[#0f0f0f]">
           <Routes>
             {/* ── Public Client Routes ── */}
-            <Route path="/register/:eventId" element={<RegistrationPage />} />
+            <Route path="/register/:token" element={<RegistrationPage />} />
             <Route path="/confirmation" element={<ConfirmationPage />} />
 
             {/* ── Auth (public) ── */}

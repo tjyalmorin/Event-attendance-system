@@ -5,7 +5,7 @@ import validate from '../../middlewares/validate.js'
 import { createEventSchema, updateEventSchema } from '../../schemas/events.schema.js'
 import { uploadPoster } from '../../middlewares/upload.js'
 import {
-  createEvent, getAllEvents, getEventById, updateEvent, deleteEvent, assignPermission,
+  createEvent, getAllEvents, getEventById, getEventByToken, updateEvent, deleteEvent, assignPermission,
   getTrashedEvents, restoreEvent, permanentDeleteEvent,
   getEventStaff, removeEventStaff,
   getArchivedEvents, restoreArchivedEvent,
@@ -20,6 +20,11 @@ router.get('/trash',    authenticate, roleGuard('admin'), getTrashedEvents)
 router.get('/archived', authenticate, roleGuard('admin'), getArchivedEvents)
 
 router.get('/', authenticate, getAllEvents)
+
+// ── Public registration token lookup ──────────────────────────────────────
+// IMPORTANT: must be declared BEFORE /:event_id so Express does not
+// treat the literal string "by-token" as a numeric event_id value.
+router.get('/by-token/:token', getEventByToken)
 
 router.post('/', authenticate, roleGuard('admin'), uploadPoster.any(), validate(createEventSchema), createEvent)
 

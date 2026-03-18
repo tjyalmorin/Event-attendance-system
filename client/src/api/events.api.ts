@@ -11,6 +11,11 @@ export const getEventByIdApi = async (event_id: number): Promise<Event> => {
   return res.data
 }
 
+export const getEventByTokenApi = async (token: string): Promise<Event> => {
+  const res = await api.get(`/events/by-token/${token}`)
+  return res.data
+}
+
 export const createEventApi = async (payload: CreateEventPayload): Promise<Event> => {
   const res = await api.post('/events', payload)
   return res.data

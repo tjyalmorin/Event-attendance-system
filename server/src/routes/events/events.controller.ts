@@ -3,7 +3,7 @@ import asyncHandler from '../../middlewares/asyncHandler.js'
 import cloudinary from '../../config/cloudinary.js'
 import { uploadToCloudinary } from '../../middlewares/upload.js'
 import {
-  createEventService, getAllEventsService, getEventByIdService,
+  createEventService, getAllEventsService, getEventByIdService, getEventByTokenService,
   updateEventService, softDeleteEventService, assignPermissionService,
   getTrashedEventsService, restoreEventService, permanentDeleteEventService,
   getEventStaffService, removeEventStaffService,
@@ -87,6 +87,13 @@ export const getAllEvents = asyncHandler(async (req: Request, res: Response) => 
 export const getEventById = asyncHandler(async (req: Request, res: Response) => {
   const isPublic = !req.headers.authorization
   const event = await getEventByIdService(Number(req.params.event_id), isPublic)
+  res.json(event)
+})
+
+// ── Public: fetch event by registration_link token ─────────────────────────
+// No auth required. Used by RegistrationPage (/register/:token).
+export const getEventByToken = asyncHandler(async (req: Request, res: Response) => {
+  const event = await getEventByTokenService(req.params.token)
   res.json(event)
 })
 

@@ -1,5 +1,5 @@
 import pool from '../../config/database.js'
-import { v4 as uuidv4 } from 'uuid'
+import { randomBytes } from 'crypto'
 import { CreateEventPayload, UpdateEventPayload } from '../../types/event.types.js'
 import { NotFoundError, ValidationError, AppError } from '../../errors/AppError.js'
 
@@ -20,7 +20,7 @@ const registeredCountJoin = `
 `
 
 export const createEventService = async (created_by: string, payload: CreateEventPayload) => {
-  const registration_link = `${uuidv4().split('-')[0]}-${Date.now()}`
+  const registration_link = randomBytes(28).toString('hex') // 12-char hex e.g. "a3f8c2d1e4b7"
 
   const result = await pool.query(
     `INSERT INTO events
@@ -144,6 +144,51 @@ export const getEventByIdService = async (event_id: number, isPublic = false) =>
   }
 
   return event
+}
+
+// ── Public: fetch event by registration_link token ─────────────────────────
+// Used by the registration page (/register/:token).
+// Always returns public-safe fields — sensitive columns are stripped.
+export const getEventByTokenService = async (token: string) => {
+  if (!token || typeof token !== 'string' || token.length > 100) {
+    throw new ValidationError('Invalid registration token')
+  }
+
+  const result = await pool.query(
+    `SELECT e.*,
+            e.event_date::text AS event_date,
+            COALESCE(pc.registered_count, 0) AS registered_count,
+            COALESCE(e.slideshow_urls, '{}') AS slideshow_urls,
+            COALESCE(
+              (SELECT json_agg(json_build_object('branch_name', branch_name, 'team_names', team_names))
+               FROM event_branches WHERE event_id = e.event_id),
+              '[]'
+            ) AS event_branches
+     FROM events e
+     LEFT JOIN (
+       SELECT event_id, COUNT(*)::int AS registered_count
+       FROM participants
+       WHERE deleted_at IS NULL AND registration_status != 'cancelled'
+       GROUP BY event_id
+     ) pc ON pc.event_id = e.event_id
+     WHERE e.registration_link = $1 AND e.deleted_at IS NULL`,
+    [token]
+  )
+
+  if (!result.rows[0]) throw new NotFoundError('Event not found')
+
+  // Strip sensitive fields — this route is always public
+  const {
+    created_by,
+    version,
+    registration_link,
+    created_at,
+    updated_at,
+    deleted_at,
+    ...publicEvent
+  } = result.rows[0]
+
+  return publicEvent
 }
 
 export const updateEventService = async (event_id: number, payload: UpdateEventPayload) => {
@@ -349,7 +394,7 @@ export const copyEventService = async (event_id: number, created_by: string) => 
     [event_id]
   )
 
-  const registration_link = `${uuidv4().split('-')[0]}-${Date.now()}`
+  const registration_link = randomBytes(28).toString('hex') // 12-char hex e.g. "a3f8c2d1e4b7"
 
   const result = await pool.query(
     `INSERT INTO events
