@@ -90,6 +90,12 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
+    // ── allowed_agent_types (added later for per-event restriction)
+    await pool.query(`
+      ALTER TABLE events 
+      ADD COLUMN IF NOT EXISTS allowed_agent_types JSONB DEFAULT '[]'::jsonb;
+    `);
+
     // ── event_permissions ──────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS event_permissions (

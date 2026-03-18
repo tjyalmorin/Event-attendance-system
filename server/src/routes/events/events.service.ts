@@ -26,8 +26,8 @@ export const createEventService = async (created_by: string, payload: CreateEven
     `INSERT INTO events
       (created_by, title, description, event_date, start_time, end_time,
        registration_start, registration_end, venue, checkin_cutoff,
-       registration_link, slideshow_urls, preset_url, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::text[],$13,'draft')
+       registration_link, slideshow_urls, preset_url, allowed_agent_types, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::text[],$13,$14::jsonb,'draft')
      RETURNING *, TO_CHAR(event_date, 'YYYY-MM-DD') as event_date, 0::int as registered_count`,
     [
       created_by, payload.title, payload.description, payload.event_date,
@@ -35,7 +35,8 @@ export const createEventService = async (created_by: string, payload: CreateEven
       payload.registration_end, payload.venue,
       payload.checkin_cutoff, registration_link,
       payload.slideshow_urls ?? [],
-      payload.preset_url ?? null
+      payload.preset_url ?? null,
+      JSON.stringify(payload.allowed_agent_types ?? []),
     ]
   )
 
@@ -110,6 +111,7 @@ export const getEventByIdService = async (event_id: number, isPublic = false) =>
             e.event_date::text AS event_date,
             COALESCE(pc.registered_count, 0) AS registered_count,
             COALESCE(e.slideshow_urls, '{}') AS slideshow_urls,
+            COALESCE(e.allowed_agent_types, '[]'::jsonb) AS allowed_agent_types,
             COALESCE(
               (SELECT json_agg(json_build_object('branch_name', branch_name, 'team_names', team_names))
                FROM event_branches WHERE event_id = $1),
@@ -159,6 +161,7 @@ export const getEventByTokenService = async (token: string) => {
             e.event_date::text AS event_date,
             COALESCE(pc.registered_count, 0) AS registered_count,
             COALESCE(e.slideshow_urls, '{}') AS slideshow_urls,
+            COALESCE(e.allowed_agent_types, '[]'::jsonb) AS allowed_agent_types,
             COALESCE(
               (SELECT json_agg(json_build_object('branch_name', branch_name, 'team_names', team_names))
                FROM event_branches WHERE event_id = e.event_id),
@@ -219,20 +222,25 @@ export const updateEventService = async (event_id: number, payload: UpdateEventP
     ? (payload.preset_url ?? null)
     : (current.preset_url ?? null)
 
+  const finalAllowedAgentTypes = 'allowed_agent_types' in payload
+    ? JSON.stringify(payload.allowed_agent_types ?? [])
+    : (current.allowed_agent_types ? JSON.stringify(current.allowed_agent_types) : '[]')
+
   const result = await pool.query(
     `UPDATE events
      SET title=$1, description=$2, event_date=$3, start_time=$4, end_time=$5,
          venue=$6, status=$7, checkin_cutoff=$8,
          registration_start=$9, registration_end=$10,
          slideshow_urls=$11, preset_url=$12,
+         allowed_agent_types=$13::jsonb,
          version=version+1, updated_at=NOW()
-     WHERE event_id=$13 AND deleted_at IS NULL
+     WHERE event_id=$14 AND deleted_at IS NULL
      RETURNING *, event_date::text AS event_date`,
     [
       merged.title, merged.description, merged.event_date, merged.start_time,
       merged.end_time, merged.venue, merged.status,
       merged.checkin_cutoff, merged.registration_start, merged.registration_end,
-      finalUrls, finalPresetUrl,
+      finalUrls, finalPresetUrl, finalAllowedAgentTypes,
       event_id
     ]
   )

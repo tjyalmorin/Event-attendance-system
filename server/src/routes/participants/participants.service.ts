@@ -38,6 +38,11 @@ export const registerParticipantService = async (
   if (!event) throw new NotFoundError('Event not found')
   if (event.status !== 'open') throw new ValidationError('Event registration is not open')
 
+  const allowedTypes = Array.isArray(event.allowed_agent_types) ? event.allowed_agent_types : []
+  if (allowedTypes.length > 0 && !allowedTypes.includes(agent_type.trim())) {
+    throw new ValidationError(`Agent type "${agent_type}" is not allowed for this event.`)
+  }
+
   // ── Registration window check in DB time (Asia/Manila) ───────────────────
   const windowCheck = await pool.query(
     `SELECT

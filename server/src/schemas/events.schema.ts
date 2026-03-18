@@ -44,6 +44,7 @@ export const createEventSchema = z.object({
                         teams: z.array(z.string())
                       })),
   staff_ids:          jsonArrayField(z.string()),
+  allowed_agent_types:jsonStringArrayField,
   poster_url:         urlField,
   preset_url:         urlField,
 })

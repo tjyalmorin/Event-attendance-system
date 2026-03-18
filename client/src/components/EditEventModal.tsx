@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import api from '../api/axios';
-import { Event } from '../types';
+import { Event, AgentType } from '../types';
 import { useBranches } from '../hooks/useBranches';
 import { getStaffByBranchesApi, getEventStaffApi } from '../api/events.api'
+import { getAgentTypesApi } from '../api/agent-types.api';
 
 interface BranchSelection { branch_name: string; teams: string[] }
 interface StaffUser { user_id: string; full_name: string; agent_code: string; branch_name: string; email: string }
@@ -244,14 +245,22 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [staffLoading, setStaffLoading] = useState(false);
 
+  // ── Allowed Agent Types ──
+  const [agentTypes, setAgentTypes] = useState<AgentType[]>([]);
+  const [allowedAgentTypes, setAllowedAgentTypes] = useState<string[]>(
+    Array.isArray(event.allowed_agent_types) ? event.allowed_agent_types : []
+  );
+
   // ── UI ──
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ title?: string; eventDate?: string; venue?: string }>({});
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
-  // Initialize branches + staff
+  // Initialize branches + staff + agent types
   useEffect(() => {
+    getAgentTypesApi().then(setAgentTypes).catch(console.error);
+    
     if (branches.length === 0) return;
     if (!isInitializing) return;
 
@@ -392,6 +401,7 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
     checkinCutoff: event.checkin_cutoff || '',
     registrationStart: event.registration_start ? new Date(event.registration_start).toISOString() : '',
     registrationEnd: event.registration_end ? new Date(event.registration_end).toISOString() : '',
+    allowedAgentTypes: Array.isArray(event.allowed_agent_types) ? event.allowed_agent_types : []
   });
   const originalBranches = useRef<BranchSelection[]>([]);
   const originalStaffIds = useRef<string[]>([]);
@@ -422,7 +432,8 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
       removePreset ||
       selectedPreset !== (event.preset_url ? (PRESET_IMAGES.find(p => p.url === event.preset_url)?.id ?? null) : null) ||
       branchesChanged ||
-      staffChanged
+      staffChanged ||
+      JSON.stringify([...allowedAgentTypes].sort()) !== JSON.stringify([...orig.allowedAgentTypes].sort())
     );
   };
 
@@ -472,6 +483,9 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
       if (!isInitializing) {
         fd.append('staff_ids', JSON.stringify(selectedStaffIds));
       }
+
+      if (allowedAgentTypes.length > 0) fd.append('allowed_agent_types', JSON.stringify(allowedAgentTypes));
+      else fd.append('allowed_agent_types', JSON.stringify([]));
 
       slideshowFiles.forEach(f => fd.append('slideshow_images', f));
       if (removedSlideshowUrls.length > 0) fd.append('remove_slideshow_urls', JSON.stringify(removedSlideshowUrls));
@@ -998,8 +1012,44 @@ const EditEventModal: React.FC<EditEventModalProps> = ({ event, onClose, onSucce
                     </p>
                   </div>
                 )}
-                {registrationStart && registrationEnd && registrationEnd <= registrationStart && (
+                  {registrationStart && registrationEnd && registrationEnd <= registrationStart && (
                   <FieldError msg="Registration end must be after registration start." />
+                )}
+              </div>
+
+              {/* Allowed Agent Types */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Allowed Agent Types <span className="text-gray-400 font-normal">(Optional)</span>
+                </label>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                  Restrict who can register for this event. Leave completely unchecked to allow <strong>everyone</strong> to register.
+                </p>
+                {agentTypes.length === 0 ? (
+                  <div className="text-sm text-gray-400 italic">No agent types found.</div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {agentTypes.filter(a => a.is_active).map(at => {
+                      const isChecked = allowedAgentTypes.includes(at.name);
+                      return (
+                        <label key={at.agent_type_id} className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all ${isChecked ? 'bg-[#DC143C]/5 border-[#DC143C]/40' : 'bg-gray-50 dark:bg-[#1a1a1a] border-gray-200 dark:border-[#2a2a2a] hover:border-gray-300 dark:hover:border-[#444]'}`}>
+                          <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-all flex-shrink-0 ${isChecked ? 'bg-[#DC143C] border-[#DC143C]' : 'bg-white dark:bg-[#222] border-gray-300 dark:border-[#444]'}`}>
+                            {isChecked && <svg viewBox="0 0 12 9" fill="none" className="w-2.5 h-2.5"><path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="hidden"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) setAllowedAgentTypes(prev => [...prev, at.name]);
+                              else setAllowedAgentTypes(prev => prev.filter(n => n !== at.name));
+                            }}
+                          />
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none leading-tight">{at.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
 

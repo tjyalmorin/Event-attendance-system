@@ -62,6 +62,7 @@ export interface Event {
   poster_url: string | null
   preset_url?: string | null
   slideshow_urls?: string[]
+  allowed_agent_types?: string[]
 }
 
 export interface CreateEventPayload {
@@ -77,6 +78,7 @@ export interface CreateEventPayload {
   checkin_cutoff?: string | null
   event_branches?: { branch_name: string; teams: string[] }[]
   staff_ids?: string[]
+  allowed_agent_types?: string[]
 }
 
 // ── Custom Fields ──────────────────────────────────────────────────────────────

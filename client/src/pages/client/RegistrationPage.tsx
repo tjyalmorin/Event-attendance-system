@@ -472,8 +472,14 @@ export default function RegistrationPage() {
     ])
       .then(([eventData, agentTypes]) => {
         setEvent(eventData as EventWithBranches)
-        if (agentTypes.length > 0) {
-          setAgentTypeOptions(agentTypes.map(at => ({ label: at.name, value: at.name })))
+        let availableTypes = agentTypes.filter(at => at.is_active)
+        const allowedTypesRaw = (eventData as any).allowed_agent_types
+        const allowedTypes = Array.isArray(allowedTypesRaw) ? allowedTypesRaw : []
+        if (allowedTypes.length > 0) {
+          availableTypes = availableTypes.filter(at => allowedTypes.includes(at.name))
+        }
+        if (availableTypes.length > 0) {
+          setAgentTypeOptions(availableTypes.map(at => ({ label: at.name, value: at.name })))
         }
         return getCustomFieldsApi(eventData.event_id)
       })

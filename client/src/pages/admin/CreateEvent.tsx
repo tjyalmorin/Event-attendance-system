@@ -219,6 +219,7 @@ const CreateEvent: React.FC = () => {
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [draftFields, setDraftFields] = useState<DraftField[]>([]);
   const [agentTypes, setAgentTypes] = useState<AgentType[]>([]);
+  const [allowedAgentTypes, setAllowedAgentTypes] = useState<string[]>([]);
 
   // Fetch agent types for CustomFieldBuilder
   useEffect(() => {
@@ -311,6 +312,7 @@ const CreateEvent: React.FC = () => {
       fd.append('registration_start', registrationStart ? registrationStart.toISOString() : '');
       fd.append('registration_end', registrationEnd ? registrationEnd.toISOString() : '');
       fd.append('staff_ids', JSON.stringify(selectedStaffIds));
+      if (allowedAgentTypes.length > 0) fd.append('allowed_agent_types', JSON.stringify(allowedAgentTypes));
       if (posterFile) fd.append('poster', posterFile);
       if (selectedPreset) {
         const preset = PRESET_IMAGES.find(p => p.id === selectedPreset);
@@ -353,6 +355,7 @@ const CreateEvent: React.FC = () => {
     setShowDescription(false); setFieldErrors({}); setError('');
     setPosterFile(null); setPosterPreview(null); setSelectedPreset(null);
     setDraftFields([]);
+    setAllowedAgentTypes([]);
   };
 
   const customQuestionsStep = userRole === 'admin' && selectedBranches.length > 0 ? 6 : 5;
@@ -872,6 +875,41 @@ const CreateEvent: React.FC = () => {
                   )}
                   {registrationStart && registrationEnd && registrationEnd <= registrationStart && (
                     <FieldError msg="Registration end must be after registration start." />
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Allowed Agent Types <span className="text-gray-400 font-normal">(Optional)</span>
+                  </label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                    Restrict who can register for this event. Leave completely unchecked to allow <strong>everyone</strong> to register.
+                  </p>
+                  {agentTypes.length === 0 ? (
+                    <div className="text-sm text-gray-400 italic">No agent types found.</div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {agentTypes.filter(a => a.is_active).map(at => {
+                        const isChecked = allowedAgentTypes.includes(at.name);
+                        return (
+                          <label key={at.agent_type_id} className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-all ${isChecked ? 'bg-[#DC143C]/5 border-[#DC143C]/40' : 'bg-gray-50 dark:bg-[#1a1a1a] border-gray-200 dark:border-[#2a2a2a] hover:border-gray-300 dark:hover:border-[#444]'}`}>
+                            <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-all flex-shrink-0 ${isChecked ? 'bg-[#DC143C] border-[#DC143C]' : 'bg-white dark:bg-[#222] border-gray-300 dark:border-[#444]'}`}>
+                              {isChecked && <svg viewBox="0 0 12 9" fill="none" className="w-2.5 h-2.5"><path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                            </div>
+                            <input
+                              type="checkbox"
+                              className="hidden"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) setAllowedAgentTypes(prev => [...prev, at.name]);
+                                else setAllowedAgentTypes(prev => prev.filter(n => n !== at.name));
+                              }}
+                            />
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none leading-tight">{at.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
 

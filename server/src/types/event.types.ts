@@ -40,6 +40,7 @@ export interface CreateEventPayload {
   checkin_cutoff?: string | null
   event_branches?: { branch_name: string; teams: string[] }[] | null
   staff_ids?: string[] | null
+  allowed_agent_types?: string[] | null
   slideshow_urls?: string[]   // paths of newly uploaded files (set by controller)
   preset_url?: string | null
 }
