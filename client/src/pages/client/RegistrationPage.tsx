@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getEventByTokenApi } from '../../api/events.api'
 import { registerParticipantApi } from '../../api/participants.api'
+import { getAgentTypesApi } from '../../api/agent-types.api'
+import { getCustomFieldsApi, CustomField, FieldAnswer } from '../../api/custom-fields.api'
 import { Event } from '../../types'
 import { useBranches } from '../../hooks/useBranches'
 import pruLogo from '../../assets/pru.webp'
@@ -125,6 +127,12 @@ const IconX = ({ size = 20, color = 'currentColor' }) => (
 const IconArrowRight = ({ size = 16, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+  </svg>
+)
+
+const IconArrowLeft = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
   </svg>
 )
 
@@ -270,6 +278,76 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
 }
 
 
+// ── Custom field renderer (GForms-style per-step inputs) ──────
+const CustomFieldInput: React.FC<{
+  field: CustomField
+  value: string
+  onChange: (value: string) => void
+}> = ({ field, value, onChange }) => {
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '13px 14px',
+    border: '1.5px solid #e5e7eb', borderRadius: 12,
+    fontSize: 14, fontFamily: 'inherit', background: '#f9fafb',
+    color: '#1f2937', outline: 'none',
+    transition: 'border-color 0.2s, box-shadow 0.2s, background 0.2s',
+  }
+  const onFocus = (e: React.FocusEvent<HTMLElement>) => {
+    const el = e.currentTarget as HTMLElement
+    el.style.borderColor = '#DC143C'
+    el.style.boxShadow = '0 0 0 3px rgba(220,20,60,0.08)'
+    el.style.background = '#fff'
+  }
+  const onBlur = (e: React.FocusEvent<HTMLElement>) => {
+    const el = e.currentTarget as HTMLElement
+    el.style.borderColor = '#e5e7eb'
+    el.style.boxShadow = 'none'
+    el.style.background = '#f9fafb'
+  }
+
+  switch (field.field_type) {
+    case 'textarea':
+      return <textarea value={value} onChange={e => onChange(e.target.value)} rows={4} placeholder="Your answer..." maxLength={5000} style={{ ...inputStyle, height: 'auto', resize: 'vertical' }} onFocus={onFocus} onBlur={onBlur} />
+
+    case 'number':
+      return <input type="number" value={value} onChange={e => onChange(e.target.value)} placeholder="Enter a number..." style={inputStyle} onFocus={onFocus} onBlur={onBlur} />
+
+    case 'dropdown':
+      return (
+        <select value={value} onChange={e => onChange(e.target.value)} className="pru-input" style={{ cursor: 'pointer' }}>
+          <option value="">— Select an option —</option>
+          {(field.options ?? []).map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
+        </select>
+      )
+
+    case 'radio':
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {(field.options ?? []).map((opt, i) => (
+            <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+              <div onClick={() => onChange(opt)} style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${value === opt ? '#DC143C' : '#d1d5db'}`, background: value === opt ? '#DC143C' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', transition: 'all 0.15s' }}>
+                {value === opt && <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'white' }} />}
+              </div>
+              <span style={{ fontSize: 14, color: '#374151' }}>{opt}</span>
+            </label>
+          ))}
+        </div>
+      )
+
+    case 'checkbox':
+      return (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+          <div onClick={() => onChange(value === 'Yes' ? '' : 'Yes')} style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${value === 'Yes' ? '#DC143C' : '#d1d5db'}`, background: value === 'Yes' ? '#DC143C' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', transition: 'all 0.15s' }}>
+            {value === 'Yes' && <svg viewBox="0 0 12 9" fill="none" width="11" height="11"><path d="M1 4l3.5 3.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          </div>
+          <span style={{ fontSize: 14, color: '#374151' }}>Yes</span>
+        </label>
+      )
+
+    default: // text
+      return <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder="Your answer..." maxLength={1000} className="pru-input" onFocus={onFocus} onBlur={onBlur} />
+  }
+}
+
 interface EventBranchEntry {
   branch_name: string
   team_names: string[]
@@ -370,6 +448,14 @@ export default function RegistrationPage() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isPausedRef = useRef(false)
 
+  // ── Custom fields + step navigation ───────────────────────────
+  const [customFields, setCustomFields] = useState<CustomField[]>([])
+  const [agentTypeOptions, setAgentTypeOptions] = useState<{ label: string; value: string }[]>([])
+  const [answers, setAnswers] = useState<Record<number, string>>({})
+  const [currentStep, setCurrentStep] = useState(0)   // 0 = personal info, 1..N = custom fields
+  const [stepDirection, setStepDirection] = useState<'forward' | 'back'>('forward')
+  const [stepKey, setStepKey] = useState(0)
+
   useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
 
   useEffect(() => {
@@ -380,8 +466,18 @@ export default function RegistrationPage() {
 
   useEffect(() => {
     if (!token) { setLoading(false); return }
-    getEventByTokenApi(token)
-      .then(data => setEvent(data as EventWithBranches))
+    Promise.all([
+      getEventByTokenApi(token),
+      getAgentTypesApi(),
+    ])
+      .then(([eventData, agentTypes]) => {
+        setEvent(eventData as EventWithBranches)
+        if (agentTypes.length > 0) {
+          setAgentTypeOptions(agentTypes.map(at => ({ label: at.name, value: at.name })))
+        }
+        return getCustomFieldsApi(eventData.event_id)
+      })
+      .then(fields => setCustomFields(fields))
       .catch(() => setError('Event not found'))
       .finally(() => setLoading(false))
   }, [token])
@@ -395,7 +491,29 @@ export default function RegistrationPage() {
     return () => { document.title = 'PrimeLog: Event Attendance System — A1 Prime Branch' }
   }, [event])
 
-  // Determine active slides — use event's slideshow_urls if present, else default slides
+  // Reset answers when agent type changes (GForms behaviour)
+  useEffect(() => { setAnswers({}) }, [form.agent_type])
+
+  // Determine which fields apply to the selected agent type
+  const applicableFields = customFields.filter(f => {
+    if (!form.agent_type) return false
+    if (!f.applicable_agent_types || f.applicable_agent_types.length === 0) return true
+    return f.applicable_agent_types.includes(form.agent_type)
+  })
+
+  // Step helpers
+  const totalSteps = 1 + applicableFields.length
+  const hasCustomFields = applicableFields.length > 0
+  const isLastStep = currentStep === totalSteps - 1
+  const currentField = currentStep > 0 ? applicableFields[currentStep - 1] : null
+  const progressPct = totalSteps <= 1 ? 100 : Math.round((currentStep / (totalSteps - 1)) * 100)
+
+  const goToStep = (next: number, dir: 'forward' | 'back') => {
+    setStepDirection(dir)
+    setStepKey(k => k + 1)
+    setCurrentStep(next)
+    setError('')
+  }
   const slideshowUrls: string[] = Array.isArray((event as any)?.slideshow_urls) && (event as any).slideshow_urls.length > 0
     ? (event as any).slideshow_urls
     : []
@@ -478,8 +596,40 @@ export default function RegistrationPage() {
       setError('Please select your agent type.')
       return
     }
-    // Show confirmation modal instead of submitting directly
-    setShowConfirmModal(true)
+    // If there are custom fields, go to the first field step
+    // Otherwise show confirmation modal directly
+    if (hasCustomFields) {
+      goToStep(1, 'forward')
+    } else {
+      setShowConfirmModal(true)
+    }
+  }
+
+  const handleNextStep = () => {
+    setError('')
+    if (currentStep === 0) {
+      // Validate personal info before advancing
+      if (form.agent_code.length !== 8) { setAgentCodeError('Agent code must be exactly 8 digits'); return }
+      if (!form.full_name.trim()) { setError('Please enter your full name.'); return }
+      if (!form.branch_name) { setError('Please select your branch.'); return }
+      if (!form.team_name) { setError('Please select your team.'); return }
+      if (!form.agent_type) { setError('Please select your agent type.'); return }
+    } else if (currentField) {
+      if (currentField.is_required && !answers[currentField.field_id]?.trim()) {
+        setError(`"${currentField.label}" is required.`)
+        return
+      }
+    }
+    if (!isLastStep) {
+      goToStep(currentStep + 1, 'forward')
+    } else {
+      setShowConfirmModal(true)
+    }
+  }
+
+  const handleBackStep = () => {
+    if (currentStep > 0) goToStep(currentStep - 1, 'back')
+    else setShowConfirmModal(false)
   }
 
   const handleConfirmRegister = async () => {
@@ -487,7 +637,14 @@ export default function RegistrationPage() {
     setSubmitting(true)
     setError('')
     try {
-      const data = await registerParticipantApi(event!.event_id, form)
+      const fieldAnswers: FieldAnswer[] = applicableFields.map(f => ({
+        field_id: f.field_id,
+        answer: answers[f.field_id] ?? null,
+      }))
+      const data = await registerParticipantApi(event!.event_id, {
+        ...form,
+        answers: fieldAnswers,
+      })
       navigate('/confirmation', { state: { participant: data.participant, event } })
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.')
@@ -752,6 +909,21 @@ export default function RegistrationPage() {
             )}
           </div>
 
+          {/* ── Progress bar + step counter (only when custom fields exist) ── */}
+          {hasCustomFields && (
+            <>
+              <div style={{ height: 3, background: '#f0f1f3', borderRadius: 2, overflow: 'hidden', marginBottom: 10 }}>
+                <div style={{ height: '100%', background: '#DC143C', borderRadius: 2, width: `${progressPct}%`, transition: 'width 0.35s ease' }} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  {currentStep === 0 ? 'Your Details' : `Question ${currentStep} of ${applicableFields.length}`}
+                </span>
+                <span style={{ fontSize: 11, color: '#d1d5db' }}>{currentStep + 1} / {totalSteps}</span>
+              </div>
+            </>
+          )}
+
           {/* Error */}
           {error && (
             <div style={s.errorBanner}>
@@ -760,7 +932,8 @@ export default function RegistrationPage() {
             </div>
           )}
 
-          {/* Form */}
+          {/* ── STEP 0: Personal info form (unchanged UI) ── */}
+          {currentStep === 0 && (
           <form onSubmit={handleSubmit} style={s.form}>
             <div style={s.formGrid}>
               <div style={s.field}>
@@ -816,7 +989,7 @@ export default function RegistrationPage() {
                   onChange={val => setForm(prev => ({ ...prev, agent_type: val }))}
                   placeholder="— Select agent type —"
                   centered
-                  options={[
+                  options={agentTypeOptions.length > 0 ? agentTypeOptions : [
                     { label: 'District Manager', value: 'District Manager' },
                     { label: 'Area Manager', value: 'Area Manager' },
                     { label: 'Branch Manager', value: 'Branch Manager' },
@@ -837,6 +1010,10 @@ export default function RegistrationPage() {
                 <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   <span className="btn-spinner" /> Registering...
                 </span>
+              ) : hasCustomFields ? (
+                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  Next <IconArrowRight size={16} color="white" />
+                </span>
               ) : (
                 <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   Complete Registration <IconArrowRight size={16} color="white" />
@@ -844,6 +1021,57 @@ export default function RegistrationPage() {
               )}
             </button>
           </form>
+          )}
+
+          {/* ── STEPS 1..N: Custom field steps (one per screen) ── */}
+          {currentStep > 0 && currentField && (
+            <div key={stepKey} style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 0,
+              animation: stepDirection === 'forward' ? 'pruStepFwd 0.22s ease forwards' : 'pruStepBack 0.22s ease forwards' }}>
+              <style>{`
+                @keyframes pruStepFwd { from { opacity:0; transform:translateX(22px); } to { opacity:1; transform:translateX(0); } }
+                @keyframes pruStepBack { from { opacity:0; transform:translateX(-22px); } to { opacity:1; transform:translateX(0); } }
+              `}</style>
+
+              {/* Question label */}
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1f2937', lineHeight: 1.4, letterSpacing: '-0.01em' }}>
+                  {currentField.label}
+                </div>
+                <div style={{ fontSize: 11.5, color: currentField.is_required ? '#DC143C' : '#9ca3af', marginTop: 4, fontWeight: 600 }}>
+                  {currentField.is_required ? '* Required' : 'Optional — you may skip this'}
+                </div>
+              </div>
+
+              {/* Field input */}
+              <div style={{ flex: 1, marginBottom: 20 }}>
+                <CustomFieldInput
+                  field={currentField}
+                  value={answers[currentField.field_id] ?? ''}
+                  onChange={val => setAnswers(prev => ({ ...prev, [currentField.field_id]: val }))}
+                />
+              </div>
+
+              {/* Back / Next buttons */}
+              <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
+                <button type="button" onClick={handleBackStep}
+                  style={{ flex: 1, padding: 14, borderRadius: 12, border: '1.5px solid #e5e7eb', background: 'white', fontSize: 15, fontWeight: 600, color: '#374151', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'background 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'white')}
+                >
+                  <IconArrowLeft size={16} color="#374151" /> Back
+                </button>
+                <button type="button" onClick={handleNextStep} disabled={submitting} className="pru-btn" style={{ flex: 2 }}>
+                  {submitting ? (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><span className="btn-spinner" /> Registering...</span>
+                  ) : isLastStep ? (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>Complete Registration <IconArrowRight size={16} color="white" /></span>
+                  ) : (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>Next <IconArrowRight size={16} color="white" /></span>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── RIGHT: SLIDESHOW (custom images or default fallback) ── */}
@@ -1089,6 +1317,13 @@ export default function RegistrationPage() {
                 }}>
                   <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500 }}>{row.label}</span>
                   <span style={{ fontSize: 13, color: '#111827', fontWeight: 600 }}>{row.value}</span>
+                </div>
+              ))}
+              {/* Custom field answers */}
+              {applicableFields.filter(f => answers[f.field_id]).map(field => (
+                <div key={field.field_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', borderTop: '1px solid #f3f4f6', gap: 12 }}>
+                  <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500, flex: 1, lineHeight: 1.4 }}>{field.label}</span>
+                  <span style={{ fontSize: 13, color: '#111827', fontWeight: 600, maxWidth: 200, textAlign: 'right', wordBreak: 'break-word' }}>{answers[field.field_id]}</span>
                 </div>
               ))}
             </div>

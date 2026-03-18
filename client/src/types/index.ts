@@ -1,4 +1,4 @@
-// User types
+// ── User types ─────────────────────────────────────────────────────────────────
 export interface User {
   user_id: string
   agent_code: string
@@ -29,7 +29,18 @@ export interface CreateUserPayload {
   role: 'admin' | 'staff'
 }
 
-// Event types
+// ── Agent Type ─────────────────────────────────────────────────────────────────
+// Dynamic — managed by admin in Branch Management settings page
+export interface AgentType {
+  agent_type_id: number
+  name: string
+  display_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+// ── Event types ─────────────────────────────────────────────────────────────────
 export interface Event {
   event_id: number
   created_by: string
@@ -49,8 +60,8 @@ export interface Event {
   created_at: string
   updated_at: string
   poster_url: string | null
-  preset_url?: string | null       // stock photo preset for event card
-  slideshow_urls?: string[]        // Cloudinary URLs shown on registration page
+  preset_url?: string | null
+  slideshow_urls?: string[]
 }
 
 export interface CreateEventPayload {
@@ -68,9 +79,31 @@ export interface CreateEventPayload {
   staff_ids?: string[]
 }
 
-// Participant types
-export type AgentType = 'District Manager' | 'Area Manager' | 'Branch Manager' | 'Unit Manager' | 'Agent'
+// ── Custom Fields ──────────────────────────────────────────────────────────────
+export type FieldType = 'text' | 'textarea' | 'number' | 'dropdown' | 'radio' | 'checkbox'
 
+export interface CustomField {
+  field_id: number
+  event_id: number
+  label: string
+  field_type: FieldType
+  options: string[] | null       // used for dropdown and radio types
+  is_required: boolean
+  display_order: number
+  applicable_agent_types: string[] // empty = applies to all agent types
+  is_locked: boolean               // true once any participant has answered
+  created_at: string
+  updated_at: string
+}
+
+export interface FieldAnswer {
+  field_id: number
+  answer: string | null
+}
+
+// ── Participant types ──────────────────────────────────────────────────────────
+// agent_type is now a plain string (not a hardcoded enum)
+// Values come from the agent_types table managed by admin
 export interface Participant {
   participant_id: number
   event_id: number
@@ -78,11 +111,12 @@ export interface Participant {
   full_name: string
   branch_name: string
   team_name: string
-  agent_type: AgentType | null
+  agent_type: string | null       // string from dynamic agent_types table
   registration_status: 'confirmed' | 'cancelled'
   registered_at: string
-  label: string | null             // string label e.g. "Awardee", NOT boolean
+  label: string | null            // string e.g. "Awardee", NOT boolean
   label_description: string | null
+  photo_url?: string | null       // resolved from agents table via JOIN
 }
 
 export interface RegisterPayload {
@@ -91,9 +125,38 @@ export interface RegisterPayload {
   branch_name: string
   team_name: string
   agent_type: string
+  answers?: FieldAnswer[]         // custom field answers
 }
 
-// Attendance types
+// ── Bulk Import ────────────────────────────────────────────────────────────────
+export interface ImportError {
+  row: number
+  agent_code: string
+  reason: string
+}
+
+export interface ImportResult {
+  success: boolean
+  total_rows: number
+  success_count: number
+  error_count: number
+  errors: ImportError[]
+  import_id?: number
+}
+
+export interface ImportLog {
+  import_id: number
+  file_name: string
+  total_rows: number
+  success_count: number
+  error_count: number
+  errors: ImportError[]
+  status: 'completed' | 'failed' | 'pending'
+  created_at: string
+  imported_by_name: string
+}
+
+// ── Attendance types ───────────────────────────────────────────────────────────
 export interface AttendanceSession {
   session_id: number
   participant_id: number
@@ -140,7 +203,7 @@ export interface ScanResponse {
   session: AttendanceSession
 }
 
-// Admin Grant types
+// ── Admin Grant types ──────────────────────────────────────────────────────────
 export interface AdminGrant {
   grant_id: number
   granted_to_user_id: string

@@ -12,6 +12,15 @@ import {
   BranchItem,
 } from '../../api/branches.api'
 
+import {
+  getAllAgentTypesApi,
+  createAgentTypeApi,
+  updateAgentTypeApi,
+  deleteAgentTypeApi,
+  reorderAgentTypesApi,
+  AgentType,
+} from '../../api/agent-types.api'
+
 // ── Icons ──────────────────────────────────────────────────
 const PlusIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -62,6 +71,16 @@ const UsersIcon = () => (
 const ShieldIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+  </svg>
+)
+const ChevronUpSmIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <polyline points="18 15 12 9 6 15"/>
+  </svg>
+)
+const ChevronDownSmIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+    <polyline points="6 9 12 15 18 9"/>
   </svg>
 )
 
@@ -286,6 +305,70 @@ export default function BranchManagement() {
 
   const totalTeams = branches.reduce((acc, b) => acc + (b.teams?.length ?? 0), 0)
 
+  // ── Agent Types ────────────────────────────────────────────
+  const [agentTypes, setAgentTypes] = useState<AgentType[]>([])
+  const [atLoading, setAtLoading] = useState(true)
+  const [newAtName, setNewAtName] = useState('')
+  const [addingAt, setAddingAt] = useState(false)
+  const [atError, setAtError] = useState('')
+  const [editingAt, setEditingAt] = useState<number | null>(null)
+  const [deleteAtTarget, setDeleteAtTarget] = useState<AgentType | null>(null)
+  const [deletingAt, setDeletingAt] = useState(false)
+
+  const loadAgentTypes = async () => {
+    setAtLoading(true)
+    try { setAgentTypes(await getAllAgentTypesApi()) }
+    catch { /* silent */ }
+    finally { setAtLoading(false) }
+  }
+
+  useEffect(() => { loadAgentTypes() }, [])
+
+  const handleAddAgentType = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newAtName.trim()) return
+    setAddingAt(true); setAtError('')
+    try {
+      await createAgentTypeApi({ name: newAtName.trim() })
+      setNewAtName('')
+      loadAgentTypes()
+    } catch (err: any) {
+      setAtError(err.response?.data?.error || err.message || 'Failed to create agent type')
+    } finally { setAddingAt(false) }
+  }
+
+  const handleUpdateAgentType = async (id: number, name: string) => {
+    await updateAgentTypeApi(id, { name })
+    setEditingAt(null)
+    loadAgentTypes()
+  }
+
+  const handleToggleActive = async (at: AgentType) => {
+    await updateAgentTypeApi(at.agent_type_id, { is_active: !at.is_active })
+    loadAgentTypes()
+  }
+
+  const handleDeleteAgentType = async () => {
+    if (!deleteAtTarget) return
+    setDeletingAt(true)
+    try {
+      await deleteAgentTypeApi(deleteAtTarget.agent_type_id)
+      setDeleteAtTarget(null)
+      loadAgentTypes()
+    } catch (err: any) {
+      setAtError(err.response?.data?.error || err.message || 'Cannot delete: agent type is in use')
+      setDeleteAtTarget(null)
+    } finally { setDeletingAt(false) }
+  }
+
+  const handleMoveAt = async (index: number, dir: 'up' | 'down') => {
+    const next = [...agentTypes]
+    const swap = dir === 'up' ? index - 1 : index + 1
+    ;[next[index], next[swap]] = [next[swap], next[index]]
+    setAgentTypes(next)
+    await reorderAgentTypesApi(next.map(at => at.agent_type_id))
+  }
+
   const inputClass = "h-[40px] w-full rounded-xl border-[1.5px] border-gray-200 dark:border-[#2a2a2a] bg-gray-50 dark:bg-[#0f0f0f] px-3 text-sm text-gray-800 dark:text-white outline-none placeholder:text-gray-400 transition-all focus:border-[#DC143C] focus:bg-white dark:focus:bg-[#1c1c1c] focus:shadow-[0_0_0_3px_rgba(220,20,60,0.08)]"
 
   return (
@@ -502,6 +585,104 @@ export default function BranchManagement() {
             </div>
           )}
         </div>
+
+          {/* ── AGENT TYPES ── */}
+          <div className="bg-white dark:bg-[#1c1c1c] rounded-2xl border border-gray-200 dark:border-[#2a2a2a] shadow-sm p-5">
+            <h2 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wider">Agent Types</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+              Appears in the registration form dropdown. Controls which custom questions each participant sees.
+            </p>
+
+            <form onSubmit={handleAddAgentType} className="flex gap-3 mb-4">
+              <input
+                className={inputClass + ' flex-1'}
+                value={newAtName}
+                onChange={e => { setNewAtName(e.target.value); setAtError('') }}
+                placeholder="e.g. Senior Unit Manager"
+                maxLength={100}
+                disabled={addingAt}
+              />
+              <button type="submit" disabled={addingAt || !newAtName.trim()}
+                className="flex items-center gap-2 h-[40px] px-5 bg-[#DC143C] text-white rounded-xl text-sm font-bold hover:bg-[#b01030] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap">
+                <PlusIcon />{addingAt ? 'Adding...' : 'Add Type'}
+              </button>
+            </form>
+
+            {atError && <p className="text-xs text-red-500 mb-3">{atError}</p>}
+
+            {atLoading ? (
+              <div className="text-sm text-gray-400 py-4 text-center">Loading agent types...</div>
+            ) : agentTypes.length === 0 ? (
+              <div className="text-sm text-gray-400 py-4 text-center italic">No agent types yet. Add one above.</div>
+            ) : (
+              <div className="border border-gray-100 dark:border-[#2a2a2a] rounded-xl overflow-hidden">
+                {agentTypes.map((at, i) => (
+                  <div key={at.agent_type_id}
+                    className={`flex items-center gap-2 px-4 py-3 bg-white dark:bg-[#1c1c1c] hover:bg-gray-50 dark:hover:bg-[#1a1a1a] transition-colors ${i > 0 ? 'border-t border-gray-100 dark:border-[#2a2a2a]' : ''}`}>
+
+                    {/* Reorder */}
+                    <div className="flex flex-col gap-0.5 flex-shrink-0">
+                      <button type="button" onClick={() => handleMoveAt(i, 'up')} disabled={i === 0}
+                        className="text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-0.5">
+                        <ChevronUpSmIcon />
+                      </button>
+                      <button type="button" onClick={() => handleMoveAt(i, 'down')} disabled={i === agentTypes.length - 1}
+                        className="text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 disabled:opacity-20 disabled:cursor-not-allowed transition-colors p-0.5">
+                        <ChevronDownSmIcon />
+                      </button>
+                    </div>
+
+                    {editingAt === at.agent_type_id ? (
+                      <InlineEdit
+                        value={at.name}
+                        onSave={name => handleUpdateAgentType(at.agent_type_id, name)}
+                        onCancel={() => setEditingAt(null)}
+                      />
+                    ) : (
+                      <>
+                        <span className={`flex-1 text-sm font-medium ${at.is_active ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-600 line-through'}`}>
+                          {at.name}
+                        </span>
+
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${at.is_active ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-[#2a2a2a] text-gray-400 dark:text-gray-600'}`}>
+                          {at.is_active ? 'Active' : 'Inactive'}
+                        </span>
+
+                        <button type="button" onClick={() => handleToggleActive(at)}
+                          title={at.is_active ? 'Deactivate' : 'Activate'}
+                          className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#333] rounded-lg transition-colors">
+                          {at.is_active
+                            ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><path d="M18.36 6.64A9 9 0 0 1 20.77 15"/><path d="M6.16 6.16a9 9 0 1 0 12.68 12.68"/><path d="M12 2v4"/><path d="m2 2 20 20"/></svg>
+                            : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                          }
+                        </button>
+
+                        <button type="button" onClick={() => { setEditingAt(at.agent_type_id); setEditingBranch(null); setEditingTeam(null) }}
+                          className="p-2 text-gray-400 hover:text-[#DC143C] hover:bg-red-50 dark:hover:bg-[#DC143C]/10 rounded-lg transition-colors">
+                          <EditIcon />
+                        </button>
+
+                        <button type="button" onClick={() => setDeleteAtTarget(at)}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                          <TrashIconSm />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+      {/* ── DELETE AGENT TYPE CONFIRM ── */}
+      {deleteAtTarget && (
+        <ConfirmDelete
+          message={`Delete agent type "${deleteAtTarget.name}"? If any participants use this type it will be blocked.`}
+          onConfirm={handleDeleteAgentType}
+          onCancel={() => setDeleteAtTarget(null)}
+          loading={deletingAt}
+        />
+      )}
 
       {/* ── DELETE CONFIRM MODAL ── */}
       {deleteTarget && (

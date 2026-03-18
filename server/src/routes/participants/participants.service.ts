@@ -5,9 +5,21 @@ import {
   CK, invalidateParticipantCache
 } from '../../utils/cache.js'
 import { NotFoundError, ValidationError, AppError } from '../../errors/AppError.js'
+import {
+  saveParticipantAnswersService,
+  FieldAnswer
+} from '../custom-fields/custom-fields.service.js'
 
-export const registerParticipantService = async (event_id: number, payload: RegisterPayload) => {
-  const { agent_code, full_name, branch_name, team_name, agent_type } = payload
+// ── Updated RegisterPayload to include custom field answers ────────────────────
+export interface ExtendedRegisterPayload extends RegisterPayload {
+  answers?: FieldAnswer[]
+}
+
+export const registerParticipantService = async (
+  event_id: number,
+  payload: ExtendedRegisterPayload
+) => {
+  const { agent_code, full_name, branch_name, team_name, agent_type, answers } = payload
 
   if (!event_id || isNaN(event_id)) throw new ValidationError('Valid event ID is required')
   if (!agent_code?.trim()) throw new ValidationError('Agent code is required')
@@ -27,7 +39,6 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (event.status !== 'open') throw new ValidationError('Event registration is not open')
 
   // ── Registration window check in DB time (Asia/Manila) ───────────────────
-  // Avoids timezone mismatch between Railway (UTC) and Supabase (Asia/Manila)
   const windowCheck = await pool.query(
     `SELECT
        ($1::timestamptz IS NULL OR NOW() >= $1::timestamptz) AS after_start,
@@ -55,12 +66,24 @@ export const registerParticipantService = async (event_id: number, payload: Regi
       [event_id, agent_code.trim(), full_name.trim(), branch_name.trim(), team_name.trim(), agent_type.trim()]
     )
 
+    const participant = result.rows[0]
+
+    // Save custom field answers if any were provided
+    if (answers && answers.length > 0) {
+      await saveParticipantAnswersService(
+        participant.participant_id,
+        event_id,
+        answers,
+        agent_type.trim()
+      )
+    }
+
     await Promise.all([
       invalidateParticipantCache(event_id),
       import('../../utils/cache.js').then(m => m.cacheDel(CK.EVENT_DETAIL(event_id))),
     ])
 
-    return { participant: result.rows[0] }
+    return { participant }
   } catch (err: any) {
     if (err.code === '23505') {
       throw new AppError('This agent is already registered for this event', 409)
@@ -169,6 +192,7 @@ export const permanentDeleteParticipantService = async (participant_id: number) 
   )
   if (!check.rows[0]) throw new NotFoundError('Participant not found in trash')
 
+  // answers cascade via ON DELETE CASCADE on participant_field_answers
   await pool.query('DELETE FROM scan_logs WHERE participant_id = $1', [participant_id])
   await pool.query('DELETE FROM attendance_sessions WHERE participant_id = $1', [participant_id])
   await pool.query('DELETE FROM participants WHERE participant_id = $1', [participant_id])
@@ -179,18 +203,9 @@ export const getCancelledParticipantsByEventService = async (event_id: number) =
 
   const result = await pool.query(
     `SELECT
-       p.participant_id,
-       p.event_id,
-       p.agent_code,
-       p.full_name,
-       p.branch_name,
-       p.team_name,
-       p.agent_type,
-       p.registration_status,
-       p.registered_at,
-       p.updated_at,
-       p.label,
-       p.label_description,
+       p.participant_id, p.event_id, p.agent_code, p.full_name,
+       p.branch_name, p.team_name, p.agent_type, p.registration_status,
+       p.registered_at, p.updated_at, p.label, p.label_description,
        a.photo_url
      FROM participants p
      LEFT JOIN agents a ON a.agent_code = p.agent_code

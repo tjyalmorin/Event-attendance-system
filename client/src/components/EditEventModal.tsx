@@ -4,7 +4,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import api from '../api/axios';
 import { Event } from '../types';
 import { useBranches } from '../hooks/useBranches';
-import { getStaffByBranchesApi, getEventStaffApi } from '../api/events.api';
+import { getStaffByBranchesApi, getEventStaffApi } from '../api/events.api'
 
 interface BranchSelection { branch_name: string; teams: string[] }
 interface StaffUser { user_id: string; full_name: string; agent_code: string; branch_name: string; email: string }
