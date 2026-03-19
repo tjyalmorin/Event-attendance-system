@@ -11,10 +11,15 @@ interface FieldCondition {
   value: string
 }
 
-interface PageCondition {
+interface PageConditionRule {
   field_key: string
   operator: 'eq' | 'neq'
   value: string
+}
+
+interface PageConditions {
+  logic: 'AND' | 'OR'
+  rules: PageConditionRule[]
 }
 
 interface FormField {
@@ -35,7 +40,8 @@ interface Page {
   page_number: number
   title: string
   description: string
-  condition: PageCondition | null
+  conditions: PageConditions | null  // replaces single condition
+  is_final: boolean                  // always shown last, ignores conditions
 }
 
 const FIELD_TYPES: { type: FieldType; label: string; color: string; bg: string }[] = [
@@ -78,15 +84,15 @@ const IcoForm = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none
 interface ModalShellProps {
   onClose: () => void; icon: React.ReactNode; iconClass?: string
   title: string; subtitle?: string; children: React.ReactNode
-  footer: React.ReactNode; wide?: boolean
+  footer: React.ReactNode; wide?: boolean; scrollable?: boolean
 }
 const CancelBtn = ({ onClick, label = 'Cancel' }: { onClick: () => void; label?: string }) => (
   <button onClick={onClick} className="px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-[#2a2a2a] rounded-xl hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-all">{label}</button>
 )
-const ModalShell: React.FC<ModalShellProps> = ({ onClose, icon, iconClass = 'text-gray-500 dark:text-gray-400', title, subtitle, children, footer, wide = false }) => (
+const ModalShell: React.FC<ModalShellProps> = ({ onClose, icon, iconClass = 'text-gray-500 dark:text-gray-400', title, subtitle, children, footer, wide = false, scrollable = false }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-    <div className={`bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full mx-4 ${wide ? 'max-w-lg' : 'max-w-md'}`}>
-      <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424] rounded-t-2xl">
+    <div className={`bg-white dark:bg-[#1c1c1c] rounded-2xl dark:shadow-[0_25px_50px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-[#2a2a2a] w-full mx-4 flex flex-col ${wide ? 'max-w-lg' : 'max-w-md'} ${scrollable ? 'max-h-[90vh]' : ''}`}>
+      <div className="flex items-center justify-between px-5 py-4 bg-gray-50 dark:bg-[#242424] rounded-t-2xl flex-shrink-0">
         <div className="flex items-center gap-3">
           <span className={iconClass}>{icon}</span>
           <div>
@@ -96,10 +102,10 @@ const ModalShell: React.FC<ModalShellProps> = ({ onClose, icon, iconClass = 'tex
         </div>
         <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#333] rounded-lg transition-colors"><IcoX /></button>
       </div>
-      <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
-      <div className="px-5 py-5 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{children}</div>
-      <div className="h-px bg-gray-200 dark:bg-[#2a2a2a]" />
-      <div className="flex justify-end gap-2.5 px-5 py-4 bg-gray-50 dark:bg-[#242424] rounded-b-2xl">{footer}</div>
+      <div className="h-px bg-gray-200 dark:bg-[#2a2a2a] flex-shrink-0" />
+      <div className={`px-5 py-5 text-sm text-gray-600 dark:text-gray-400 leading-relaxed ${scrollable ? 'overflow-y-auto flex-1 [scrollbar-color:theme(colors.gray.300)_transparent] dark:[scrollbar-color:theme(colors.gray.600)_transparent] [scrollbar-width:thin]' : ''}`}>{children}</div>
+      <div className="h-px bg-gray-200 dark:bg-[#2a2a2a] flex-shrink-0" />
+      <div className="flex justify-end gap-2.5 px-5 py-4 bg-gray-50 dark:bg-[#242424] rounded-b-2xl flex-shrink-0">{footer}</div>
     </div>
   </div>
 )
@@ -112,7 +118,7 @@ export default function CreateRegistrationForm() {
   const justCreated = (location.state as any)?.justCreated === true
 
   const [eventTitle, setEventTitle] = useState('')
-  const [pages, setPages] = useState<Page[]>([{ page_number: 1, title: 'Basic info', description: '', condition: null }])
+  const [pages, setPages] = useState<Page[]>([{ page_number: 1, title: 'Basic info', description: '', conditions: null, is_final: false }])
   const [fields, setFields] = useState<FormField[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [activePage, setActivePage] = useState(1)
@@ -123,11 +129,14 @@ export default function CreateRegistrationForm() {
   const [showPublishModal, setShowPublishModal] = useState(false)
   const [showDeletePageModal, setShowDeletePageModal] = useState<number | null>(null)
   const [editingPageNum, setEditingPageNum] = useState<number | null>(null)
-  const [pageDraft, setPageDraft] = useState<{ title: string; description: string; condition: PageCondition | null }>({ title: '', description: '', condition: null })
+  const [pageDraft, setPageDraft] = useState<{ title: string; description: string; conditions: PageConditions | null; is_final: boolean }>({ title: '', description: '', conditions: null, is_final: false })
 
   const selectedField = fields.find(f => f._id === selectedId) ?? null
 
-  // ── Load ──────────────────────────────────────────────────────
+  // ── localStorage autosave key ─────────────────────────────────
+  const DRAFT_KEY = event_id ? `form_draft_${event_id}` : null
+
+  // ── Load — server first, then localStorage fallback ──────────
   useEffect(() => {
     if (!event_id) return
     const load = async () => {
@@ -138,14 +147,37 @@ export default function CreateRegistrationForm() {
         ])
         setEventTitle(evRes.data.title ?? '')
         const existing: any[] = fieldsRes.data ?? []
+
+        // Check localStorage for a newer draft
+        const localRaw = DRAFT_KEY ? localStorage.getItem(DRAFT_KEY) : null
+        if (localRaw) {
+          try {
+            const local = JSON.parse(localRaw)
+            // Local draft is newer — prefer it
+            setPages(local.pages ?? [{ page_number: 1, title: 'Basic info', description: '', conditions: null }])
+            setFields((local.fields ?? []).map((f: any) => ({ ...f, _id: newId() })))
+            setLoadingExisting(false)
+            return
+          } catch { /* malformed local draft, fall through to server */ }
+        }
+
+        // No local draft — use server data
         if (existing.length > 0) {
           const pageNums = [...new Set(existing.map((f: any) => f.page_number as number))].sort((a, b) => a - b)
-          setPages(pageNums.map(pn => ({
-            page_number: pn,
-            title: existing.find((f: any) => f.page_number === pn)?.page_title ?? `Page ${pn}`,
-            description: existing.find((f: any) => f.page_number === pn)?.page_description ?? '',
-            condition: existing.find((f: any) => f.page_number === pn)?.page_condition ?? null,
-          })))
+          setPages(pageNums.map(pn => {
+            const sample = existing.find((f: any) => f.page_number === pn)
+            let conditions = sample?.page_conditions ?? null
+            if (!conditions && sample?.page_condition) {
+              conditions = { logic: 'AND' as const, rules: [sample.page_condition] }
+            }
+            return {
+              page_number: pn,
+              title: sample?.page_title ?? `Page ${pn}`,
+              description: sample?.page_description ?? '',
+              conditions,
+              is_final: sample?.is_final ?? false,
+            }
+          }))
           setFields(existing.map((f: any) => ({
             ...f, _id: newId(),
             options: Array.isArray(f.options) ? f.options : [],
@@ -159,6 +191,22 @@ export default function CreateRegistrationForm() {
     }
     load()
   }, [event_id])
+
+  // ── Autosave to localStorage on every change ─────────────────
+  const [hasLocalDraft, setHasLocalDraft] = useState(false)
+
+  useEffect(() => {
+    if (loadingExisting || !DRAFT_KEY || fields.length === 0) return
+    const draft = { pages, fields: fields.map(f => {
+      // Strip _id before saving — it's regenerated on load
+      const { _id, ...rest } = f
+      return rest
+    })}
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+      setHasLocalDraft(true)
+    } catch { /* storage full or unavailable */ }
+  }, [pages, fields, loadingExisting])
 
   // ── Helpers ───────────────────────────────────────────────────
   const pageFields = (pNum: number) => fields.filter(f => f.page_number === pNum).sort((a, b) => a.sort_order - b.sort_order)
@@ -197,7 +245,7 @@ export default function CreateRegistrationForm() {
 
   const addPage = () => {
     const nextNum = pages.length > 0 ? Math.max(...pages.map(p => p.page_number)) + 1 : 1
-    setPages(prev => [...prev, { page_number: nextNum, title: `Page ${nextNum}`, description: '', condition: null }])
+    setPages(prev => [...prev, { page_number: nextNum, title: `Page ${nextNum}`, description: '', conditions: null, is_final: false }])
     setActivePage(nextNum)
   }
 
@@ -212,15 +260,23 @@ export default function CreateRegistrationForm() {
   }
 
   const openEditPage = (page: Page) => {
-    setPageDraft({ title: page.title, description: page.description, condition: page.condition })
+    setPageDraft({ title: page.title, description: page.description, conditions: page.conditions, is_final: page.is_final })
     setEditingPageNum(page.page_number)
   }
 
   const savePageEdit = () => {
     if (!editingPageNum) return
     const title = pageDraft.title.trim() || `Page ${editingPageNum}`
-    setPages(prev => prev.map(p => p.page_number === editingPageNum ? { ...p, title, description: pageDraft.description, condition: pageDraft.condition } : p))
-    setFields(prev => prev.map(f => f.page_number === editingPageNum ? { ...f, page_title: title, page_description: pageDraft.description } : f))
+    // If is_final, clear conditions — final pages always show, no conditions needed
+    const conditions = pageDraft.is_final ? null : pageDraft.conditions
+    setPages(prev => prev.map(p => p.page_number === editingPageNum
+      ? { ...p, title, description: pageDraft.description, conditions, is_final: pageDraft.is_final }
+      : p
+    ))
+    setFields(prev => prev.map(f => f.page_number === editingPageNum
+      ? { ...f, page_title: title, page_description: pageDraft.description }
+      : f
+    ))
     setEditingPageNum(null)
   }
 
@@ -256,11 +312,14 @@ export default function CreateRegistrationForm() {
           sort_order: f.sort_order, page_number: f.page_number,
           page_title: page?.title ?? f.page_title,
           page_description: page?.description ?? f.page_description,
-          page_condition: page?.condition ?? null,
+          page_conditions: page?.conditions ?? null,
+          is_final:        page?.is_final ?? false,
           condition: f.condition,
         }
       })
       await api.put(`/participants/form-fields/${event_id}`, { fields: payload })
+      // Clear local draft — server is now up to date
+      if (DRAFT_KEY) { localStorage.removeItem(DRAFT_KEY); setHasLocalDraft(false) }
       if (andPublish) {
         await api.put(`/events/${event_id}`, { status: 'open' })
         navigate(`/admin/events/${event_id}`)
@@ -311,6 +370,16 @@ export default function CreateRegistrationForm() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {hasLocalDraft && (
+            <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-xl">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              Unsaved local draft
+              <button onClick={() => {
+                if (DRAFT_KEY) { localStorage.removeItem(DRAFT_KEY); setHasLocalDraft(false) }
+                window.location.reload()
+              }} className="underline text-amber-700 dark:text-amber-300 hover:no-underline">Discard</button>
+            </div>
+          )}
           <button onClick={() => handleSave(false)} disabled={saving}
             className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold border border-gray-200 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-all disabled:opacity-50">
             {saved ? <><IcoCheck /><span className="text-green-600 dark:text-green-400">Saved!</span></> : saving ? 'Saving...' : 'Save draft'}
@@ -364,7 +433,8 @@ export default function CreateRegistrationForm() {
                       }`}>
                       <span className={`flex-shrink-0 w-4 h-4 rounded-full border flex items-center justify-center text-[9px] font-bold ${activePage === p.page_number ? 'border-white/40 text-white' : 'border-gray-300 dark:border-[#3a3a3a] text-gray-400'}`}>{p.page_number}</span>
                       <span className="truncate">{p.title}</span>
-                      {p.condition && <span className={`text-[8px] px-1 py-0.5 rounded font-semibold flex-shrink-0 ${activePage === p.page_number ? 'bg-white/20 text-white' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'}`}>IF</span>}
+                      {p.conditions && p.conditions.rules.length > 0 && !p.is_final && <span className={`text-[8px] px-1 py-0.5 rounded font-semibold flex-shrink-0 ${activePage === p.page_number ? 'bg-white/20 text-white' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'}`}>IF</span>}
+                      {p.is_final && <span className={`text-[8px] px-1 py-0.5 rounded font-semibold flex-shrink-0 ${activePage === p.page_number ? 'bg-white/20 text-white' : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'}`}>LAST</span>}
                     </button>
                     <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={e => { e.stopPropagation(); openEditPage(p) }}
@@ -399,15 +469,24 @@ export default function CreateRegistrationForm() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-xs font-bold text-[#DC143C]">Page {activePage}</span>
-                    {activePg?.condition && (
+                    {activePg?.is_final && (
+                      <span className="text-[10px] font-semibold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded">Always last</span>
+                    )}
+                    {activePg?.conditions && activePg.conditions.rules.length > 0 && !activePg.is_final && (
                       <span className="text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">Conditional page</span>
                     )}
                   </div>
                   <div className="text-sm font-bold text-gray-900 dark:text-white">{activePg?.title}</div>
                   {activePg?.description && <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{activePg.description}</div>}
-                  {activePg?.condition && (
-                    <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
-                      Shows when: <span className="font-semibold">{activePg.condition.field_key}</span> {activePg.condition.operator === 'eq' ? '=' : '≠'} <span className="font-semibold">"{activePg.condition.value}"</span>
+                  {activePg?.conditions && activePg.conditions.rules.length > 0 && (
+                    <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 flex flex-wrap gap-1">
+                      <span>Shows when</span>
+                      {activePg.conditions.rules.map((r, i) => (
+                        <React.Fragment key={i}>
+                          {i > 0 && <span className="font-bold">{activePg.conditions!.logic}</span>}
+                          <span><span className="font-semibold">{r.field_key}</span> {r.operator === 'eq' ? '=' : '≠'} <span className="font-semibold">"{r.value}"</span></span>
+                        </React.Fragment>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -492,7 +571,7 @@ export default function CreateRegistrationForm() {
               <p className="text-xs">Click any field to edit its settings.</p>
             </div>
           ) : (
-            <InspectorPanel key={selectedField._id} field={selectedField} conditionSources={sourcesForField(selectedField)} onUpdate={patch => updateField(selectedField._id, patch)} />
+            <InspectorPanel key={selectedField._id} field={selectedField} conditionSources={sourcesForField(selectedField)} allFields={fields} onUpdate={patch => updateField(selectedField._id, patch)} />
           )}
         </div>
       </div>
@@ -518,13 +597,12 @@ export default function CreateRegistrationForm() {
       )}
 
       {/* Edit page modal */}
-      {editingPageNum !== null && (() => {
+      {editingPageNum !== null && ((): React.ReactElement | null => {
         const pgSources = sourcesForPage(editingPageNum)
-        const condSrcOptions = pageDraft.condition ? pgSources.find(f => f.field_key === pageDraft.condition?.field_key)?.options ?? [] : []
         return (
-          <ModalShell onClose={() => setEditingPageNum(null)} icon={<IcoEdit />} title={`Edit Page ${editingPageNum}`} subtitle="Title, description, and condition" wide
+          <ModalShell onClose={() => setEditingPageNum(null)} icon={<IcoEdit />} title={`Edit Page ${editingPageNum}`} subtitle="Title, description, and conditions" wide scrollable
             footer={<><CancelBtn onClick={() => setEditingPageNum(null)} /><button onClick={savePageEdit} className="px-4 py-2 text-sm font-semibold bg-[#DC143C] hover:bg-[#b01030] text-white rounded-xl transition-all">Save changes</button></>}>
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 max-h-[60vh] overflow-y-auto pr-1">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Page title</label>
                 <input className="w-full px-4 py-2.5 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-[#DC143C] transition-all"
@@ -538,50 +616,129 @@ export default function CreateRegistrationForm() {
                   rows={2} value={pageDraft.description} onChange={e => setPageDraft(p => ({ ...p, description: e.target.value }))} placeholder="Shown below the page title on the form…" />
               </div>
               <div className="h-px bg-gray-100 dark:bg-[#2a2a2a]" />
-              <div>
+
+              {/* Always show last toggle */}
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-0.5">Always show last</div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">
+                    This page will always appear at the end of the form, after all conditional pages — regardless of what the registrant answered. Use this for shared closing questions or confirmations.
+                  </p>
+                </div>
+                <button type="button" onClick={() => setPageDraft(p => ({ ...p, is_final: !p.is_final, conditions: !p.is_final ? null : p.conditions }))}
+                  className={`relative flex-shrink-0 w-10 h-6 rounded-full transition-colors mt-0.5 ${pageDraft.is_final ? 'bg-purple-500' : 'bg-gray-200 dark:bg-[#3a3a3a]'}`}>
+                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all ${pageDraft.is_final ? 'left-5' : 'left-1'}`} />
+                </button>
+              </div>
+
+              <div className="h-px bg-gray-100 dark:bg-[#2a2a2a]" />
+
+              {/* Conditional logic — disabled when is_final */}
+              <div className={pageDraft.is_final ? 'opacity-40 pointer-events-none select-none' : ''}>
                 <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1">Conditional page</div>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mb-3 leading-relaxed">
-                  This entire page only appears when the condition below is met. Useful for role-specific questions.
+                  {pageDraft.is_final
+                    ? 'Disabled — "Always show last" pages are always visible.'
+                    : 'This entire page only appears when the conditions below are met. Leave empty to always show.'}
                 </p>
                 {editingPageNum === 1 ? (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 italic">Page 1 always shows and cannot have a condition.</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 italic">Page 1 always shows and cannot have conditions.</p>
                 ) : pgSources.length === 0 ? (
                   <p className="text-xs text-gray-400 dark:text-gray-500 italic">No radio/dropdown fields on earlier pages yet. Add one first.</p>
-                ) : pageDraft.condition ? (
-                  <div className="flex flex-col gap-2">
-                    <div className="text-xs text-gray-500 dark:text-gray-400">Show this page when…</div>
-                    <select className="w-full px-3 py-2 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-[#DC143C]"
-                      value={pageDraft.condition.field_key}
-                      onChange={e => setPageDraft(p => ({ ...p, condition: { ...p.condition!, field_key: e.target.value, value: '' } }))}>
-                      <option value="">— Select field —</option>
-                      {pgSources.map(f => <option key={f._id} value={f.field_key}>{f.label || f.field_key}</option>)}
-                    </select>
-                    <select className="w-full px-3 py-2 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-[#DC143C]"
-                      value={pageDraft.condition.operator}
-                      onChange={e => setPageDraft(p => ({ ...p, condition: { ...p.condition!, operator: e.target.value as 'eq' | 'neq' } }))}>
-                      <option value="eq">is equal to</option>
-                      <option value="neq">is not equal to</option>
-                    </select>
-                    {condSrcOptions.length > 0 ? (
-                      <select className="w-full px-3 py-2 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-[#DC143C]"
-                        value={pageDraft.condition.value}
-                        onChange={e => setPageDraft(p => ({ ...p, condition: { ...p.condition!, value: e.target.value } }))}>
-                        <option value="">— Select value —</option>
-                        {condSrcOptions.map(o => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                    ) : (
-                      <input className="w-full px-3 py-2 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-[#DC143C]"
-                        value={pageDraft.condition.value}
-                        onChange={e => setPageDraft(p => ({ ...p, condition: { ...p.condition!, value: e.target.value } }))}
-                        placeholder="Value to match…" />
-                    )}
-                    <button onClick={() => setPageDraft(p => ({ ...p, condition: null }))} className="self-start text-xs text-red-500 dark:text-red-400 hover:underline mt-1">Remove condition</button>
-                  </div>
                 ) : (
-                  <button onClick={() => setPageDraft(p => ({ ...p, condition: { field_key: pgSources[0]?.field_key ?? '', operator: 'eq', value: pgSources[0]?.options?.[0] ?? '' } }))}
-                    className="text-xs font-semibold text-[#DC143C] hover:underline">
-                    + Add page condition
-                  </button>
+                  <div className="flex flex-col gap-3">
+                    {pageDraft.conditions && pageDraft.conditions.rules.length > 0 ? (
+                      <>
+                        {/* AND / OR toggle */}
+                        {pageDraft.conditions.rules.length > 1 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 dark:text-gray-400">Match</span>
+                            <div className="flex rounded-lg border border-gray-200 dark:border-[#2a2a2a] overflow-hidden">
+                              {(['AND', 'OR'] as const).map(l => (
+                                <button key={l} type="button"
+                                  onClick={() => setPageDraft(p => ({ ...p, conditions: { ...p.conditions!, logic: l } }))}
+                                  className={`px-3 py-1 text-xs font-semibold transition-colors ${pageDraft.conditions!.logic === l ? 'bg-[#DC143C] text-white' : 'bg-white dark:bg-[#0f0f0f] text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-[#1a1a1a]'}`}>
+                                  {l}
+                                </button>
+                              ))}
+                            </div>
+                            <span className="text-xs text-gray-400 dark:text-gray-500">conditions</span>
+                          </div>
+                        )}
+
+                        {/* Rules list */}
+                        {pageDraft.conditions.rules.map((rule, idx) => {
+                          const src = pgSources.find(f => f.field_key === rule.field_key)
+                          return (
+                            <div key={idx} className="flex flex-col gap-2 bg-gray-50 dark:bg-[#161616] border border-gray-200 dark:border-[#2a2a2a] rounded-xl p-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Rule {idx + 1}</span>
+                                <button type="button"
+                                  onClick={() => {
+                                    const newRules = pageDraft.conditions!.rules.filter((_, i) => i !== idx)
+                                    setPageDraft(p => ({ ...p, conditions: newRules.length > 0 ? { ...p.conditions!, rules: newRules } : null }))
+                                  }}
+                                  className="text-gray-300 dark:text-gray-600 hover:text-red-500 text-sm leading-none">×</button>
+                              </div>
+                              <select className="w-full px-3 py-2 bg-white dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-[#DC143C]"
+                                value={rule.field_key}
+                                onChange={e => {
+                                  const newRules = [...pageDraft.conditions!.rules]
+                                  newRules[idx] = { ...rule, field_key: e.target.value, value: '' }
+                                  setPageDraft(p => ({ ...p, conditions: { ...p.conditions!, rules: newRules } }))
+                                }}>
+                                <option value="">— Select field —</option>
+                                {pgSources.map(f => <option key={f._id} value={f.field_key}>{f.label || f.field_key}</option>)}
+                              </select>
+                              <select className="w-full px-3 py-2 bg-white dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-[#DC143C]"
+                                value={rule.operator}
+                                onChange={e => {
+                                  const newRules = [...pageDraft.conditions!.rules]
+                                  newRules[idx] = { ...rule, operator: e.target.value as 'eq' | 'neq' }
+                                  setPageDraft(p => ({ ...p, conditions: { ...p.conditions!, rules: newRules } }))
+                                }}>
+                                <option value="eq">is equal to</option>
+                                <option value="neq">is not equal to</option>
+                              </select>
+                              {src?.options?.length ? (
+                                <select className="w-full px-3 py-2 bg-white dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-[#DC143C]"
+                                  value={rule.value}
+                                  onChange={e => {
+                                    const newRules = [...pageDraft.conditions!.rules]
+                                    newRules[idx] = { ...rule, value: e.target.value }
+                                    setPageDraft(p => ({ ...p, conditions: { ...p.conditions!, rules: newRules } }))
+                                  }}>
+                                  <option value="">— Select value —</option>
+                                  {src.options.map(o => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                              ) : (
+                                <input className="w-full px-3 py-2 bg-white dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-[#DC143C]"
+                                  value={rule.value}
+                                  onChange={e => {
+                                    const newRules = [...pageDraft.conditions!.rules]
+                                    newRules[idx] = { ...rule, value: e.target.value }
+                                    setPageDraft(p => ({ ...p, conditions: { ...p.conditions!, rules: newRules } }))
+                                  }}
+                                  placeholder="Value to match…" />
+                              )}
+                            </div>
+                          )
+                        })}
+
+                        <button type="button"
+                          onClick={() => setPageDraft(p => ({ ...p, conditions: { ...p.conditions!, rules: [...p.conditions!.rules, { field_key: pgSources[0]?.field_key ?? '', operator: 'eq', value: '' }] } }))}
+                          className="self-start text-xs font-semibold text-[#DC143C] hover:underline">
+                          + Add another rule
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button"
+                        onClick={() => setPageDraft(p => ({ ...p, conditions: { logic: 'AND', rules: [{ field_key: pgSources[0]?.field_key ?? '', operator: 'eq', value: pgSources[0]?.options?.[0] ?? '' }] } }))}
+                        className="self-start text-xs font-semibold text-[#DC143C] hover:underline">
+                        + Add page condition
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -596,10 +753,11 @@ export default function CreateRegistrationForm() {
 interface InspectorProps {
   field: FormField
   conditionSources: FormField[]
+  allFields: FormField[]   // for field key reuse dropdown
   onUpdate: (patch: Partial<FormField>) => void
 }
 
-function InspectorPanel({ field, conditionSources, onUpdate }: InspectorProps) {
+function InspectorPanel({ field, conditionSources, allFields, onUpdate }: InspectorProps) {
   const [optionDraft, setOptionDraft] = useState('')
 
   const inp = "w-full px-3 py-2 bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:border-[#DC143C] transition-all font-sans"
@@ -626,9 +784,41 @@ function InspectorPanel({ field, conditionSources, onUpdate }: InspectorProps) {
 
       <div>
         <label className={lbl}>Field key</label>
-        <input className={`${inp} font-mono text-xs`} value={field.field_key}
-          onChange={e => onUpdate({ field_key: e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') })}
-          placeholder="auto from label" />
+        {/* Existing keys from other fields (same key = shared answer slot) */}
+        {(() => {
+          const existingKeys = [...new Set(
+            allFields
+              .filter(f => f._id !== field._id && f.field_key.trim())
+              .map(f => f.field_key)
+          )].sort()
+          return existingKeys.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <input className={`${inp} font-mono text-xs`} value={field.field_key}
+                onChange={e => onUpdate({ field_key: e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') })}
+                placeholder="auto from label" />
+              <div>
+                <div className="text-[9px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-1">Reuse existing key</div>
+                <div className="flex flex-wrap gap-1">
+                  {existingKeys.map(k => (
+                    <button key={k} type="button"
+                      onClick={() => onUpdate({ field_key: k })}
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded-lg border transition-all ${
+                        field.field_key === k
+                          ? 'border-[#DC143C] bg-red-50 dark:bg-red-900/20 text-[#DC143C]'
+                          : 'border-gray-200 dark:border-[#2a2a2a] text-gray-500 dark:text-gray-400 hover:border-[#DC143C] hover:text-[#DC143C]'
+                      }`}>
+                      {k}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <input className={`${inp} font-mono text-xs`} value={field.field_key}
+              onChange={e => onUpdate({ field_key: e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') })}
+              placeholder="auto from label" />
+          )
+        })()}
       </div>
 
       <div>

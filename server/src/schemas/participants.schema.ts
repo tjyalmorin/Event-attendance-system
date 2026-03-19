@@ -24,15 +24,32 @@ export const setLabelSchema = z.object({
 // For saving/updating form fields (used by CreateRegistrationForm page)
 export const saveFormFieldsSchema = z.object({
   fields: z.array(z.object({
-    field_key:   z.string().min(1).max(100),
-    label:       z.string().min(1).max(255),
-    field_type:  z.enum(['text', 'dropdown', 'radio', 'checkbox', 'date']),
-    options:     z.array(z.string()).optional().nullable(),
-    is_required: z.boolean().default(false),
-    sort_order:  z.number().int().default(0),
-    page_number: z.number().int().min(1).default(1),
-    page_title:  z.string().max(255).optional().nullable(),
-    condition:   z.object({
+    field_key:        z.string().min(1).max(100),
+    label:            z.string().min(1).max(255),
+    field_type:       z.enum(['text', 'dropdown', 'radio', 'checkbox', 'date']),
+    options:          z.array(z.string()).optional().nullable(),
+    is_required:      z.boolean().default(false),
+    sort_order:       z.number().int().default(0),
+    page_number:      z.number().int().min(1).default(1),
+    page_title:       z.string().max(255).optional().nullable(),
+    page_description: z.string().optional().nullable(),
+    // Legacy single condition (kept for backwards compat)
+    page_condition:   z.object({
+      field_key: z.string(),
+      operator:  z.enum(['eq', 'neq']),
+      value:     z.string(),
+    }).optional().nullable(),
+    // New multi-condition with AND/OR logic
+    page_conditions:  z.object({
+      logic: z.enum(['AND', 'OR']),
+      rules: z.array(z.object({
+        field_key: z.string(),
+        operator:  z.enum(['eq', 'neq']),
+        value:     z.string(),
+      })),
+    }).optional().nullable(),
+    is_final: z.boolean().default(false),
+    condition: z.object({
       field_key: z.string(),
       operator:  z.enum(['eq', 'neq']),
       value:     z.string(),

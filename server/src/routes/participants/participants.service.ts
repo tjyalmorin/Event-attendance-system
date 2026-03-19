@@ -236,7 +236,7 @@ export const getFormFieldsService = async (event_id: number) => {
 
   const result = await pool.query(
     `SELECT field_id, field_key, label, field_type, options, is_required,
-            sort_order, page_number, page_title, page_description, page_condition, condition
+            sort_order, page_number, page_title, page_description, page_condition, page_conditions, is_final, condition
      FROM event_form_fields
      WHERE event_id = $1
      ORDER BY page_number ASC, sort_order ASC`,
@@ -263,8 +263,8 @@ export const saveFormFieldsService = async (event_id: number, fields: any[]) => 
       await client.query(
         `INSERT INTO event_form_fields
           (event_id, field_key, label, field_type, options, is_required,
-           sort_order, page_number, page_title, page_description, page_condition, condition)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+           sort_order, page_number, page_title, page_description, page_condition, page_conditions, is_final, condition)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
           event_id,
           f.field_key,
@@ -277,6 +277,8 @@ export const saveFormFieldsService = async (event_id: number, fields: any[]) => 
           f.page_title ?? null,
           f.page_description ?? null,
           f.page_condition ? JSON.stringify(f.page_condition) : null,
+          f.page_conditions ? JSON.stringify(f.page_conditions) : null,
+          f.is_final ?? false,
           f.condition ? JSON.stringify(f.condition) : null,
         ]
       )

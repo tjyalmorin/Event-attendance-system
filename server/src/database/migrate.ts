@@ -147,6 +147,8 @@ const migrate = async (): Promise<void> => {
         page_title  VARCHAR(255),
         page_description TEXT,
         page_condition   JSONB,
+        page_conditions  JSONB,
+        is_final         BOOLEAN NOT NULL DEFAULT FALSE,
         condition   JSONB,
         created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
         updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
@@ -319,7 +321,9 @@ const migrate = async (): Promise<void> => {
     await pool.query(`
       ALTER TABLE event_form_fields
         ADD COLUMN IF NOT EXISTS page_description TEXT,
-        ADD COLUMN IF NOT EXISTS page_condition   JSONB;
+        ADD COLUMN IF NOT EXISTS page_condition   JSONB,
+        ADD COLUMN IF NOT EXISTS page_conditions  JSONB,
+        ADD COLUMN IF NOT EXISTS is_final         BOOLEAN NOT NULL DEFAULT FALSE;
     `);
 
     // ── Indexes ────────────────────────────────────────────────────

@@ -361,7 +361,8 @@ interface FormField {
   page_number: number
   page_title?: string | null
   page_description?: string | null
-  page_condition?: { field_key: string; operator: 'eq' | 'neq'; value: string } | null
+  page_condition?: { field_key: string; operator: 'eq' | 'neq'; value: string } | null  // legacy
+  page_conditions?: { logic: 'AND' | 'OR'; rules: { field_key: string; operator: 'eq' | 'neq'; value: string }[] } | null
   condition?: { field_key: string; operator: 'eq' | 'neq'; value: string } | null
 }
 
@@ -369,7 +370,9 @@ interface FormPage {
   page_number: number
   page_title: string
   page_description: string
-  page_condition: { field_key: string; operator: 'eq' | 'neq'; value: string } | null
+  page_condition: { field_key: string; operator: 'eq' | 'neq'; value: string } | null  // legacy
+  page_conditions: { logic: 'AND' | 'OR'; rules: { field_key: string; operator: 'eq' | 'neq'; value: string }[] } | null
+  is_final: boolean  // always shown last regardless of conditions
   fields: FormField[]
 }
 
@@ -396,7 +399,9 @@ export default function RegistrationPage() {
 
   // ── Registration flow state ──────────────────────────────────
   const [step, setStep] = useState<RegStep>('landing')
-  const [currentPage, setCurrentPage] = useState(0) // 0-indexed into pages array
+  // currentPageNum stores the page_number (not array index) of the active page
+  // Using page_number means conditional filtering never causes index misalignment
+  const [currentPageNum, setCurrentPageNum] = useState<number | 'confirm'>(0) // 0 = not started
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [pageErrors, setPageErrors] = useState<Record<string, string>>({})
   const [registeredParticipant, setRegisteredParticipant] = useState<any>(null)
@@ -460,6 +465,8 @@ export default function RegistrationPage() {
         page_title: 'Your details',
         page_description: '',
         page_condition: null,
+        page_conditions: null,
+        is_final: false,
         fields: [
           { field_key: 'agent_code', label: 'Agent code', field_type: 'text', is_required: true, sort_order: 0, page_number: 1 },
           { field_key: 'full_name', label: 'Full name', field_type: 'text', is_required: true, sort_order: 1, page_number: 1 },
@@ -470,7 +477,7 @@ export default function RegistrationPage() {
       }]
     }
     const pageNums = [...new Set(formFields.map(f => f.page_number))].sort((a, b) => a - b)
-    return pageNums.map(pn => {
+    const built = pageNums.map(pn => {
       const fields = formFields.filter(f => f.page_number === pn).sort((a, b) => a.sort_order - b.sort_order)
       const sample = fields[0]
       return {
@@ -478,24 +485,51 @@ export default function RegistrationPage() {
         page_title: sample?.page_title ?? `Page ${pn}`,
         page_description: sample?.page_description ?? '',
         page_condition: sample?.page_condition ?? null,
+        page_conditions: sample?.page_conditions ?? null,
+        is_final: sample?.is_final ?? false,
         fields,
       }
     })
+    // Final pages always go last, preserving relative order among themselves
+    const regular = built.filter(p => !p.is_final)
+    const finals  = built.filter(p => p.is_final)
+    return [...regular, ...finals]
   })()
 
-  // Evaluate whether a page should be shown based on current answers
-  const isPageVisible = (page: FormPage): boolean => {
-    if (!page.page_condition) return true
-    const { field_key, operator, value } = page.page_condition
-    const userVal = answers[field_key] ?? ''
-    return operator === 'eq' ? userVal === value : userVal !== value
+  // Evaluate a single condition rule against current answers
+  const evalRule = (rule: { field_key: string; operator: 'eq' | 'neq'; value: string }, ans: Record<string, string>): boolean => {
+    const userVal = ans[rule.field_key] ?? ''
+    return rule.operator === 'eq' ? userVal === rule.value : userVal !== rule.value
   }
 
-  // Only show pages whose conditions are met
-  const pages = allPages.filter(isPageVisible)
+  // Evaluate whether a page should be shown — supports new multi-conditions AND legacy single condition
+  const isPageVisible = (page: FormPage, ans: Record<string, string>): boolean => {
+    // Final pages are always visible — they're the shared last page(s)
+    if (page.is_final) return true
+    // New format: multiple conditions with AND/OR logic
+    if (page.page_conditions && page.page_conditions.rules.length > 0) {
+      const { logic, rules } = page.page_conditions
+      if (logic === 'AND') return rules.every(r => evalRule(r, ans))
+      return rules.some(r => evalRule(r, ans))
+    }
+    // Legacy format: single condition
+    if (page.page_condition) {
+      return evalRule(page.page_condition, ans)
+    }
+    return true
+  }
+
+  // Only show pages whose conditions are met — recomputed reactively from answers
+  const pages = allPages.filter(p => isPageVisible(p, answers))
 
   const totalPages = pages.length
-  const activePage = pages[currentPage]
+  const isConfirmScreen = currentPageNum === 'confirm'
+
+  // Find the active page by page_number — safe even when pages is re-filtered
+  const activePage = isConfirmScreen ? undefined : pages.find(p => p.page_number === currentPageNum) ?? pages[0]
+
+  // Position of activePage within the current filtered pages array (0-indexed)
+  const activeIndex = activePage ? pages.findIndex(p => p.page_number === activePage.page_number) : 0
 
   // Evaluate if a field's condition is met given current answers
   const isFieldVisible = (field: FormField): boolean => {
@@ -530,11 +564,11 @@ export default function RegistrationPage() {
           if (!met) delete next[f.field_key]
         }
       })
-      // Also clear answers for fields on pages whose page_condition is no longer met
+      // Clear answers for fields on pages that become hidden
       allPages.forEach(page => {
-        if (!page.page_condition || page.page_condition.field_key !== key) return
-        const met = page.page_condition.operator === 'eq' ? value === page.page_condition.value : value !== page.page_condition.value
-        if (!met) page.fields.forEach(f => delete next[f.field_key])
+        if (!isPageVisible(page, next)) {
+          page.fields.forEach(f => delete next[f.field_key])
+        }
       })
       if (key === 'branch_name') delete next['team_name']
       return next
@@ -558,21 +592,21 @@ export default function RegistrationPage() {
 
   const handleNext = () => {
     if (!validateCurrentPage()) return
-    if (currentPage < totalPages - 1) {
-      setCurrentPage(p => p + 1)
+    // Find the next visible page after the current one
+    if (activeIndex < totalPages - 1) {
+      setCurrentPageNum(pages[activeIndex + 1].page_number)
       setError('')
     } else {
-      // Last page — go to confirm step (review)
-      setStep('form') // already 'form', just handled by substate
-      setCurrentPage(totalPages) // sentinel: means "confirm screen"
+      setCurrentPageNum('confirm')
     }
   }
 
   const handleBack = () => {
-    if (currentPage === totalPages) {
-      setCurrentPage(totalPages - 1)
-    } else if (currentPage > 0) {
-      setCurrentPage(p => p - 1)
+    if (isConfirmScreen) {
+      // Back from confirm → go to last visible page
+      setCurrentPageNum(pages[totalPages - 1]?.page_number ?? 0)
+    } else if (activeIndex > 0) {
+      setCurrentPageNum(pages[activeIndex - 1].page_number)
     } else {
       setStep('landing')
     }
@@ -596,7 +630,7 @@ export default function RegistrationPage() {
       setStep('success')
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.')
-      setCurrentPage(totalPages - 1) // back to last form page on error
+      setCurrentPageNum(pages[totalPages - 1]?.page_number ?? 0) // back to last form page on error
     } finally {
       setSubmitting(false)
     }
@@ -926,7 +960,7 @@ export default function RegistrationPage() {
 
           {/* Register button */}
           <button
-            onClick={() => { setStep('form'); setCurrentPage(0) }}
+            onClick={() => { setStep('form'); setCurrentPageNum(pages[0]?.page_number ?? 1) }}
             className="pru-btn"
             style={{ marginTop: 8 }}
           >
@@ -973,7 +1007,6 @@ export default function RegistrationPage() {
   )
 
   // ── STEP: FORM (multi-page questions + confirm screen) ────────
-  const isConfirmScreen = currentPage === totalPages
 
   return (
     <div style={s.page} className="pru-page">
@@ -983,39 +1016,27 @@ export default function RegistrationPage() {
         {/* Left panel — form */}
         <div style={s.formPanel} className="pru-form-panel">
 
-          {/* Progress indicator */}
+          {/* Progress bar — dynamic, no step count */}
           <div style={{ marginBottom: 20 }}>
-            {/* Step dots */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 6 }}>
-              {Array.from({ length: totalPages + 1 }).map((_, i) => {
-                const isConfirm = i === totalPages
-                const done = i < currentPage || (isConfirmScreen && !isConfirm)
-                const active = i === currentPage
-                return (
-                  <React.Fragment key={i}>
-                    <div style={{
-                      width: 22, height: 22, borderRadius: '50%', flexShrink: 0, zIndex: 1,
-                      background: done ? '#DC143C' : active ? '#DC143C' : '#f3f4f6',
-                      border: `2px solid ${done || active ? '#DC143C' : '#e5e7eb'}`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 9, fontWeight: 700,
-                      color: done || active ? 'white' : '#9ca3af',
-                      outline: active ? '3px solid rgba(220,20,60,0.15)' : 'none',
-                    }}>
-                      {done ? (
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      ) : isConfirm ? '✓' : i + 1}
-                    </div>
-                    {i < totalPages && (
-                      <div style={{ flex: 1, height: 1.5, background: i < currentPage ? '#DC143C' : '#e5e7eb', transition: 'background 0.3s' }} />
-                    )}
-                  </React.Fragment>
-                )
-              })}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>
+                {isConfirmScreen ? 'Review & confirm' : (activePage?.page_title ?? 'Your details')}
+              </div>
+              {activePage?.page_description && !isConfirmScreen && (
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>{activePage.page_description}</div>
+              )}
             </div>
-            {/* Page label */}
-            <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>
-              {isConfirmScreen ? 'Review & confirm' : `${activePage?.page_title ?? `Page ${currentPage + 1}`} · Step ${currentPage + 1} of ${totalPages}`}
+            {/* Progress bar */}
+            <div style={{ height: 4, background: '#f3f4f6', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                borderRadius: 2,
+                background: '#DC143C',
+                transition: 'width 0.35s ease',
+                width: isConfirmScreen
+                  ? '100%'
+                  : totalPages > 0 ? `${((activeIndex) / totalPages) * 100}%` : '0%',
+              }} />
             </div>
           </div>
 
@@ -1097,7 +1118,7 @@ export default function RegistrationPage() {
             /* ── FORM PAGE ── */
             <div>
               <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#111827', letterSpacing: '-0.02em', marginBottom: 4 }}>
-                {activePage?.page_title ?? `Page ${currentPage + 1}`}
+                {activePage?.page_title ?? 'Your details'}
               </div>
               <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 20, lineHeight: 1.6 }}>
                 {activePage?.page_description || 'Fill in the fields below to continue.'}
@@ -1157,7 +1178,7 @@ export default function RegistrationPage() {
                 </button>
                 <button onClick={handleNext} className="pru-btn" style={{ flex: 2, margin: 0 }}>
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                    {currentPage < totalPages - 1 ? 'Next' : 'Review'} <IconArrowRight size={15} color="white" />
+                    {activeIndex < totalPages - 1 ? 'Next' : 'Review'} <IconArrowRight size={15} color="white" />
                   </span>
                 </button>
               </div>

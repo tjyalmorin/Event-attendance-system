@@ -178,6 +178,8 @@ export const getEventByTokenService = async (token: string) => {
                   'page_title',      ff.page_title,
                   'page_description',ff.page_description,
                   'page_condition',  ff.page_condition,
+                  'page_conditions', ff.page_conditions,
+                  'is_final',        ff.is_final,
                   'condition',       ff.condition
                 ) ORDER BY ff.page_number, ff.sort_order
               )

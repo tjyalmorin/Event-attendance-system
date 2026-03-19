@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import asyncHandler from '../../middlewares/asyncHandler.js'
+import pool from '../../config/database.js'
 import cloudinary from '../../config/cloudinary.js'
 import { uploadToCloudinary } from '../../middlewares/upload.js'
 import {
@@ -168,10 +169,19 @@ export const restoreEvent = asyncHandler(async (req: Request, res: Response) => 
 })
 
 export const permanentDeleteEvent = asyncHandler(async (req: Request, res: Response) => {
-  const event = await getEventByIdService(Number(req.params.event_id))
-  const slideshowUrls: string[] = Array.isArray(event.slideshow_urls) ? event.slideshow_urls : []
+  const event_id = Number(req.params.event_id)
 
-  await permanentDeleteEventService(Number(req.params.event_id))
+  // Cannot use getEventByIdService — it filters WHERE deleted_at IS NULL
+  // but trashed events have deleted_at set, causing a 404 before deletion.
+  const row = await pool.query(
+    `SELECT slideshow_urls FROM events WHERE event_id = $1`,
+    [event_id]
+  )
+  const slideshowUrls: string[] = Array.isArray(row.rows[0]?.slideshow_urls)
+    ? row.rows[0].slideshow_urls
+    : []
+
+  await permanentDeleteEventService(event_id)
 
   if (slideshowUrls.length > 0) {
     await deleteCloudinaryUrls(slideshowUrls)
