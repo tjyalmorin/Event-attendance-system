@@ -11,6 +11,7 @@ import AdminLogin from './pages/admin/AdminLogin'
 import BranchManagement from './pages/admin/BranchManagement'
 import EventManagement from './pages/admin/EventManagement'
 import CreateEvent from './pages/admin/CreateEvent'
+import CreateRegistrationForm from './pages/admin/CreateRegistrationForm'
 import EventDetail from './pages/admin/EventDetail'
 import ScannerPage from './pages/admin/ScannerPage'
 import TrashBin from './pages/admin/TrashBin'
@@ -71,6 +72,7 @@ function App() {
               <Route path="/admin/events/trash" element={<TrashBin />} />
               <Route path="/admin/events/archive" element={<EventArchive />} />
               <Route path="/admin/events/create" element={<CreateEvent />} />
+              <Route path="/admin/events/:event_id/form-builder" element={<CreateRegistrationForm />} />
               <Route path="/admin/events/:eventId" element={<EventDetail />} />
               <Route path="/admin/events/:eventId/scanner" element={<ScannerPage />} />
               <Route path="/admin/settings/profile" element={<ProfileSettingsPage />} />

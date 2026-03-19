@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { getEventByTokenApi } from '../../api/events.api'
 import { registerParticipantApi } from '../../api/participants.api'
 import { Event } from '../../types'
@@ -347,28 +347,61 @@ const formatTime12h = (time: string) => {
   return `${hour}:${String(m).padStart(2, '0')} ${ampm}`
 }
 
+// ── Types ─────────────────────────────────────────────────────────
+type RegStep = 'landing' | 'form' | 'success'
+
+interface FormField {
+  field_id?: number
+  field_key: string
+  label: string
+  field_type: 'text' | 'dropdown' | 'radio' | 'checkbox' | 'date'
+  options?: string[] | null
+  is_required: boolean
+  sort_order: number
+  page_number: number
+  page_title?: string | null
+  page_description?: string | null
+  page_condition?: { field_key: string; operator: 'eq' | 'neq'; value: string } | null
+  condition?: { field_key: string; operator: 'eq' | 'neq'; value: string } | null
+}
+
+interface FormPage {
+  page_number: number
+  page_title: string
+  page_description: string
+  page_condition: { field_key: string; operator: 'eq' | 'neq'; value: string } | null
+  fields: FormField[]
+}
+
+interface EventWithFormFields extends EventWithBranches {
+  form_fields?: FormField[]
+}
+
 export default function RegistrationPage() {
   const { token } = useParams()
-  const navigate = useNavigate()
-  const [event, setEvent] = useState<EventWithBranches | null>(null)
+  const [event, setEvent] = useState<EventWithFormFields | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  // ── Slideshow state ──────────────────────────────────────────
   const [currentSlide, setCurrentSlide] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
   const [panelHovered, setPanelHovered] = useState(false)
   const [mobileBannerTapped, setMobileBannerTapped] = useState(false)
   const mobileTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
-  const [form, setForm] = useState({
-    agent_code: '',
-    full_name: '',
-    branch_name: '',
-    team_name: '',
-    agent_type: '',
-  })
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isPausedRef = useRef(false)
+
+  // ── Registration flow state ──────────────────────────────────
+  const [step, setStep] = useState<RegStep>('landing')
+  const [currentPage, setCurrentPage] = useState(0) // 0-indexed into pages array
+  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [pageErrors, setPageErrors] = useState<Record<string, string>>({})
+  const [registeredParticipant, setRegisteredParticipant] = useState<any>(null)
+
+  const { branches: allBranches } = useBranches()
 
   useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
 
@@ -381,118 +414,302 @@ export default function RegistrationPage() {
   useEffect(() => {
     if (!token) { setLoading(false); return }
     getEventByTokenApi(token)
-      .then(data => setEvent(data as EventWithBranches))
+      .then(data => setEvent(data as EventWithFormFields))
       .catch(() => setError('Event not found'))
       .finally(() => setLoading(false))
   }, [token])
 
   useEffect(() => {
     if (event) {
-      document.title = `${event.title} — Registration Form | A1 Prime Branch`
+      document.title = `${event.title} — Registration | A1 Prime Branch`
     } else {
-      document.title = 'Registration Form | A1 Prime Branch'
+      document.title = 'Registration | A1 Prime Branch'
     }
     return () => { document.title = 'PrimeLog: Event Attendance System — A1 Prime Branch' }
   }, [event])
 
-  // Determine active slides — use event's slideshow_urls if present, else default slides
+  // ── Slideshow helpers ────────────────────────────────────────
   const slideshowUrls: string[] = Array.isArray((event as any)?.slideshow_urls) && (event as any).slideshow_urls.length > 0
-    ? (event as any).slideshow_urls
-    : []
+    ? (event as any).slideshow_urls : []
   const useCustomSlideshow = slideshowUrls.length > 0
   const activeSlideCount = useCustomSlideshow ? slideshowUrls.length : slides.length
 
   const startInterval = (count: number) => {
     if (intervalRef.current) clearInterval(intervalRef.current)
     intervalRef.current = setInterval(() => {
-      if (!isPausedRef.current)
-        setCurrentSlide(prev => (prev + 1) % count)
+      if (!isPausedRef.current) setCurrentSlide(prev => (prev + 1) % count)
     }, 4500)
   }
-
   useEffect(() => {
     startInterval(activeSlideCount)
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [activeSlideCount])
 
-  const goToSlide = (i: number) => {
-    setCurrentSlide(i)
-    startInterval(activeSlideCount)
-  }
-
+  const goToSlide = (i: number) => { setCurrentSlide(i); startInterval(activeSlideCount) }
   const goPrev = () => goToSlide((currentSlide - 1 + activeSlideCount) % activeSlideCount)
   const goNext = () => goToSlide((currentSlide + 1) % activeSlideCount)
 
-  const { branches: allBranches } = useBranches()
-  const [agentCodeError, setAgentCodeError] = useState('')
+  // ── Form builder helpers ─────────────────────────────────────
+  const formFields: FormField[] = (event as any)?.form_fields ?? []
 
+  // Build pages from form_fields; if none, fall back to legacy fixed fields
+  const allPages: FormPage[] = (() => {
+    if (formFields.length === 0) {
+      return [{
+        page_number: 1,
+        page_title: 'Your details',
+        page_description: '',
+        page_condition: null,
+        fields: [
+          { field_key: 'agent_code', label: 'Agent code', field_type: 'text', is_required: true, sort_order: 0, page_number: 1 },
+          { field_key: 'full_name', label: 'Full name', field_type: 'text', is_required: true, sort_order: 1, page_number: 1 },
+          { field_key: 'branch_name', label: 'Branch name', field_type: 'dropdown', is_required: true, sort_order: 2, page_number: 1 },
+          { field_key: 'team_name', label: 'Team name', field_type: 'dropdown', is_required: true, sort_order: 3, page_number: 1 },
+          { field_key: 'agent_type', label: 'Agent type', field_type: 'radio', options: ['District Manager', 'Area Manager', 'Branch Manager', 'Unit Manager', 'Agent'], is_required: true, sort_order: 4, page_number: 1 },
+        ],
+      }]
+    }
+    const pageNums = [...new Set(formFields.map(f => f.page_number))].sort((a, b) => a - b)
+    return pageNums.map(pn => {
+      const fields = formFields.filter(f => f.page_number === pn).sort((a, b) => a.sort_order - b.sort_order)
+      const sample = fields[0]
+      return {
+        page_number: pn,
+        page_title: sample?.page_title ?? `Page ${pn}`,
+        page_description: sample?.page_description ?? '',
+        page_condition: sample?.page_condition ?? null,
+        fields,
+      }
+    })
+  })()
+
+  // Evaluate whether a page should be shown based on current answers
+  const isPageVisible = (page: FormPage): boolean => {
+    if (!page.page_condition) return true
+    const { field_key, operator, value } = page.page_condition
+    const userVal = answers[field_key] ?? ''
+    return operator === 'eq' ? userVal === value : userVal !== value
+  }
+
+  // Only show pages whose conditions are met
+  const pages = allPages.filter(isPageVisible)
+
+  const totalPages = pages.length
+  const activePage = pages[currentPage]
+
+  // Evaluate if a field's condition is met given current answers
+  const isFieldVisible = (field: FormField): boolean => {
+    if (!field.condition) return true
+    const { field_key, operator, value } = field.condition
+    const userVal = answers[field_key] ?? ''
+    return operator === 'eq' ? userVal === value : userVal !== value
+  }
+
+  // Visible fields on current page (conditions evaluated)
+  const visibleFields = activePage?.fields.filter(isFieldVisible) ?? []
+
+  // Branch / team helpers for legacy dropdown fields
   const availableBranches = (() => {
     const eventBranchConfig = event?.event_branches
     if (!eventBranchConfig || eventBranchConfig.length === 0) return allBranches
     return allBranches
       .filter(b => eventBranchConfig.some(eb => eb.branch_name === b.name))
       .map(b => {
-        const eb = eventBranchConfig.find(eb => eb.branch_name === b.name)
-        if (!eb) return b
-        const allowedTeams = eb.team_names
-        return {
-          ...b,
-          teams: (b.teams ?? []).filter(t => allowedTeams.includes(t.name)),
-        }
+        const eb = eventBranchConfig.find(eb => eb.branch_name === b.name)!
+        return { ...b, teams: (b.teams ?? []).filter(t => eb.team_names.includes(t.name)) }
       })
   })()
 
-  const getTeamsForSelectedBranch = (branchName: string): string[] => {
-    const branch = availableBranches.find(b => b.name === branchName)
-    return branch?.teams?.map(t => t.name) ?? []
+  const setAnswer = (key: string, value: string) => {
+    setAnswers(prev => {
+      const next = { ...prev, [key]: value }
+      // Reset fields whose condition on this key is no longer met
+      formFields.forEach(f => {
+        if (f.condition?.field_key === key) {
+          const met = f.condition.operator === 'eq' ? value === f.condition.value : value !== f.condition.value
+          if (!met) delete next[f.field_key]
+        }
+      })
+      // Also clear answers for fields on pages whose page_condition is no longer met
+      allPages.forEach(page => {
+        if (!page.page_condition || page.page_condition.field_key !== key) return
+        const met = page.page_condition.operator === 'eq' ? value === page.page_condition.value : value !== page.page_condition.value
+        if (!met) page.fields.forEach(f => delete next[f.field_key])
+      })
+      if (key === 'branch_name') delete next['team_name']
+      return next
+    })
+    setPageErrors(prev => { const n = { ...prev }; delete n[key]; return n })
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target
-    if (name === 'agent_code') {
-      const digits = value.replace(/\D/g, '').slice(0, 8)
-      setForm(prev => ({ ...prev, agent_code: digits }))
-      if (digits.length > 0 && digits.length !== 8) {
-        setAgentCodeError('Agent code must be exactly 8 digits')
-      } else {
-        setAgentCodeError('')
-      }
-      return
+  // ── Page validation ──────────────────────────────────────────
+  const validateCurrentPage = (): boolean => {
+    const errs: Record<string, string> = {}
+    for (const field of visibleFields) {
+      if (!field.is_required) continue
+      const val = answers[field.field_key] ?? ''
+      if (!val.trim()) errs[field.field_key] = `${field.label} is required`
+      if (field.field_key === 'agent_code' && val && val.length !== 8)
+        errs[field.field_key] = 'Agent code must be exactly 8 digits'
     }
-    if (name === 'branch_name') {
-      setForm(prev => ({ ...prev, branch_name: value, team_name: '' }))
-      return
-    }
-    setForm(prev => ({ ...prev, [name]: value }))
+    setPageErrors(errs)
+    return Object.keys(errs).length === 0
   }
 
-  const [showConfirmModal, setShowConfirmModal] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (form.agent_code.length !== 8) {
-      setAgentCodeError('Agent code must be exactly 8 digits')
-      return
+  const handleNext = () => {
+    if (!validateCurrentPage()) return
+    if (currentPage < totalPages - 1) {
+      setCurrentPage(p => p + 1)
+      setError('')
+    } else {
+      // Last page — go to confirm step (review)
+      setStep('form') // already 'form', just handled by substate
+      setCurrentPage(totalPages) // sentinel: means "confirm screen"
     }
-    if (!form.agent_type) {
-      setError('Please select your agent type.')
-      return
-    }
-    // Show confirmation modal instead of submitting directly
-    setShowConfirmModal(true)
   }
 
-  const handleConfirmRegister = async () => {
-    setShowConfirmModal(false)
+  const handleBack = () => {
+    if (currentPage === totalPages) {
+      setCurrentPage(totalPages - 1)
+    } else if (currentPage > 0) {
+      setCurrentPage(p => p - 1)
+    } else {
+      setStep('landing')
+    }
+  }
+
+  const handleConfirmSubmit = async () => {
     setSubmitting(true)
     setError('')
     try {
-      const data = await registerParticipantApi(event!.event_id, form)
-      navigate('/confirmation', { state: { participant: data.participant, event } })
+      // Split answers into core fields vs custom_responses
+      const coreKeys = ['agent_code', 'full_name', 'branch_name', 'team_name', 'agent_type']
+      const custom_responses: Record<string, string> = {}
+      const core: Record<string, string> = {}
+      Object.entries(answers).forEach(([k, v]) => {
+        if (coreKeys.includes(k)) core[k] = v
+        else custom_responses[k] = v
+      })
+      const payload = { ...core, custom_responses }
+      const data = await registerParticipantApi(event!.event_id, payload)
+      setRegisteredParticipant(data.participant)
+      setStep('success')
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.')
+      setCurrentPage(totalPages - 1) // back to last form page on error
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // ── Field renderer ───────────────────────────────────────────
+  const renderField = (field: FormField) => {
+    const val = answers[field.field_key] ?? ''
+    const err = pageErrors[field.field_key]
+    const inputStyle: React.CSSProperties = {
+      height: 44, width: '100%', borderRadius: 12,
+      border: `1.5px solid ${err ? '#dc2626' : '#e5e7eb'}`,
+      background: '#f9fafb', padding: '0 14px', fontSize: 13,
+      outline: 'none', fontFamily: 'inherit', color: '#1f2937',
+      boxSizing: 'border-box',
+    }
+
+    if (field.field_key === 'branch_name') {
+      return (
+        <CustomSelect
+          value={val}
+          onChange={v => { setAnswer('branch_name', v); setAnswer('team_name', '') }}
+          placeholder="— Select branch —"
+          options={availableBranches.map(b => ({ label: b.name, value: b.name }))}
+        />
+      )
+    }
+    if (field.field_key === 'team_name') {
+      const branch = availableBranches.find(b => b.name === answers['branch_name'])
+      const teams = branch?.teams?.map(t => t.name) ?? []
+      return (
+        <CustomSelect
+          value={val}
+          onChange={v => setAnswer('team_name', v)}
+          placeholder={answers['branch_name'] ? '— Select team —' : '— Select branch first —'}
+          options={teams.map(t => ({ label: t, value: t }))}
+          disabled={!answers['branch_name']}
+        />
+      )
+    }
+
+    switch (field.field_type) {
+      case 'text':
+        return (
+          <input
+            className="pru-input"
+            value={val}
+            onChange={e => {
+              let v = e.target.value
+              if (field.field_key === 'agent_code') v = v.replace(/\D/g, '').slice(0, 8)
+              setAnswer(field.field_key, v)
+            }}
+            placeholder={`Enter ${field.label.toLowerCase()}...`}
+            inputMode={field.field_key === 'agent_code' ? 'numeric' : undefined}
+            style={inputStyle}
+          />
+        )
+      case 'date':
+        return <input type="date" value={val} onChange={e => setAnswer(field.field_key, e.target.value)} style={inputStyle} />
+      case 'checkbox':
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 4 }}>
+            <div
+              onClick={() => setAnswer(field.field_key, val === 'true' ? '' : 'true')}
+              style={{
+                width: 20, height: 20, borderRadius: 6, border: `2px solid ${val === 'true' ? '#DC143C' : '#d1d5db'}`,
+                background: val === 'true' ? '#DC143C' : 'white', cursor: 'pointer', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
+              }}
+            >
+              {val === 'true' && <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M2 5.5l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            </div>
+            <span style={{ fontSize: 13, color: '#374151' }}>{field.label}</span>
+          </div>
+        )
+      case 'dropdown':
+        return (
+          <CustomSelect
+            value={val}
+            onChange={v => setAnswer(field.field_key, v)}
+            placeholder={`— Select ${field.label.toLowerCase()} —`}
+            options={(field.options ?? []).map(o => ({ label: o, value: o }))}
+          />
+        )
+      case 'radio':
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(field.options ?? []).map(opt => (
+              <div
+                key={opt}
+                onClick={() => setAnswer(field.field_key, opt)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 14px', borderRadius: 12, cursor: 'pointer',
+                  border: `1.5px solid ${val === opt ? '#DC143C' : '#e5e7eb'}`,
+                  background: val === opt ? 'rgba(220,20,60,0.04)' : '#f9fafb',
+                  transition: 'all 0.15s',
+                }}
+              >
+                <div style={{
+                  width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                  border: `2px solid ${val === opt ? '#DC143C' : '#d1d5db'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {val === opt && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#DC143C' }} />}
+                </div>
+                <span style={{ fontSize: 13, color: '#1f2937', fontWeight: val === opt ? 600 : 400 }}>{opt}</span>
+              </div>
+            ))}
+          </div>
+        )
+      default:
+        return null
     }
   }
 
@@ -533,10 +750,9 @@ export default function RegistrationPage() {
     </div>
   )
 
-  // Confirmed non-null from here — recompute for render
+  // ── Confirmed non-null from here ─────────────────────────────
   const confirmedSlideshowUrls: string[] = Array.isArray((event as any).slideshow_urls) && (event as any).slideshow_urls.length > 0
-    ? (event as any).slideshow_urls
-    : []
+    ? (event as any).slideshow_urls : []
   const confirmedUseCustom = confirmedSlideshowUrls.length > 0
 
   const formattedDate = new Date(event.event_date).toLocaleDateString('en-PH', {
@@ -546,730 +762,692 @@ export default function RegistrationPage() {
     ? `${formatTime12h(event.start_time)} – ${formatTime12h(event.end_time)}`
     : event.start_time ? formatTime12h(event.start_time) : ''
 
-  return (
+  // ── STEP: SUCCESS ─────────────────────────────────────────────
+  if (step === 'success') return (
     <div style={s.page} className="pru-page">
       <Styles />
       <div style={s.card} className="pru-card">
-
-        {/* ── LEFT: FORM PANEL ── */}
-        <div style={s.formPanel} className="pru-form-panel">
-          {/* Logo */}
-          <div style={s.logo} className="pru-logo">
-            <div style={s.logoMark}>
-              <img
-                src={pruLogo}
-                alt="PRU LIFE UK"
-                style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0 }}
-              />
-            </div>
-            <div>
-              <div style={s.logoName}>A1<span style={{ color: '#DC143C' }}>PRIME</span> — Register<span style={{ color: '#DC143C' }}>.</span></div>
-              <div style={s.logoSub}>Fill in your agent details below to secure your slot.</div>
-            </div>
+        <div style={{ ...s.formPanel, justifyContent: 'center', alignItems: 'center', textAlign: 'center' }} className="pru-form-panel">
+          <div style={{
+            width: 64, height: 64, borderRadius: '50%', background: '#dcfce7',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px',
+          }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
           </div>
-
-          {/* ── Mobile-only banner slot — appears after logo, before event details ── */}
-          <div className="pru-mobile-banner">
-            <div
-              style={{ position: 'relative', width: '100%', aspectRatio: '3/4', background: '#111', borderRadius: 12, overflow: 'hidden', marginBottom: 20, cursor: 'zoom-in' }}
-              onClick={() => {
-                if (!mobileBannerTapped) {
-                  setLightboxOpen(true)
-                  setIsPaused(true)
-                }
-                setMobileBannerTapped(true)
-                if (mobileTapTimer.current) clearTimeout(mobileTapTimer.current)
-                mobileTapTimer.current = setTimeout(() => setMobileBannerTapped(false), 3000)
-              }}
-            >
-              {/* Slides */}
-              {confirmedUseCustom ? (
-                <>
-                  {confirmedSlideshowUrls.map((url, i) => (
-                    <div key={i} style={{
-                      position: 'absolute', inset: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      opacity: i === currentSlide ? 1 : 0,
-                      transition: 'opacity 0.9s ease',
-                      zIndex: i === currentSlide ? 1 : 0,
-                    }}>
-                      <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                    </div>
-                  ))}
-                </>
-              ) : (
-                <>
-                  {slides.map((sl, i) => (
-                    <div key={i} style={{
-                      position: 'absolute', inset: 0,
-                      backgroundImage: `url(${sl.image})`,
-                      backgroundSize: 'cover', backgroundPosition: 'center',
-                      opacity: i === currentSlide ? 1 : 0,
-                      transition: 'opacity 0.9s ease',
-                      zIndex: i === currentSlide ? 1 : 0,
-                    }} />
-                  ))}
-                </>
-              )}
-
-              {/* Prev button */}
-              {activeSlideCount > 1 && (
-                <button
-                  onClick={e => { e.stopPropagation(); goPrev() }}
-                  style={{
-                    position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-                    zIndex: 10, width: 36, height: 36, borderRadius: '50%',
-                    background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                    opacity: mobileBannerTapped ? 1 : 0,
-                    transition: 'opacity 0.2s ease',
-                    pointerEvents: mobileBannerTapped ? 'auto' : 'none',
-                  }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="15 18 9 12 15 6"/>
-                  </svg>
-                </button>
-              )}
-
-              {/* Next button */}
-              {activeSlideCount > 1 && (
-                <button
-                  onClick={e => { e.stopPropagation(); goNext() }}
-                  style={{
-                    position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                    zIndex: 10, width: 36, height: 36, borderRadius: '50%',
-                    background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                    opacity: mobileBannerTapped ? 1 : 0,
-                    transition: 'opacity 0.2s ease',
-                    pointerEvents: mobileBannerTapped ? 'auto' : 'none',
-                  }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 18 15 12 9 6"/>
-                  </svg>
-                </button>
-              )}
-
-              {/* Pause / Play */}
-              {activeSlideCount > 1 && (
-                <button
-                  onClick={e => { e.stopPropagation(); setIsPaused(p => !p) }}
-                  style={{
-                    position: 'absolute', bottom: 10, right: 10,
-                    zIndex: 10, width: 38, height: 38, borderRadius: 9,
-                    background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
-                    border: '1px solid rgba(255,255,255,0.18)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                    opacity: mobileBannerTapped ? 1 : 0,
-                    transition: 'opacity 0.2s ease',
-                    pointerEvents: mobileBannerTapped ? 'auto' : 'none',
-                  }}>
-                  {isPaused ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none">
-                      <polygon points="5 3 19 12 5 21 5 3"/>
-                    </svg>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="none">
-                      <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
-                    </svg>
-                  )}
-                </button>
-              )}
-
-              {/* Dots */}
-              {activeSlideCount > 1 && (
-                <div style={{
-                  position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
-                  display: 'flex', gap: 6, zIndex: 10,
-                }}>
-                  {Array.from({ length: activeSlideCount }).map((_, i) => (
-                    <div key={i} onClick={() => goToSlide(i)} style={{
-                      width: i === currentSlide ? 20 : 6, height: 6, borderRadius: 3,
-                      background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)',
-                      transition: 'width 0.3s ease, background 0.3s ease',
-                      cursor: 'pointer',
-                    }} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── Event Title as heading ── */}
-          <div style={{ marginBottom: 14 }} className="pru-event-title">
-            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#1f2937', lineHeight: 1.2, letterSpacing: '-0.03em' }}>
-              {event.title}
-            </div>
-          </div>
-
-          {/* ── Event Info Box (date, venue, description only) ── */}
-          <div style={s.eventInfoBox} className="pru-info-box">
-            {/* DATE */}
-            <div style={s.infoRow}>
-              <div style={s.infoRowLeft}>
-                <span style={{ ...s.infoIconBadge, background: '#f3f4f6' }}>
-                  <IconCalendar size={14} color="#6b7280" />
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
-                <div style={s.infoRowValue}>{formattedDate}</div>
-                {timeRange && (
-                  <div style={{ fontSize: 12.5, color: '#6b7280' }}>{timeRange}</div>
-                )}
-              </div>
-            </div>
-
-            {/* VENUE */}
-            <div style={s.infoRow}>
-              <div style={s.infoRowLeft}>
-                <span style={{ ...s.infoIconBadge, background: '#f3f4f6' }}>
-                  <IconMapPin size={14} color="#6b7280" />
-                </span>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
-                <div style={s.infoRowValue}>Venue</div>
-                <div style={{ fontSize: 12.5, color: '#6b7280', lineHeight: 1.5 }}>{event.venue || '—'}</div>
-              </div>
-            </div>
-
-            {/* DESCRIPTION — only if exists */}
-            {event.description && (
-              <div style={s.infoRow}>
-                <div style={s.infoRowLeft}>
-                  <span style={{ ...s.infoIconBadge, background: '#f3f4f6' }}>
-                    <IconInfo size={14} color="#6b7280" />
-                  </span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
-                  <div style={s.infoRowValue}>Details</div>
-                  <div style={{ fontSize: 12.5, color: '#6b7280', lineHeight: 1.6 }}>
-                    {event.description}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div style={s.errorBanner}>
-              <IconAlertTriangle size={15} color="#dc2626" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} style={s.form}>
-            <div style={s.formGrid}>
-              <div style={s.field}>
-                <label style={s.label}>AGENT CODE</label>
-                <input
-                  className="pru-input"
-                  name="agent_code"
-                  value={form.agent_code}
-                  onChange={handleChange}
-                  required
-                  placeholder="Enter your agent code here..."
-                  inputMode="numeric"
-                  maxLength={8}
-                />
-                {agentCodeError && (
-                  <span style={{ fontSize: 11, color: '#dc2626', marginTop: 3 }}>{agentCodeError}</span>
-                )}
-              </div>
-              <div style={s.field}>
-                <label style={s.label}>FULL NAME</label>
-                <input
-                  className="pru-input"
-                  name="full_name"
-                  value={form.full_name}
-                  onChange={handleChange}
-                  required
-                  placeholder="Enter your full name here..."
-                />
-              </div>
-              <div style={s.field}>
-                <label style={s.label}>BRANCH NAME</label>
-                <CustomSelect
-                  value={form.branch_name}
-                  onChange={val => setForm(prev => ({ ...prev, branch_name: val, team_name: '' }))}
-                  placeholder="— Select branch —"
-                  options={availableBranches.map(b => ({ label: b.name, value: b.name }))}
-                />
-              </div>
-              <div style={s.field}>
-                <label style={s.label}>TEAM NAME</label>
-                <CustomSelect
-                  value={form.team_name}
-                  onChange={val => setForm(prev => ({ ...prev, team_name: val }))}
-                  placeholder={form.branch_name ? '— Select team —' : '— Select branch first —'}
-                  disabled={!form.branch_name}
-                  options={getTeamsForSelectedBranch(form.branch_name).map(t => ({ label: t, value: t }))}
-                />
-              </div>
-              <div style={s.field}>
-                <label style={s.label}>AGENT TYPE</label>
-                <CustomSelect
-                  value={form.agent_type}
-                  onChange={val => setForm(prev => ({ ...prev, agent_type: val }))}
-                  placeholder="— Select agent type —"
-                  centered
-                  options={[
-                    { label: 'District Manager', value: 'District Manager' },
-                    { label: 'Area Manager', value: 'Area Manager' },
-                    { label: 'Branch Manager', value: 'Branch Manager' },
-                    { label: 'Unit Manager', value: 'Unit Manager' },
-                    { label: 'Agent', value: 'Agent' },
-                  ]}
-                />
-              </div>
-            </div>
-
-            <div style={s.notice}>
-              <span style={{ flexShrink: 0, marginTop: 1, display: 'flex' }}><IconInfo size={14} color="#92400e" /></span>
-              <span>Your <strong>Agent Code</strong> will be used for check-in at the venue.</span>
-            </div>
-
-            <button type="submit" disabled={submitting} className="pru-btn">
-              {submitting ? (
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <span className="btn-spinner" /> Registering...
-                </span>
-              ) : (
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  Complete Registration <IconArrowRight size={16} color="white" />
-                </span>
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* ── RIGHT: SLIDESHOW (custom images or default fallback) ── */}
-        <div
-          style={{ ...s.visualPanel, cursor: 'zoom-in' }}
-          className="pru-visual-panel"
-          onMouseEnter={() => setPanelHovered(true)}
-          onMouseLeave={() => setPanelHovered(false)}
-          onClick={() => { setLightboxOpen(true); setIsPaused(true) }}
-        >
-
-          {/* ── Prev / Next buttons (hover only) ── */}
-          {activeSlideCount > 1 && (
-            <>
-              <button
-                onClick={e => { e.stopPropagation(); goPrev() }}
-                style={{
-                  position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
-                  zIndex: 10, width: 40, height: 40, borderRadius: '50%',
-                  background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer',
-                  opacity: panelHovered ? 1 : 0,
-                  transition: 'opacity 0.2s ease',
-                  pointerEvents: panelHovered ? 'auto' : 'none',
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="15 18 9 12 15 6"/>
-                </svg>
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); goNext() }}
-                style={{
-                  position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
-                  zIndex: 10, width: 40, height: 40, borderRadius: '50%',
-                  background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer',
-                  opacity: panelHovered ? 1 : 0,
-                  transition: 'opacity 0.2s ease',
-                  pointerEvents: panelHovered ? 'auto' : 'none',
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
-
-              {/* Pause / Play button */}
-              <button
-                onClick={e => { e.stopPropagation(); setIsPaused(p => !p) }}
-                style={{
-                  position: 'absolute', bottom: 16, right: 16,
-                  zIndex: 10, width: 42, height: 42, borderRadius: 10,
-                  background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255,255,255,0.18)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer',
-                  opacity: panelHovered ? 1 : 0,
-                  transition: 'opacity 0.2s ease',
-                  pointerEvents: panelHovered ? 'auto' : 'none',
-                }}
-              >
-                {isPaused ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="none">
-                    <polygon points="5 3 19 12 5 21 5 3"/>
-                  </svg>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="none">
-                    <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
-                  </svg>
-                )}
-              </button>
-            </>
-          )}
-
-          {confirmedUseCustom ? (
-            /* ── CUSTOM SLIDESHOW MODE — portrait images, centered, contained ── */
-            <>
-              {confirmedSlideshowUrls.map((url, i) => (
-                <div
-                  key={i}
-                  style={{
-                    ...s.slide,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: '#111',
-                    opacity: i === currentSlide ? 1 : 0,
-                    zIndex: i === currentSlide ? 1 : 0,
-                  }}
-                >
-                  <img
-                    src={url}
-                    alt=""
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'contain',
-                      objectPosition: 'center',
-                      display: 'block',
-                    }}
-                  />
-                </div>
-              ))}
-
-              {/* Dots */}
-              {confirmedSlideshowUrls.length > 1 && (
-                <div style={s.dots}>
-                  {confirmedSlideshowUrls.map((_, i) => (
-                    <div
-                      key={i}
-                      onClick={() => goToSlide(i)}
-                      style={{
-                        ...s.dot,
-                        width: i === currentSlide ? 20 : 6,
-                        background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)',
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            /* ── DEFAULT SLIDESHOW MODE — hardcoded Pru Life slides ── */
-            <>
-              {slides.map((sl, i) => (
-                <div
-                  key={i}
-                  style={{
-                    ...s.slide,
-                    backgroundImage: `url(${sl.image})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    opacity: i === currentSlide ? 1 : 0,
-                    zIndex: i === currentSlide ? 1 : 0,
-                  }}
-                >
-                  <div style={s.slidePattern} />
-                  <div style={s.slideOverlay} />
-                  <div style={s.slideContent}>
-                    <div style={s.slideTag}>{sl.tag}</div>
-                    <div style={s.slideHeadline}>
-                      {sl.headline.split('\n').map((line, j) => <span key={j}>{line}<br /></span>)}
-                    </div>
-                    <div style={s.slideDesc}>{sl.desc}</div>
-                    <div style={s.pillsGrid}>
-                      {sl.pills.map((p, j) => (
-                        <div key={j} style={s.pill}>
-                          <div style={s.pillIcon}>{p.icon}</div>
-                          <div style={s.pillName}>{p.name}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Dots */}
-              <div style={s.dots}>
-                {slides.map((_, i) => (
-                  <div
-                    key={i}
-                    onClick={() => goToSlide(i)}
-                    style={{
-                      ...s.dot,
-                      width: i === currentSlide ? 20 : 6,
-                      background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)',
-                    }}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
-      </div>
-
-      {/* ── Confirmation Modal ─────────────────────────────── */}
-      {showConfirmModal && createPortal(
-        <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 99999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
-            padding: 20,
-          }}
-          onClick={() => setShowConfirmModal(false)}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: 'white', borderRadius: 16, width: '100%', maxWidth: 420,
-              boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Header */}
+          <h2 style={{ fontFamily: FONT, fontSize: '1.6rem', fontWeight: 800, color: '#111827', letterSpacing: '-0.03em', marginBottom: 8 }}>
+            You're registered!
+          </h2>
+          <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 6, lineHeight: 1.6 }}>
+            Your registration for <strong style={{ color: '#111827' }}>{event.title}</strong> is confirmed.
+          </p>
+          <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
+            Present your QR code at the event entrance. Check your details below.
+          </p>
+          {registeredParticipant && (
             <div style={{
-              padding: '22px 24px 18px',
-              borderBottom: '1px solid #f3f4f6',
-              display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+              marginTop: 24, background: '#f9fafb', border: '1px solid #e5e7eb',
+              borderRadius: 14, padding: '18px 20px', width: '100%', textAlign: 'left',
             }}>
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#DC143C', marginBottom: 4 }}>
-                  Confirm Registration
-                </div>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', letterSpacing: '-0.02em', lineHeight: 1.3 }}>
-                  Review your details
-                </h3>
-                <p style={{ fontSize: 12.5, color: '#6b7280', marginTop: 4, lineHeight: 1.5 }}>
-                  Please confirm the information below before submitting.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                style={{
-                  width: 30, height: 30, borderRadius: 8, border: '1px solid #e5e7eb',
-                  background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', flexShrink: 0,
-                }}
-              >
-                <IconX size={14} color="#6b7280" />
-              </button>
-            </div>
-
-            {/* Details rows */}
-            <div style={{ padding: '8px 24px 4px', display: 'flex', flexDirection: 'column' as const }}>
               {[
-                { label: 'Agent Code', value: form.agent_code },
-                { label: 'Full Name',  value: form.full_name },
-                { label: 'Branch',     value: form.branch_name },
-                { label: 'Team',       value: form.team_name },
-                { label: 'Agent Type', value: form.agent_type },
-              ].map((row, i, arr) => (
+                { label: 'Full name', value: registeredParticipant.full_name },
+                { label: 'Agent code', value: registeredParticipant.agent_code },
+                { label: 'Branch', value: registeredParticipant.branch_name },
+                { label: 'Team', value: registeredParticipant.team_name },
+                { label: 'Agent type', value: registeredParticipant.agent_type },
+              ].filter(r => r.value).map((row, i, arr) => (
                 <div key={row.label} style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '10px 0',
-                  borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none',
+                  padding: '8px 0', borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none',
                 }}>
                   <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500 }}>{row.label}</span>
                   <span style={{ fontSize: 13, color: '#111827', fontWeight: 600 }}>{row.value}</span>
                 </div>
               ))}
             </div>
+          )}
+        </div>
+        {/* Right panel — slideshow still visible */}
+        <RightSlideshowPanel
+          confirmedUseCustom={confirmedUseCustom}
+          confirmedSlideshowUrls={confirmedSlideshowUrls}
+          slides={slides}
+          currentSlide={currentSlide}
+          panelHovered={panelHovered}
+          isPaused={isPaused}
+          activeSlideCount={activeSlideCount}
+          setPanelHovered={setPanelHovered}
+          setLightboxOpen={setLightboxOpen}
+          setIsPaused={setIsPaused}
+          goPrev={goPrev}
+          goNext={goNext}
+          goToSlide={goToSlide}
+          event={event}
+          formattedDate={formattedDate}
+          timeRange={timeRange}
+          s={s}
+        />
+      </div>
+    </div>
+  )
 
-            {/* Event reference */}
-            <div style={{
-              margin: '12px 24px 16px',
-              background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10,
-              padding: '10px 14px',
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#DC143C', flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: 11, color: '#ef4444', fontWeight: 500 }}>Registering for</div>
-                <div style={{ fontSize: 13, color: '#111827', fontWeight: 700, lineHeight: 1.3 }}>{event?.title}</div>
-              </div>
+  // ── STEP: LANDING ─────────────────────────────────────────────
+  if (step === 'landing') return (
+    <div style={s.page} className="pru-page">
+      <Styles />
+      <div style={s.card} className="pru-card">
+        {/* Left panel — event info + register button */}
+        <div style={s.formPanel} className="pru-form-panel">
+          {/* Logo */}
+          <div style={s.logo} className="pru-logo">
+            <div style={s.logoMark}>
+              <img src={pruLogo} alt="PRU LIFE UK" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 0 }} />
             </div>
-
-            {/* Actions */}
-            <div style={{ padding: '0 24px 20px', display: 'flex', gap: 10 }}>
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                style={{
-                  flex: 1, height: 42, borderRadius: 10,
-                  border: '1.5px solid #e5e7eb', background: 'white',
-                  fontSize: 13, fontWeight: 600, color: '#374151',
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'white')}
-              >
-                Go Back
-              </button>
-              <button
-                onClick={handleConfirmRegister}
-                style={{
-                  flex: 2, height: 42, borderRadius: 10,
-                  border: 'none', background: '#DC143C',
-                  fontSize: 13, fontWeight: 700, color: 'white',
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  boxShadow: '0 4px 14px rgba(220,20,60,0.25)',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#b8102f')}
-                onMouseLeave={e => (e.currentTarget.style.background = '#DC143C')}
-              >
-                Confirm Registration <IconArrowRight size={14} color="white" />
-              </button>
+            <div>
+              <div style={s.logoName}>A1<span style={{ color: '#DC143C' }}>PRIME</span><span style={{ color: '#DC143C' }}>.</span></div>
+              <div style={s.logoSub}>Pru Life UK — A1 Prime Branch</div>
             </div>
           </div>
-        </div>,
-        document.body
-      )}
-      {/* ── Lightbox ─────────────────────────────────────── */}
-      {lightboxOpen && createPortal(
-        <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 999999,
-            background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(6px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-          onClick={() => { setLightboxOpen(false); setIsPaused(false) }}
-        >
-          {/* Close button */}
-          <button
-            onClick={() => { setLightboxOpen(false); setIsPaused(false) }}
-            style={{
-              position: 'absolute', top: 20, right: 20, zIndex: 10,
-              width: 44, height: 44, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', backdropFilter: 'blur(8px)',
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
 
-          {/* Slide counter */}
-          {activeSlideCount > 1 && (
-            <div style={{
-              position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)',
-              color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: 600,
-              letterSpacing: '0.05em',
-            }}>
-              {currentSlide + 1} / {activeSlideCount}
+          {/* Mobile-only slideshow banner */}
+          <div className="pru-mobile-banner">
+            <MobileSlideshowBanner
+              confirmedUseCustom={confirmedUseCustom}
+              confirmedSlideshowUrls={confirmedSlideshowUrls}
+              slides={slides}
+              currentSlide={currentSlide}
+              activeSlideCount={activeSlideCount}
+              mobileBannerTapped={mobileBannerTapped}
+              isPaused={isPaused}
+              mobileTapTimer={mobileTapTimer}
+              setMobileBannerTapped={setMobileBannerTapped}
+              setLightboxOpen={setLightboxOpen}
+              setIsPaused={setIsPaused}
+              goPrev={goPrev}
+              goNext={goNext}
+              goToSlide={goToSlide}
+            />
+          </div>
+
+          {/* Event title */}
+          <div style={{ marginBottom: 14 }} className="pru-event-title">
+            <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#1f2937', lineHeight: 1.2, letterSpacing: '-0.03em' }}>
+              {event.title}
             </div>
-          )}
+          </div>
 
-          {/* Image */}
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              position: 'relative',
-              maxWidth: '90vw', maxHeight: '90vh',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            {confirmedUseCustom ? (
-              <img
-                src={confirmedSlideshowUrls[currentSlide]}
-                alt=""
-                style={{
-                  maxWidth: '85vw', maxHeight: '85vh',
-                  objectFit: 'contain', borderRadius: 12,
-                  boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
-                  display: 'block',
-                }}
-              />
-            ) : (
-              <div style={{
-                width: '70vw', maxWidth: 800, height: '80vh',
-                backgroundImage: `url(${slides[currentSlide].image})`,
-                backgroundSize: 'cover', backgroundPosition: 'center',
-                borderRadius: 12,
-                boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
-              }} />
+          {/* Event info: date, venue, description */}
+          <div style={s.eventInfoBox} className="pru-info-box">
+            <div style={s.infoRow}>
+              <div style={s.infoRowLeft}>
+                <span style={{ ...s.infoIconBadge, background: '#f3f4f6' }}><IconCalendar size={14} color="#6b7280" /></span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                <div style={s.infoRowValue}>{formattedDate}</div>
+                {timeRange && <div style={{ fontSize: 12.5, color: '#6b7280' }}>{timeRange}</div>}
+              </div>
+            </div>
+            <div style={s.infoRow}>
+              <div style={s.infoRowLeft}>
+                <span style={{ ...s.infoIconBadge, background: '#f3f4f6' }}><IconMapPin size={14} color="#6b7280" /></span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                <div style={s.infoRowValue}>Venue</div>
+                <div style={{ fontSize: 12.5, color: '#6b7280', lineHeight: 1.5 }}>{event.venue || '—'}</div>
+              </div>
+            </div>
+            {event.description && (
+              <div style={s.infoRow}>
+                <div style={s.infoRowLeft}>
+                  <span style={{ ...s.infoIconBadge, background: '#f3f4f6' }}><IconInfo size={14} color="#6b7280" /></span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                  <div style={s.infoRowValue}>Details</div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280', lineHeight: 1.6 }}>{event.description}</div>
+                </div>
+              </div>
+            )}
+            {/* Slots remaining */}
+            {event.capacity && (
+              <div style={s.infoRow}>
+                <div style={s.infoRowLeft}>
+                  <span style={{ ...s.infoIconBadge, background: '#f3f4f6' }}><IconUsers size={14} color="#6b7280" /></span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                  <div style={s.infoRowValue}>Slots</div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280' }}>
+                    {(event as any).registered_count ?? 0} / {event.capacity} registered
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Prev / Next */}
-          {activeSlideCount > 1 && (
-            <>
-              <button
-                onClick={e => { e.stopPropagation(); goPrev() }}
-                style={{
-                  position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)',
-                  width: 48, height: 48, borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', backdropFilter: 'blur(8px)',
-                }}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="15 18 9 12 15 6"/>
-                </svg>
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); goNext() }}
-                style={{
-                  position: 'absolute', right: 20, top: '50%', transform: 'translateY(-50%)',
-                  width: 48, height: 48, borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', backdropFilter: 'blur(8px)',
-                }}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
+          {/* Register button */}
+          <button
+            onClick={() => { setStep('form'); setCurrentPage(0) }}
+            className="pru-btn"
+            style={{ marginTop: 8 }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              Register now <IconArrowRight size={16} color="white" />
+            </span>
+          </button>
+        </div>
 
-              {/* Dots */}
+        {/* Right panel — slideshow */}
+        <RightSlideshowPanel
+          confirmedUseCustom={confirmedUseCustom}
+          confirmedSlideshowUrls={confirmedSlideshowUrls}
+          slides={slides}
+          currentSlide={currentSlide}
+          panelHovered={panelHovered}
+          isPaused={isPaused}
+          activeSlideCount={activeSlideCount}
+          setPanelHovered={setPanelHovered}
+          setLightboxOpen={setLightboxOpen}
+          setIsPaused={setIsPaused}
+          goPrev={goPrev}
+          goNext={goNext}
+          goToSlide={goToSlide}
+          event={event}
+          formattedDate={formattedDate}
+          timeRange={timeRange}
+          s={s}
+        />
+      </div>
+      {/* Lightbox */}
+      <SlideshowLightbox
+        open={lightboxOpen}
+        onClose={() => { setLightboxOpen(false); setIsPaused(false) }}
+        confirmedUseCustom={confirmedUseCustom}
+        confirmedSlideshowUrls={confirmedSlideshowUrls}
+        slides={slides}
+        currentSlide={currentSlide}
+        activeSlideCount={activeSlideCount}
+        goPrev={goPrev}
+        goNext={goNext}
+      />
+    </div>
+  )
+
+  // ── STEP: FORM (multi-page questions + confirm screen) ────────
+  const isConfirmScreen = currentPage === totalPages
+
+  return (
+    <div style={s.page} className="pru-page">
+      <Styles />
+      <div style={s.card} className="pru-card">
+
+        {/* Left panel — form */}
+        <div style={s.formPanel} className="pru-form-panel">
+
+          {/* Progress indicator */}
+          <div style={{ marginBottom: 20 }}>
+            {/* Step dots */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 6 }}>
+              {Array.from({ length: totalPages + 1 }).map((_, i) => {
+                const isConfirm = i === totalPages
+                const done = i < currentPage || (isConfirmScreen && !isConfirm)
+                const active = i === currentPage
+                return (
+                  <React.Fragment key={i}>
+                    <div style={{
+                      width: 22, height: 22, borderRadius: '50%', flexShrink: 0, zIndex: 1,
+                      background: done ? '#DC143C' : active ? '#DC143C' : '#f3f4f6',
+                      border: `2px solid ${done || active ? '#DC143C' : '#e5e7eb'}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 9, fontWeight: 700,
+                      color: done || active ? 'white' : '#9ca3af',
+                      outline: active ? '3px solid rgba(220,20,60,0.15)' : 'none',
+                    }}>
+                      {done ? (
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      ) : isConfirm ? '✓' : i + 1}
+                    </div>
+                    {i < totalPages && (
+                      <div style={{ flex: 1, height: 1.5, background: i < currentPage ? '#DC143C' : '#e5e7eb', transition: 'background 0.3s' }} />
+                    )}
+                  </React.Fragment>
+                )
+              })}
+            </div>
+            {/* Page label */}
+            <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>
+              {isConfirmScreen ? 'Review & confirm' : `${activePage?.page_title ?? `Page ${currentPage + 1}`} · Step ${currentPage + 1} of ${totalPages}`}
+            </div>
+          </div>
+
+          {/* ── CONFIRM SCREEN ── */}
+          {isConfirmScreen ? (
+            <div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#111827', letterSpacing: '-0.02em', marginBottom: 4 }}>
+                Review your details
+              </div>
+              <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 18, lineHeight: 1.6 }}>
+                Please check everything before submitting.
+              </p>
+
+              <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
+                {Object.entries(answers).filter(([, v]) => v).map(([key, val], i, arr) => {
+                  // Find the field label
+                  const allFields = pages.flatMap(p => p.fields)
+                  const field = allFields.find(f => f.field_key === key)
+                  const label = field?.label ?? key.replace(/_/g, ' ')
+                  return (
+                    <div key={key} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                      padding: '10px 16px', borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none', gap: 12,
+                    }}>
+                      <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500, textTransform: 'capitalize' }}>{label}</span>
+                      <span style={{ fontSize: 13, color: '#111827', fontWeight: 600, textAlign: 'right' }}>
+                        {val === 'true' ? 'Yes' : val}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+
               <div style={{
-                position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-                display: 'flex', gap: 8,
+                background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10,
+                padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20,
               }}>
-                {Array.from({ length: activeSlideCount }).map((_, i) => (
-                  <div
-                    key={i}
-                    onClick={e => { e.stopPropagation(); goToSlide(i) }}
-                    style={{
-                      width: i === currentSlide ? 24 : 8, height: 8, borderRadius: 4,
-                      background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)',
-                      transition: 'width 0.3s ease, background 0.3s ease',
-                      cursor: 'pointer',
-                    }}
-                  />
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#DC143C', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: 11, color: '#ef4444', fontWeight: 500 }}>Registering for</div>
+                  <div style={{ fontSize: 13, color: '#111827', fontWeight: 700, lineHeight: 1.3 }}>{event.title}</div>
+                </div>
+              </div>
+
+              {error && (
+                <div style={s.errorBanner}>
+                  <IconAlertTriangle size={15} color="#dc2626" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={handleBack} style={{
+                  flex: 1, height: 44, borderRadius: 12, border: '1.5px solid #e5e7eb',
+                  background: 'white', fontSize: 13, fontWeight: 600, color: '#374151',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                  ← Back
+                </button>
+                <button
+                  onClick={handleConfirmSubmit}
+                  disabled={submitting}
+                  className="pru-btn"
+                  style={{ flex: 2, margin: 0 }}
+                >
+                  {submitting ? (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      <span className="btn-spinner" /> Submitting...
+                    </span>
+                  ) : (
+                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      Confirm registration <IconArrowRight size={15} color="white" />
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ── FORM PAGE ── */
+            <div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#111827', letterSpacing: '-0.02em', marginBottom: 4 }}>
+                {activePage?.page_title ?? `Page ${currentPage + 1}`}
+              </div>
+              <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 20, lineHeight: 1.6 }}>
+                {activePage?.page_description || 'Fill in the fields below to continue.'}
+              </p>
+
+              <div style={s.formGrid}>
+                {visibleFields.map(field => (
+                  <div key={field.field_key} style={s.field}>
+                    {/* Label — hidden for checkbox since it's inline */}
+                    {field.field_type !== 'checkbox' && (
+                      <label style={s.label}>
+                        {field.label.toUpperCase()}
+                        {!field.is_required && (
+                          <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6, textTransform: 'none', fontSize: 11, letterSpacing: 0 }}>
+                            (Optional)
+                          </span>
+                        )}
+                      </label>
+                    )}
+
+                    {/* Condition hint */}
+                    {field.condition && (
+                      <div style={{
+                        fontSize: 10, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a',
+                        borderRadius: 6, padding: '3px 8px', marginBottom: 6, display: 'inline-block',
+                      }}>
+                        Shown because: {field.condition.field_key.replace(/_/g, ' ')} = {field.condition.value}
+                      </div>
+                    )}
+
+                    {renderField(field)}
+
+                    {pageErrors[field.field_key] && (
+                      <span style={{ fontSize: 11, color: '#dc2626', marginTop: 3, display: 'block' }}>
+                        {pageErrors[field.field_key]}
+                      </span>
+                    )}
+                  </div>
                 ))}
               </div>
-            </>
+
+              {error && (
+                <div style={s.errorBanner}>
+                  <IconAlertTriangle size={15} color="#dc2626" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {/* Navigation */}
+              <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+                <button onClick={handleBack} style={{
+                  flex: 1, height: 44, borderRadius: 12, border: '1.5px solid #e5e7eb',
+                  background: 'white', fontSize: 13, fontWeight: 600, color: '#374151',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                  ← Back
+                </button>
+                <button onClick={handleNext} className="pru-btn" style={{ flex: 2, margin: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    {currentPage < totalPages - 1 ? 'Next' : 'Review'} <IconArrowRight size={15} color="white" />
+                  </span>
+                </button>
+              </div>
+            </div>
           )}
-        </div>,
-        document.body
-      )}
+        </div>
+
+        {/* Right panel — slideshow */}
+        <RightSlideshowPanel
+          confirmedUseCustom={confirmedUseCustom}
+          confirmedSlideshowUrls={confirmedSlideshowUrls}
+          slides={slides}
+          currentSlide={currentSlide}
+          panelHovered={panelHovered}
+          isPaused={isPaused}
+          activeSlideCount={activeSlideCount}
+          setPanelHovered={setPanelHovered}
+          setLightboxOpen={setLightboxOpen}
+          setIsPaused={setIsPaused}
+          goPrev={goPrev}
+          goNext={goNext}
+          goToSlide={goToSlide}
+          event={event}
+          formattedDate={formattedDate}
+          timeRange={timeRange}
+          s={s}
+        />
+      </div>
+
+      {/* Lightbox */}
+      <SlideshowLightbox
+        open={lightboxOpen}
+        onClose={() => { setLightboxOpen(false); setIsPaused(false) }}
+        confirmedUseCustom={confirmedUseCustom}
+        confirmedSlideshowUrls={confirmedSlideshowUrls}
+        slides={slides}
+        currentSlide={currentSlide}
+        activeSlideCount={activeSlideCount}
+        goPrev={goPrev}
+        goNext={goNext}
+      />
     </div>
   )
 }
+
+// ── Helper: Right slideshow panel ────────────────────────────
+interface SlideshowPanelProps {
+  confirmedUseCustom: boolean
+  confirmedSlideshowUrls: string[]
+  slides: typeof slides
+  currentSlide: number
+  panelHovered: boolean
+  isPaused: boolean
+  activeSlideCount: number
+  setPanelHovered: (v: boolean) => void
+  setLightboxOpen: (v: boolean) => void
+  setIsPaused: (fn: (p: boolean) => boolean) => void
+  goPrev: () => void
+  goNext: () => void
+  goToSlide: (i: number) => void
+  event: any
+  formattedDate: string
+  timeRange: string
+  s: any
+}
+
+const RightSlideshowPanel: React.FC<SlideshowPanelProps> = ({
+  confirmedUseCustom, confirmedSlideshowUrls, slides, currentSlide,
+  panelHovered, isPaused, activeSlideCount,
+  setPanelHovered, setLightboxOpen, setIsPaused,
+  goPrev, goNext, goToSlide, event: _event, formattedDate: _formattedDate, timeRange: _timeRange, s,
+}) => (
+  <div
+    style={{ ...s.visualPanel, cursor: 'zoom-in' }}
+    className="pru-visual-panel"
+    onMouseEnter={() => setPanelHovered(true)}
+    onMouseLeave={() => setPanelHovered(false)}
+    onClick={() => { setLightboxOpen(true); setIsPaused(p => !p || true) }}
+  >
+    {/* Prev/Next/Pause buttons */}
+    {activeSlideCount > 1 && (
+      <>
+        <button onClick={e => { e.stopPropagation(); goPrev() }} style={{
+          position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
+          zIndex: 10, width: 40, height: 40, borderRadius: '50%',
+          background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.15)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          opacity: panelHovered ? 1 : 0, transition: 'opacity 0.2s ease',
+          pointerEvents: panelHovered ? 'auto' : 'none',
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button onClick={e => { e.stopPropagation(); goNext() }} style={{
+          position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
+          zIndex: 10, width: 40, height: 40, borderRadius: '50%',
+          background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.15)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          opacity: panelHovered ? 1 : 0, transition: 'opacity 0.2s ease',
+          pointerEvents: panelHovered ? 'auto' : 'none',
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <button onClick={e => { e.stopPropagation(); setIsPaused(p => !p) }} style={{
+          position: 'absolute', bottom: 16, right: 16,
+          zIndex: 10, width: 42, height: 42, borderRadius: 10,
+          background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.18)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+          opacity: panelHovered ? 1 : 0, transition: 'opacity 0.2s ease',
+          pointerEvents: panelHovered ? 'auto' : 'none',
+        }}>
+          {isPaused
+            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            : <svg width="16" height="16" viewBox="0 0 24 24" fill="white" stroke="none"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          }
+        </button>
+      </>
+    )}
+
+    {/* Slides */}
+    {confirmedUseCustom ? (
+      <>
+        {confirmedSlideshowUrls.map((url, i) => (
+          <div key={i} style={{ ...s.slide, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111', opacity: i === currentSlide ? 1 : 0, zIndex: i === currentSlide ? 1 : 0 }}>
+            <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'center', display: 'block' }} />
+          </div>
+        ))}
+        {confirmedSlideshowUrls.length > 1 && (
+          <div style={s.dots}>
+            {confirmedSlideshowUrls.map((_, i) => (
+              <div key={i} onClick={e => { e.stopPropagation(); goToSlide(i) }} style={{ ...s.dot, width: i === currentSlide ? 20 : 6, background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)' }} />
+            ))}
+          </div>
+        )}
+      </>
+    ) : (
+      <>
+        {slides.map((sl, i) => (
+          <div key={i} style={{ ...s.slide, backgroundImage: `url(${sl.image})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: i === currentSlide ? 1 : 0, zIndex: i === currentSlide ? 1 : 0 }}>
+            <div style={s.slidePattern} />
+            <div style={s.slideOverlay} />
+            <div style={s.slideContent}>
+              <div style={s.slideTag}>{sl.tag}</div>
+              <div style={s.slideHeadline}>{sl.headline.split('\n').map((line, j) => <span key={j}>{line}<br /></span>)}</div>
+              <div style={s.slideDesc}>{sl.desc}</div>
+              <div style={s.pillsGrid}>
+                {sl.pills.map((p, j) => (
+                  <div key={j} style={s.pill}>
+                    <div style={s.pillIcon}>{p.icon}</div>
+                    <div style={s.pillName}>{p.name}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+        <div style={s.dots}>
+          {slides.map((_, i) => (
+            <div key={i} onClick={e => { e.stopPropagation(); goToSlide(i) }} style={{ ...s.dot, width: i === currentSlide ? 20 : 6, background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)' }} />
+          ))}
+        </div>
+        {/* PRU badge */}
+        <div style={s.topBadge}>
+          <div style={s.badgeIcon}>
+            <img src={pruLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
+          <div>
+            <div style={s.badgeName}>PRU Life UK</div>
+            <div style={s.badgeSub}>A1 Prime Branch</div>
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+)
+
+// ── Helper: Mobile slideshow banner ───────────────────────────
+interface MobileBannerProps {
+  confirmedUseCustom: boolean
+  confirmedSlideshowUrls: string[]
+  slides: typeof slides
+  currentSlide: number
+  activeSlideCount: number
+  mobileBannerTapped: boolean
+  isPaused: boolean
+  mobileTapTimer: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
+  setMobileBannerTapped: (v: boolean) => void
+  setLightboxOpen: (v: boolean) => void
+  setIsPaused: (v: boolean) => void
+  goPrev: () => void
+  goNext: () => void
+  goToSlide: (i: number) => void
+}
+
+const MobileSlideshowBanner: React.FC<MobileBannerProps> = ({
+  confirmedUseCustom, confirmedSlideshowUrls, slides, currentSlide,
+  activeSlideCount, mobileBannerTapped, isPaused: _isPaused, mobileTapTimer,
+  setMobileBannerTapped, setLightboxOpen, setIsPaused, goPrev, goNext, goToSlide,
+}) => (
+  <div
+    style={{ position: 'relative', width: '100%', aspectRatio: '3/4', background: '#111', borderRadius: 12, overflow: 'hidden', marginBottom: 20, cursor: 'zoom-in' }}
+    onClick={() => {
+      if (!mobileBannerTapped) { setLightboxOpen(true); setIsPaused(true) }
+      setMobileBannerTapped(true)
+      if (mobileTapTimer.current) clearTimeout(mobileTapTimer.current)
+      mobileTapTimer.current = setTimeout(() => setMobileBannerTapped(false), 3000)
+    }}
+  >
+    {confirmedUseCustom ? (
+      confirmedSlideshowUrls.map((url, i) => (
+        <div key={i} style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: i === currentSlide ? 1 : 0, transition: 'opacity 0.9s ease', zIndex: i === currentSlide ? 1 : 0 }}>
+          <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        </div>
+      ))
+    ) : (
+      slides.map((sl, i) => (
+        <div key={i} style={{ position: 'absolute', inset: 0, backgroundImage: `url(${sl.image})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: i === currentSlide ? 1 : 0, transition: 'opacity 0.9s ease', zIndex: i === currentSlide ? 1 : 0 }} />
+      ))
+    )}
+    {/* Controls */}
+    {activeSlideCount > 1 && (
+      <>
+        <button onClick={e => { e.stopPropagation(); goPrev() }} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 36, height: 36, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: mobileBannerTapped ? 1 : 0, transition: 'opacity 0.2s', pointerEvents: mobileBannerTapped ? 'auto' : 'none' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <button onClick={e => { e.stopPropagation(); goNext() }} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 10, width: 36, height: 36, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: mobileBannerTapped ? 1 : 0, transition: 'opacity 0.2s', pointerEvents: mobileBannerTapped ? 'auto' : 'none' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <div style={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, zIndex: 10 }}>
+          {Array.from({ length: activeSlideCount }).map((_, i) => (
+            <div key={i} onClick={() => goToSlide(i)} style={{ width: i === currentSlide ? 20 : 6, height: 6, borderRadius: 3, background: i === currentSlide ? 'white' : 'rgba(255,255,255,0.35)', transition: 'width 0.3s', cursor: 'pointer' }} />
+          ))}
+        </div>
+      </>
+    )}
+  </div>
+)
+
+// ── Helper: Lightbox ──────────────────────────────────────────
+interface LightboxProps {
+  open: boolean
+  onClose: () => void
+  confirmedUseCustom: boolean
+  confirmedSlideshowUrls: string[]
+  slides: typeof slides
+  currentSlide: number
+  activeSlideCount: number
+  goPrev: () => void
+  goNext: () => void
+}
+
+const SlideshowLightbox: React.FC<LightboxProps> = ({
+  open, onClose, confirmedUseCustom, confirmedSlideshowUrls,
+  slides, currentSlide, activeSlideCount, goPrev, goNext,
+}) => {
+  if (!open) return null
+  return createPortal(
+    <div style={{ position: 'fixed', inset: 0, zIndex: 999999, background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
+      <button onClick={onClose} style={{ position: 'absolute', top: 20, right: 20, zIndex: 10, width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', backdropFilter: 'blur(8px)' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      {activeSlideCount > 1 && (
+        <div style={{ position: 'absolute', top: 24, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: 600 }}>
+          {currentSlide + 1} / {activeSlideCount}
+        </div>
+      )}
+      <div onClick={e => e.stopPropagation()} style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {confirmedUseCustom ? (
+          <img src={confirmedSlideshowUrls[currentSlide]} alt="" style={{ maxWidth: '85vw', maxHeight: '85vh', objectFit: 'contain', borderRadius: 12, display: 'block' }} />
+        ) : (
+          <div style={{ width: '70vw', maxWidth: 800, height: '80vh', backgroundImage: `url(${slides[currentSlide]?.image})`, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: 12 }} />
+        )}
+        {activeSlideCount > 1 && (
+          <>
+            <button onClick={e => { e.stopPropagation(); goPrev() }} style={{ position: 'absolute', left: -56, top: '50%', transform: 'translateY(-50%)', width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button onClick={e => { e.stopPropagation(); goNext() }} style={{ position: 'absolute', right: -56, top: '50%', transform: 'translateY(-50%)', width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 
 // ── Styles component ──────────────────────────────────────────
 function Styles() {

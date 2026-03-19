@@ -128,6 +128,32 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
+    // ── event_form_fields ──────────────────────────────────────────
+    // Defines the custom fields shown on each event's registration form.
+    // field_type: 'text' | 'dropdown' | 'radio' | 'checkbox' | 'date'
+    // options: JSON array of strings for dropdown/radio choices e.g. ["Agent","BM"]
+    // conditions: JSON for conditional logic e.g. {"field_key":"agent_type","operator":"eq","value":"Agent"}
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS event_form_fields (
+        field_id    SERIAL          PRIMARY KEY,
+        event_id    INT             NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+        field_key   VARCHAR(100)    NOT NULL,
+        label       VARCHAR(255)    NOT NULL,
+        field_type  VARCHAR(50)     NOT NULL DEFAULT 'text',
+        options     JSONB,
+        is_required BOOLEAN         NOT NULL DEFAULT FALSE,
+        sort_order  INT             NOT NULL DEFAULT 0,
+        page_number INT             NOT NULL DEFAULT 1,
+        page_title  VARCHAR(255),
+        page_description TEXT,
+        page_condition   JSONB,
+        condition   JSONB,
+        created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+        UNIQUE (event_id, field_key)
+      );
+    `);
+
     // ── attendance_sessions ────────────────────────────────────────
     await pool.query(`
       CREATE TABLE IF NOT EXISTS attendance_sessions (
@@ -275,6 +301,25 @@ const migrate = async (): Promise<void> => {
     await pool.query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
+
+    // custom_responses stores answers to event_form_fields per participant
+    // e.g. {"shirt_size": "L", "meal_preference": "Chicken", "years_as_agent": "3"}
+    await pool.query(`
+      ALTER TABLE participants
+        ADD COLUMN IF NOT EXISTS custom_responses JSONB NOT NULL DEFAULT '{}';
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_event_form_fields_event_id
+        ON event_form_fields(event_id);
+    `);
+
+    // Safe column additions for event_form_fields (existing DBs that ran earlier migration)
+    await pool.query(`
+      ALTER TABLE event_form_fields
+        ADD COLUMN IF NOT EXISTS page_description TEXT,
+        ADD COLUMN IF NOT EXISTS page_condition   JSONB;
     `);
 
     // ── Indexes ────────────────────────────────────────────────────
@@ -440,6 +485,7 @@ const migrate = async (): Promise<void> => {
     console.log('     • teams');
     console.log('     • event_branches');
     console.log('     • account_audit_logs');
+    console.log('     • event_form_fields   ← NEW: custom registration form fields');
     console.log('');
     console.log('  💡 Next: npm run db:migrate   (re-run safe — all idempotent)');
     console.log('          npm run dev            (start the server)');
