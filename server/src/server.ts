@@ -10,9 +10,20 @@ import pool from './config/database.js'
 
 dotenv.config()
 
+// ── Validate required environment variables on startup ────────────────────────
+const REQUIRED_ENV_VARS = ['JWT_SECRET', 'DB_PASSWORD']
+const MISSING_ENV_VARS = REQUIRED_ENV_VARS.filter(v => !process.env[v])
+if (MISSING_ENV_VARS.length > 0) {
+  console.error(`❌ Missing required environment variables: ${MISSING_ENV_VARS.join(', ')}`)
+  console.error('   Please check your .env file and set all required variables.')
+  process.exit(1)
+}
+
+if (!process.env.RESEND_API_KEY) {
+  console.warn('⚠️  RESEND_API_KEY not set — forgot password emails will fail')
+}
+
 // ── Prevent server crash on unhandled DB connection errors ────────────────────
-// Without these, a single "Connection terminated unexpectedly" from pg under
-// high load will kill the entire Node.js process (as seen in stress test logs).
 process.on('unhandledRejection', (reason: any) => {
   console.error('⚠️  Unhandled Rejection (server stays alive):', reason?.message || reason)
 })
@@ -37,8 +48,7 @@ app.use(cors({
 // ── JSON body parser with size limit ──────────────────────────
 app.use(express.json({ limit: '10kb' }))
 
-// ── JSON parse error handler (must be 4-param error middleware) ──
-// Catches malformed JSON bodies BEFORE they reach route handlers (fixes test #22)
+// ── JSON parse error handler ──
 app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (err.type === 'entity.parse.failed') {
     res.status(400).json({ success: false, error: 'Invalid JSON body' })
