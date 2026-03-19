@@ -53,17 +53,21 @@ export const getAllUsersService = async () => {
   return result.rows
 }
 
-export const softDeleteUserService = async (user_id: string) => {
+export const hardDeleteUserService = async (user_id: string) => {
   if (!user_id?.trim()) throw new ValidationError('User ID is required')
+
+  // Invalidate cache first before deleting
+  await invalidateUserActiveCache(user_id)
+
+  // Remove related records that reference this user (FK cleanup)
+  await pool.query(`DELETE FROM event_permissions WHERE user_id = $1`, [user_id])
+  await pool.query(`DELETE FROM admin_grants WHERE granted_to_user_id = $1 OR granted_by_user_id = $1`, [user_id])
+
   const result = await pool.query(
-    `UPDATE users SET deleted_at = NOW(), updated_at = NOW()
-     WHERE user_id = $1 AND deleted_at IS NULL RETURNING user_id`,
+    `DELETE FROM users WHERE user_id = $1 RETURNING user_id`,
     [user_id]
   )
   if (!result.rows[0]) throw new NotFoundError('User not found')
-
-  // Invalidate cache so deleted user is blocked on next request
-  await invalidateUserActiveCache(user_id)
 
   return result.rows[0]
 }
