@@ -49,6 +49,16 @@ export const saveFormFieldsSchema = z.object({
       })),
     }).optional().nullable(),
     is_final: z.boolean().default(false),
+    section_key:        z.string().max(100).optional().nullable(),
+    section_label:      z.string().max(255).optional().nullable(),
+    section_conditions: z.object({
+      logic: z.enum(['AND', 'OR']),
+      rules: z.array(z.object({
+        field_key: z.string(),
+        operator:  z.enum(['eq', 'neq']),
+        value:     z.string(),
+      })),
+    }).optional().nullable(),
     condition: z.object({
       field_key: z.string(),
       operator:  z.enum(['eq', 'neq']),

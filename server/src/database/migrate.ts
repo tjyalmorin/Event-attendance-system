@@ -112,7 +112,7 @@ const migrate = async (): Promise<void> => {
         participant_id      SERIAL          PRIMARY KEY,
         event_id            INT             NOT NULL REFERENCES events(event_id),
         agent_code          VARCHAR(50),
-        full_name           VARCHAR(255)    NOT NULL,
+        full_name           VARCHAR(255),
         branch_name         VARCHAR(255),
         team_name           VARCHAR(255),
         qr_token            VARCHAR(500)    UNIQUE,
@@ -151,8 +151,7 @@ const migrate = async (): Promise<void> => {
         is_final         BOOLEAN NOT NULL DEFAULT FALSE,
         condition   JSONB,
         created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-        UNIQUE (event_id, field_key)
+        updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
       );
     `);
 
@@ -317,13 +316,27 @@ const migrate = async (): Promise<void> => {
         ON event_form_fields(event_id);
     `);
 
+    // Drop NOT NULL on participants.full_name — custom forms may not include it as a field
+    await pool.query(`
+      ALTER TABLE participants ALTER COLUMN full_name DROP NOT NULL;
+    `);
+
+    // Drop unique constraint on (event_id, field_key) — field key reuse across pages requires this
+    await pool.query(`
+      ALTER TABLE event_form_fields
+        DROP CONSTRAINT IF EXISTS event_form_fields_event_id_field_key_key;
+    `);
+
     // Safe column additions for event_form_fields (existing DBs that ran earlier migration)
     await pool.query(`
       ALTER TABLE event_form_fields
         ADD COLUMN IF NOT EXISTS page_description TEXT,
         ADD COLUMN IF NOT EXISTS page_condition   JSONB,
         ADD COLUMN IF NOT EXISTS page_conditions  JSONB,
-        ADD COLUMN IF NOT EXISTS is_final         BOOLEAN NOT NULL DEFAULT FALSE;
+        ADD COLUMN IF NOT EXISTS is_final         BOOLEAN NOT NULL DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS section_key      VARCHAR(100),
+        ADD COLUMN IF NOT EXISTS section_label    VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS section_conditions JSONB;
     `);
 
     // ── Indexes ────────────────────────────────────────────────────
