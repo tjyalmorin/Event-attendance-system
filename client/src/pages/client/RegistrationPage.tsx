@@ -363,7 +363,10 @@ interface FormField {
   page_description?: string | null
   page_condition?: { field_key: string; operator: 'eq' | 'neq'; value: string } | null  // legacy
   page_conditions?: { logic: 'AND' | 'OR'; rules: { field_key: string; operator: 'eq' | 'neq'; value: string }[] } | null
+  is_final?: boolean
   condition?: { field_key: string; operator: 'eq' | 'neq'; value: string } | null
+  section_key?: string | null
+  section_conditions?: { logic: 'AND' | 'OR'; rules: { field_key: string; operator: 'eq' | 'neq'; value: string }[] } | null
 }
 
 interface FormPage {
@@ -372,7 +375,9 @@ interface FormPage {
   page_description: string
   page_condition: { field_key: string; operator: 'eq' | 'neq'; value: string } | null  // legacy
   page_conditions: { logic: 'AND' | 'OR'; rules: { field_key: string; operator: 'eq' | 'neq'; value: string }[] } | null
-  is_final: boolean  // always shown last regardless of conditions
+  is_final: boolean
+  section_key: string | null
+  section_conditions: { logic: 'AND' | 'OR'; rules: { field_key: string; operator: 'eq' | 'neq'; value: string }[] } | null
   fields: FormField[]
 }
 
@@ -467,6 +472,8 @@ export default function RegistrationPage() {
         page_condition: null,
         page_conditions: null,
         is_final: false,
+        section_key: null,
+        section_conditions: null,
         fields: [
           { field_key: 'agent_code', label: 'Agent code', field_type: 'text', is_required: true, sort_order: 0, page_number: 1 },
           { field_key: 'full_name', label: 'Full name', field_type: 'text', is_required: true, sort_order: 1, page_number: 1 },
@@ -487,10 +494,12 @@ export default function RegistrationPage() {
         page_condition: sample?.page_condition ?? null,
         page_conditions: sample?.page_conditions ?? null,
         is_final: sample?.is_final ?? false,
+        section_key: sample?.section_key ?? null,
+        section_conditions: sample?.section_conditions ?? null,
         fields,
       }
     })
-    // Final pages always go last, preserving relative order among themselves
+    // Final pages always go last
     const regular = built.filter(p => !p.is_final)
     const finals  = built.filter(p => p.is_final)
     return [...regular, ...finals]
@@ -502,20 +511,23 @@ export default function RegistrationPage() {
     return rule.operator === 'eq' ? userVal === rule.value : userVal !== rule.value
   }
 
-  // Evaluate whether a page should be shown — supports new multi-conditions AND legacy single condition
+  // Evaluate whether a page should be shown
   const isPageVisible = (page: FormPage, ans: Record<string, string>): boolean => {
-    // Final pages are always visible — they're the shared last page(s)
+    // Final pages are always visible
     if (page.is_final) return true
-    // New format: multiple conditions with AND/OR logic
+    // Section-level condition — this is the primary mechanism now
+    if (page.section_key && page.section_conditions?.rules?.length) {
+      const { logic, rules } = page.section_conditions
+      const sectionVisible = logic === 'AND' ? rules.every(r => evalRule(r, ans)) : rules.some(r => evalRule(r, ans))
+      if (!sectionVisible) return false
+    }
+    // Legacy page-level conditions (kept for backwards compat)
     if (page.page_conditions && page.page_conditions.rules.length > 0) {
       const { logic, rules } = page.page_conditions
       if (logic === 'AND') return rules.every(r => evalRule(r, ans))
       return rules.some(r => evalRule(r, ans))
     }
-    // Legacy format: single condition
-    if (page.page_condition) {
-      return evalRule(page.page_condition, ans)
-    }
+    if (page.page_condition) return evalRule(page.page_condition, ans)
     return true
   }
 
@@ -557,17 +569,11 @@ export default function RegistrationPage() {
   const setAnswer = (key: string, value: string) => {
     setAnswers(prev => {
       const next = { ...prev, [key]: value }
-      // Reset fields whose condition on this key is no longer met
+      // Reset individual fields whose condition on this key is no longer met
       formFields.forEach(f => {
         if (f.condition?.field_key === key) {
           const met = f.condition.operator === 'eq' ? value === f.condition.value : value !== f.condition.value
           if (!met) delete next[f.field_key]
-        }
-      })
-      // Clear answers for fields on pages that become hidden
-      allPages.forEach(page => {
-        if (!isPageVisible(page, next)) {
-          page.fields.forEach(f => delete next[f.field_key])
         }
       })
       if (key === 'branch_name') delete next['team_name']
@@ -616,11 +622,20 @@ export default function RegistrationPage() {
     setSubmitting(true)
     setError('')
     try {
-      // Split answers into core fields vs custom_responses
+      // Only include answers from currently visible pages AND visible fields
+      const visibleFieldKeys = new Set(
+        pages.flatMap(p => p.fields.filter(isFieldVisible).map(f => f.field_key))
+      )
+      const filteredAnswers: Record<string, string> = {}
+      Object.entries(answers).forEach(([k, v]) => {
+        if (visibleFieldKeys.has(k)) filteredAnswers[k] = v
+      })
+
+      // Split into core fields vs custom_responses
       const coreKeys = ['agent_code', 'full_name', 'branch_name', 'team_name', 'agent_type']
       const custom_responses: Record<string, string> = {}
       const core: Record<string, string> = {}
-      Object.entries(answers).forEach(([k, v]) => {
+      Object.entries(filteredAnswers).forEach(([k, v]) => {
         if (coreKeys.includes(k)) core[k] = v
         else custom_responses[k] = v
       })
@@ -630,7 +645,7 @@ export default function RegistrationPage() {
       setStep('success')
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.')
-      setCurrentPageNum(pages[totalPages - 1]?.page_number ?? 0) // back to last form page on error
+      setCurrentPageNum(pages[totalPages - 1]?.page_number ?? 0)
     } finally {
       setSubmitting(false)
     }
@@ -1052,8 +1067,8 @@ export default function RegistrationPage() {
 
               <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
                 {Object.entries(answers).filter(([, v]) => v).map(([key, val], i, arr) => {
-                  // Find the field label
-                  const allFields = pages.flatMap(p => p.fields)
+                  // Find the field label — use allPages so conditional page fields are found
+                  const allFields = allPages.flatMap(p => p.fields)
                   const field = allFields.find(f => f.field_key === key)
                   const label = field?.label ?? key.replace(/_/g, ' ')
                   return (
@@ -1381,7 +1396,7 @@ const MobileSlideshowBanner: React.FC<MobileBannerProps> = ({
   setMobileBannerTapped, setLightboxOpen, setIsPaused, goPrev, goNext, goToSlide,
 }) => (
   <div
-    style={{ position: 'relative', width: '100%', aspectRatio: '3/4', background: '#111', borderRadius: 12, overflow: 'hidden', marginBottom: 20, cursor: 'zoom-in' }}
+    style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#111', borderRadius: 12, overflow: 'hidden', marginBottom: 16, cursor: 'zoom-in' }}
     onClick={() => {
       if (!mobileBannerTapped) { setLightboxOpen(true); setIsPaused(true) }
       setMobileBannerTapped(true)
@@ -1476,6 +1491,14 @@ function Styles() {
     <style>{`
       *, *::before, *::after { box-sizing: border-box; }
 
+      .pru-form-panel {
+        scrollbar-width: thin;
+        scrollbar-color: #e5e7eb transparent;
+      }
+      .pru-form-panel::-webkit-scrollbar { width: 4px; }
+      .pru-form-panel::-webkit-scrollbar-track { background: transparent; }
+      .pru-form-panel::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 4px; }
+      .pru-form-panel::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
       .pru-input {
         width: 100%;
         padding: 13px 14px;
@@ -1544,10 +1567,11 @@ function Styles() {
           grid-template-columns: 1fr !important;
           border-radius: 16px !important;
           min-height: unset !important;
-          overflow: hidden !important;
+          overflow: visible !important;
         }
         .pru-form-panel {
           border-radius: 16px !important;
+          min-height: unset !important;
         }
         .pru-page {
           padding: 16px !important;
@@ -1598,21 +1622,24 @@ const s: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
     width: '100%',
-    maxWidth: 1240,
-    minHeight: 580,
+    maxWidth: 1100,
+    minHeight: 'min(620px, 88vh)',
     borderRadius: 10,
     boxShadow: '0 28px 80px rgba(220,20,60,0.08), 0 8px 24px rgba(0,0,0,0.08)',
     background: '#fff',
+    overflow: 'hidden',
+    alignItems: 'stretch',
   },
 
   // ── Form Panel ─────────────────────────────────────────────
   formPanel: {
-    padding: '36px 44px 40px',
+    padding: '28px 36px 32px',
     display: 'flex',
     flexDirection: 'column',
     borderRadius: '10px 0 0 10px',
+    minHeight: 'min(620px, 88vh)',
   },
-  logo: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 },
+  logo: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 },
   logoMark: {
     width: 40, height: 40,
     background: '#fff',
@@ -1635,7 +1662,7 @@ const s: Record<string, React.CSSProperties> = {
     border: '1px solid #e5e7eb',
     borderRadius: 14,
     padding: '4px 0',
-    marginBottom: 20,
+    marginBottom: 14,
   },
   infoRow: {
     display: 'flex',
@@ -1725,6 +1752,7 @@ const s: Record<string, React.CSSProperties> = {
   visualPanel: {
     position: 'relative', overflow: 'hidden', background: '#DC143C',
     borderRadius: '0 10px 10px 0',
+    minHeight: 'min(620px, 88vh)',
   },
 
   // ── Poster mode ────────────────────────────────────────────
