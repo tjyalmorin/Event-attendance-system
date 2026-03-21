@@ -916,7 +916,7 @@ export default function ScannerPage() {
 
         {/* ── ERROR STATE ── */}
         {pageState === 'error' && (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 48px' }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0px 48px 80px' }}>
             <div style={{ background: card, border: `2px solid #DC143C`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(220,20,60,0.12)', width: '100%', maxWidth: 480 }}>
               <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)' }} />
               <div style={{ padding: '28px 32px 32px' }}>
