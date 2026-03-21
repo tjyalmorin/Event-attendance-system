@@ -20,15 +20,6 @@ export const lookupParticipantService = async (query: string, event_id: number, 
   const event = eventResult.rows[0]
   if (!event) throw new AppError('Event not found.', 404)
 
-  // ── Cutoff check in SQL using DB timezone ─────────────────────────────────
-  if (event.checkin_cutoff) {
-    const cutoffResult = await pool.query(
-      `SELECT (NOW()::time > $1::time) AS is_past`,
-      [event.checkin_cutoff]
-    )
-    if (cutoffResult.rows[0].is_past) throw new AppError('Check-in time has already passed.', 400)
-  }
-
   const isNumeric = /^\d+$/.test(query.trim())
 
   const participantResult = await pool.query(
@@ -122,14 +113,6 @@ export const resolveParticipantService = async (participant_id: number, event_id
   )
   const event = eventResult.rows[0]
   if (!event) throw new AppError('Event not found.', 404)
-
-  if (event.checkin_cutoff) {
-    const cutoffResult = await pool.query(
-      `SELECT (NOW()::time > $1::time) AS is_past`,
-      [event.checkin_cutoff]
-    )
-    if (cutoffResult.rows[0].is_past) throw new AppError('Check-in time has already passed.', 400)
-  }
 
   const pResult = await pool.query(
     `SELECT p.*, a.photo_url
@@ -229,18 +212,6 @@ export const scanAgentCodeService = async (
 
   const session = existingSession.rows[0] ?? null
   const isCheckedIn = session?.check_in_time && !session?.check_out_time
-
-  // ── Only enforce cutoff for check-in, not check-out ───────────────────────
-  if (!isCheckedIn && event.checkin_cutoff) {
-    const cutoffResult = await pool.query(
-      `SELECT (NOW()::time > $1::time) AS is_past`,
-      [event.checkin_cutoff]
-    )
-    if (cutoffResult.rows[0].is_past) {
-      await logScan('denied', 'Check-in time has passed')
-      throw new AppError('Check-in time has already passed.', 400)
-    }
-  }
 
   const participantPayload = {
     full_name:   participant.full_name,
