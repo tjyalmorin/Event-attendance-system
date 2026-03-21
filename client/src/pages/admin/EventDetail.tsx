@@ -794,7 +794,7 @@ export default function EventDetail() {
                   <EditIcon /> Edit
                 </button>
               )}
-              <button onClick={() => navigate(`/admin/events/${eventId}/scanner`)}
+              <button onClick={() => window.open(`${isAdmin ? '/admin' : '/staff'}/events/${eventId}/scanner`, '_blank')}
                 className="flex-1 flex items-center justify-center gap-2 bg-[#DC143C] text-white py-2 rounded-xl font-semibold text-sm hover:bg-[#b01030] transition-all">
                 <ScannerIcon /> Check-in
               </button>
@@ -827,7 +827,7 @@ export default function EventDetail() {
                 Edit Event
               </button>
             )}
-            <button onClick={() => navigate(`/admin/events/${eventId}/scanner`)}
+            <button onClick={() => window.open(`${isAdmin ? '/admin' : '/staff'}/events/${eventId}/scanner`, '_blank')}
               className="flex items-center gap-2 bg-[#DC143C] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#b01030] transition-all shadow-[0_4px_16px_rgba(220,20,60,0.22)]">
               <ScannerIcon />
               Check-in Station

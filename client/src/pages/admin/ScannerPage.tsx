@@ -400,13 +400,6 @@ export default function ScannerPage() {
         {/* ── HEADER ── */}
         <header className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a] shadow-sm flex-shrink-0">
           <div className="px-12 h-[76px] flex items-center gap-4">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors mr-2"
-            >
-              <ArrowLeftIcon />
-              <span className="font-medium">Back</span>
-            </button>
             <div className="flex items-baseline gap-3">
               <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
                 {event?.title ?? ''}
@@ -461,7 +454,7 @@ export default function ScannerPage() {
 
         {/* ── MAIN CONTENT ── */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px 60px', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, width: '100%', maxWidth: (pageState === 'verify' || pageState === 'result' ? 820 : 520) + 60 + (pageState === 'verify' ? 194 : 0), transition: 'max-width 0.2s' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, width: '100%', maxWidth: (pageState === 'verify' || pageState === 'result' ? 820 : 520) + 60, transition: 'max-width 0.2s' }}>
             {/* ── Back button on the left — only shown in verify/pick/result/error states ── */}
             {pageState !== 'input' && (
               <div style={{ flexShrink: 0, alignSelf: 'stretch', display: 'flex' }}>
@@ -634,47 +627,35 @@ export default function ScannerPage() {
             )}
 
             {/* ── VERIFY STATE ── */}
-            {pageState === 'verify' && lookup && (
-              <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-              <div style={{ flex: 1, minWidth: 0, background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 40px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)', border: `1px solid ${border}` }}>
-                {lookup.participant.label ? (() => {
-                  const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
-                  return (
-                    <div style={{ height: 6, background: `linear-gradient(90deg, ${lc.border}, ${lc.text}, ${lc.border}, ${lc.text}, ${lc.border})`, backgroundSize: '300% 100%', animation: 'barShine 2s linear infinite' }} />
-                  )
-                })() : (
-                  <div style={{ height: 5, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)' }} />
-                )}
-                <div style={{ padding: '36px 36px 32px', display: 'flex', gap: 36, alignItems: 'flex-start' }}>
+            {pageState === 'verify' && lookup && (() => {
+              const hasLabel = !!lookup.participant.label
+              const lc = hasLabel ? getLabelStyle(String(lookup.participant.label), isDarkMode) : null
+              return (
 
-                  {/* LEFT: photo + status pill */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, flexShrink: 0 }}>
-                    <div style={{ position: 'relative' }}>
-                      <div style={{ width: 300, height: 300, borderRadius: 20, background: isDarkMode ? '#2a2a2a' : '#f2f2f2', border: `2px solid ${border}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {verifyPhotoUrl && !photoError ? (
-                          <img src={verifyPhotoUrl} alt={lookup.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setPhotoError(true)} />
-                        ) : (
-                          <svg viewBox="0 0 80 80" fill="none" style={{ width: 80, height: 80 }}>
-                            <circle cx="40" cy="30" r="18" fill={isDarkMode ? '#444' : '#d0d0d0'} />
-                            <path d="M8 72c0-17.673 14.327-32 32-32s32 14.327 32 32" fill={isDarkMode ? '#444' : '#d0d0d0'} />
-                          </svg>
-                        )}
-                      </div>
-                      <div style={{ position: 'absolute', inset: -5, borderRadius: 24, border: '2px solid rgba(220,20,60,0.2)', pointerEvents: 'none' }} />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 100, fontSize: 13, fontWeight: 600, background: lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.07)' : 'rgba(37,99,235,0.07)', color: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', border: `1.5px solid ${lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.2)' : 'rgba(37,99,235,0.2)'}`, width: 300, justifyContent: 'center' }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', animation: 'pulse 1.8s infinite' }} />
-                      {lookup.next_action === 'check_in' ? 'Not Yet Checked In' : lookup.next_action === 'check_out' ? 'Currently Inside' : 'Blocked'}
-                    </div>
+              <div style={{ background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 40px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)', border: `1px solid ${border}` }}>
+                <div style={{ height: 5, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)' }} />
 
+                {/* ── ROW 1: photo + agent details side by side ── */}
+                <div style={{ padding: '32px 36px 28px', display: 'flex', gap: 36, alignItems: 'flex-start' }}>
+                  {/* Photo */}
+                  <div style={{ flexShrink: 0, position: 'relative' }}>
+                    <div style={{ width: 260, height: 260, borderRadius: 20, background: isDarkMode ? '#2a2a2a' : '#f2f2f2', border: `2px solid ${border}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {verifyPhotoUrl && !photoError ? (
+                        <img src={verifyPhotoUrl} alt={lookup.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setPhotoError(true)} />
+                      ) : (
+                        <svg viewBox="0 0 80 80" fill="none" style={{ width: 80, height: 80 }}>
+                          <circle cx="40" cy="30" r="18" fill={isDarkMode ? '#444' : '#d0d0d0'} />
+                          <path d="M8 72c0-17.673 14.327-32 32-32s32 14.327 32 32" fill={isDarkMode ? '#444' : '#d0d0d0'} />
+                        </svg>
+                      )}
+                    </div>
+                    <div style={{ position: 'absolute', inset: -5, borderRadius: 24, border: '2px solid rgba(220,20,60,0.2)', pointerEvents: 'none' }} />
                   </div>
 
-                  {/* RIGHT: name + info rows + actions */}
+                  {/* Agent details */}
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-
-                    {/* ── Name row ── */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
-                      <div style={{ fontSize: 36, fontWeight: 700, color: textPrimary, letterSpacing: '-1px', lineHeight: 1.1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
+                      <div style={{ fontSize: 34, fontWeight: 700, color: textPrimary, letterSpacing: '-1px', lineHeight: 1.1 }}>
                         {lookup.participant.full_name}
                       </div>
                       {lookup.participant.agent_type && (
@@ -683,110 +664,102 @@ export default function ScannerPage() {
                         </div>
                       )}
                     </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                      <div style={{ fontSize: 13, color: '#DC143C', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Agent Profile</div>
-                    </div>
-
-                    <div style={{ border: `1px solid ${border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 28 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#DC143C', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 8 }}>Agent Profile</div>
+                    <div style={{ border: `1px solid ${border}`, borderRadius: 14, overflow: 'hidden' }}>
                       {[
-                        { label: 'Agent Code', value: lookup.participant.agent_code, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16, color: '#DC143C' }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15h10M7 11h4"/></svg> },
-                        { label: 'Branch', value: lookup.participant.branch_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16, color: '#DC143C' }}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-                        { label: 'Team', value: lookup.participant.team_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16, color: '#DC143C' }}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> },
+                        { label: 'Agent Code', value: lookup.participant.agent_code, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15, color: '#DC143C' }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15h10M7 11h4"/></svg> },
+                        { label: 'Branch', value: lookup.participant.branch_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15, color: '#DC143C' }}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
+                        { label: 'Team', value: lookup.participant.team_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15, color: '#DC143C' }}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> },
                       ].map(({ label, value, icon }, i, arr) => (
-                        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none' }}>
-                          <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: 'rgba(220,20,60,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</div>
+                        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '11px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none' }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: 'rgba(220,20,60,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</div>
                           <div>
-                            <div style={{ fontSize: 10, fontWeight: 600, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>{label}</div>
-                            <div style={{ fontSize: 15, fontWeight: 500, color: textPrimary }}>{value}</div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 1 }}>{label}</div>
+                            <div style={{ fontSize: 14, fontWeight: 500, color: textPrimary }}>{value}</div>
                           </div>
                         </div>
                       ))}
                     </div>
-
-                    {lookup.next_action === 'check_out' && (
-                      <div style={{ marginBottom: 20, padding: '14px 16px', background: isEarlyOut ? (isDarkMode ? '#2a1f00' : '#fffbeb') : (isDarkMode ? '#141414' : '#f9fafb'), border: `1px solid ${isEarlyOut ? '#f59e0b' : border}`, borderRadius: 12, transition: 'all 0.2s' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
-                          <div onClick={() => { setIsEarlyOut(v => !v); if (isEarlyOut) setEarlyOutReason('') }} style={{ width: 40, height: 22, borderRadius: 11, background: isEarlyOut ? '#f59e0b' : (isDarkMode ? '#3a3a3a' : '#d1d5db'), position: 'relative', transition: 'background 0.2s', flexShrink: 0, cursor: 'pointer' }}>
-                            <div style={{ position: 'absolute', top: 3, left: isEarlyOut ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: isEarlyOut ? '#d97706' : textPrimary }}>Mark as Early Out</div>
-                            <div style={{ fontSize: 11, color: textSecondary, marginTop: 1 }}>Participant is leaving before the event ends</div>
-                          </div>
-                        </label>
-                        {isEarlyOut && (
-                          <input type="text" value={earlyOutReason} onChange={e => setEarlyOutReason(e.target.value)} placeholder="Reason (optional)..."
-                            style={{ marginTop: 10, width: '100%', padding: '9px 12px', fontSize: 13, background: isDarkMode ? '#1c1c1c' : '#fff', border: `1px solid #f59e0b`, borderRadius: 8, color: textPrimary, outline: 'none', boxSizing: 'border-box' }} />
-                        )}
-                      </div>
-                    )}
-
-                    <div style={{ display: 'flex', gap: 14, marginTop: 'auto' }}>
-                      <button onClick={handleConfirm} disabled={loading || lookup.next_action === 'blocked'}
-                        style={{ flex: 1, height: 56, borderRadius: 14, border: 'none', background: loading || lookup.next_action === 'blocked' ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || lookup.next_action === 'blocked' ? textSecondary : '#fff', fontSize: 16, fontWeight: 600, cursor: loading || lookup.next_action === 'blocked' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: loading || lookup.next_action === 'blocked' ? 'none' : '0 4px 20px rgba(220,20,60,0.3)', transition: 'all 0.18s', letterSpacing: '-0.2px' }}>
-                        {loading ? <><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Processing...</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}><polyline points="20 6 9 17 4 12"/></svg>{lookup.next_action === 'check_in' ? 'Check-In' : 'Check-Out'}</>}
-                      </button>
-                      <button onClick={handleDeny} disabled={loading}
-                        style={{ flex: 1, height: 56, borderRadius: 14, background: isDarkMode ? '#1c1c1c' : '#fff', color: isDarkMode ? '#9ca3af' : '#666', border: `1.5px solid ${border}`, fontSize: 16, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'all 0.18s', letterSpacing: '-0.2px' }}
-                        onMouseEnter={e => { if (!loading) { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#2a2a2a' : '#f2f2f2'; (e.currentTarget as HTMLElement).style.color = textPrimary } }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1c1c1c' : '#fff'; (e.currentTarget as HTMLElement).style.color = isDarkMode ? '#9ca3af' : '#666' }}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        Deny
-                      </button>
-                    </div>
                   </div>
                 </div>
-                <style>{`@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } } @keyframes spin { to { transform: rotate(360deg) } } @keyframes labelPulse { 0% { box-shadow: 0 0 0 0 currentColor; transform: scale(1); } 40% { box-shadow: 0 0 0 7px transparent; transform: scale(1.06); } 70% { box-shadow: 0 0 0 10px transparent; transform: scale(1); } 100% { box-shadow: 0 0 0 0 transparent; transform: scale(1); } } @keyframes barShine { 0% { background-position: 0% 0%; } 100% { background-position: 300% 0%; } }`}</style>
-              </div>
 
-              {/* ── LABEL PANEL (right side, only when label exists) ── */}
-              {lookup.participant.label && (() => {
-                const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
-                return (
-                  <div style={{
-                    width: 180, flexShrink: 0,
-                    background: card, border: `1px solid ${border}`,
-                    borderRadius: 24, overflow: 'hidden',
-                    boxShadow: '0 4px 40px rgba(0,0,0,0.08)',
-                    display: 'flex', flexDirection: 'column',
-                  }}>
-                    {/* Colored top bar matching label */}
-                    <div style={{ height: 6, background: `linear-gradient(90deg, ${lc.border}, ${lc.text}, ${lc.border}, ${lc.text}, ${lc.border})`, backgroundSize: '300% 100%', animation: 'barShine 2s linear infinite', flexShrink: 0 }} />
-                    <div style={{ padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
-                      {/* Label badge */}
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                        fontSize: 12, fontWeight: 800,
-                        padding: '5px 12px', borderRadius: 999,
-                        background: lc.bg, color: lc.text,
-                        border: `2px solid ${lc.border}`,
-                        whiteSpace: 'nowrap', alignSelf: 'flex-start',
-                        animation: 'labelPulse 1.6s ease-in-out 4',
-                        boxShadow: `0 0 0 0 ${lc.border}`,
-                      }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: lc.text, flexShrink: 0, opacity: 0.8 }} />
-                        {lookup.participant.label}
-                      </span>
+                {/* ── DIVIDER ── */}
+                <div style={{ height: 1, background: border }} />
 
-                      {/* Divider */}
-                      <div style={{ height: 1, background: border }} />
+                {/* ── ROW 2: Status — full bleed ── */}
+                <div style={{ padding: '16px 36px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: lookup.next_action === 'check_in' ? (isDarkMode ? 'rgba(220,20,60,0.06)' : 'rgba(220,20,60,0.04)') : (isDarkMode ? 'rgba(37,99,235,0.06)' : 'rgba(37,99,235,0.04)') }}>
+                  <span style={{ width: 9, height: 9, borderRadius: '50%', flexShrink: 0, background: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', animation: 'pulse 1.8s infinite' }} />
+                  <span style={{ fontSize: 14, fontWeight: 700, color: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', letterSpacing: '-0.2px' }}>
+                    {lookup.next_action === 'check_in' ? 'Not Yet Checked In' : lookup.next_action === 'check_out' ? 'Currently Inside' : 'Blocked'}
+                  </span>
+                </div>
 
-                      {/* Description */}
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: 10, fontWeight: 700, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', margin: 0, marginBottom: 6 }}>Note</p>
+                {/* ── DIVIDER ── */}
+                <div style={{ height: 1, background: border }} />
+
+                {/* ── ROW 3: Label — full bleed (only if has label) ── */}
+                {hasLabel && lc && (
+                  <>
+                    <div style={{ padding: '20px 36px', background: lc.bg, display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+                      <div style={{ width: 5, alignSelf: 'stretch', minHeight: 40, borderRadius: 99, background: lc.text, flexShrink: 0, opacity: 0.7 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 12px', borderRadius: 99, background: lc.text, fontSize: 10, fontWeight: 800, color: 'white', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 8 }}>
+                          {lookup.participant.label}
+                        </span>
                         {lookup.participant.label_description ? (
-                          <p style={{ fontSize: 13, color: textPrimary, margin: 0, lineHeight: 1.6 }}>{lookup.participant.label_description}</p>
+                          <div style={{ fontSize: 15, fontWeight: 500, color: lc.text, lineHeight: 1.55 }}>
+                            {lookup.participant.label_description}
+                          </div>
                         ) : (
-                          <p style={{ fontSize: 12, color: textSecondary, fontStyle: 'italic', margin: 0 }}>No note added.</p>
+                          <div style={{ fontSize: 13, color: lc.text, opacity: 0.45, fontStyle: 'italic' }}>No note added.</div>
                         )}
                       </div>
                     </div>
+                    {/* ── DIVIDER ── */}
+                    <div style={{ height: 1, background: border }} />
+                  </>
+                )}
+
+                {/* ── Early out toggle (check_out only, inside button row area) ── */}
+                {lookup.next_action === 'check_out' && (
+                  <div style={{ padding: '16px 36px 0', transition: 'all 0.2s' }}>
+                    <div style={{ padding: '14px 16px', background: isEarlyOut ? (isDarkMode ? '#2a1f00' : '#fffbeb') : (isDarkMode ? '#141414' : '#f9fafb'), border: `1px solid ${isEarlyOut ? '#f59e0b' : border}`, borderRadius: 12, transition: 'all 0.2s' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                        <div onClick={() => { setIsEarlyOut(v => !v); if (isEarlyOut) setEarlyOutReason('') }} style={{ width: 40, height: 22, borderRadius: 11, background: isEarlyOut ? '#f59e0b' : (isDarkMode ? '#3a3a3a' : '#d1d5db'), position: 'relative', transition: 'background 0.2s', flexShrink: 0, cursor: 'pointer' }}>
+                          <div style={{ position: 'absolute', top: 3, left: isEarlyOut ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: isEarlyOut ? '#d97706' : textPrimary }}>Mark as Early Out</div>
+                          <div style={{ fontSize: 11, color: textSecondary, marginTop: 1 }}>Participant is leaving before the event ends</div>
+                        </div>
+                      </label>
+                      {isEarlyOut && (
+                        <input type="text" value={earlyOutReason} onChange={e => setEarlyOutReason(e.target.value)} placeholder="Reason (optional)..."
+                          style={{ marginTop: 10, width: '100%', padding: '9px 12px', fontSize: 13, background: isDarkMode ? '#1c1c1c' : '#fff', border: `1px solid #f59e0b`, borderRadius: 8, color: textPrimary, outline: 'none', boxSizing: 'border-box' }} />
+                      )}
+                    </div>
                   </div>
-                )
-              })()}
+                )}
+
+                {/* ── ROW 4: Buttons — full bleed ── */}
+                <div style={{ padding: '16px 36px 32px', display: 'flex', gap: 14 }}>
+                  <button onClick={handleConfirm} disabled={loading || lookup.next_action === 'blocked'}
+                    style={{ flex: 1, height: 56, borderRadius: 14, border: 'none', background: loading || lookup.next_action === 'blocked' ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || lookup.next_action === 'blocked' ? textSecondary : '#fff', fontSize: 16, fontWeight: 600, cursor: loading || lookup.next_action === 'blocked' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: loading || lookup.next_action === 'blocked' ? 'none' : '0 4px 20px rgba(220,20,60,0.3)', transition: 'all 0.18s' }}>
+                    {loading ? <><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Processing...</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}><polyline points="20 6 9 17 4 12"/></svg>{lookup.next_action === 'check_in' ? 'Check-In' : 'Check-Out'}</>}
+                  </button>
+                  <button onClick={handleDeny} disabled={loading}
+                    style={{ flex: 1, height: 56, borderRadius: 14, background: isDarkMode ? '#1c1c1c' : '#fff', color: isDarkMode ? '#9ca3af' : '#666', border: `1.5px solid ${border}`, fontSize: 16, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'all 0.18s' }}
+                    onMouseEnter={e => { if (!loading) { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#2a2a2a' : '#f2f2f2'; (e.currentTarget as HTMLElement).style.color = textPrimary } }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1c1c1c' : '#fff'; (e.currentTarget as HTMLElement).style.color = isDarkMode ? '#9ca3af' : '#666' }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    Deny
+                  </button>
+                </div>
+
+                <style>{`@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } } @keyframes spin { to { transform: rotate(360deg) } }`}</style>
               </div>
-            )}
+              )
+            })()}
 
             {/* ── RESULT STATE ── */}
             {pageState === 'result' && result && (() => {
