@@ -10,6 +10,7 @@ import {
   getArchivedEventsService, restoreArchivedEventService,
   copyEventService
 } from './events.service.js'
+import pool from '../../config/database.js'
 
 const parseField = (val: any) => {
   if (!val) return []
@@ -90,8 +91,6 @@ export const getEventById = asyncHandler(async (req: Request, res: Response) => 
   res.json(event)
 })
 
-// ── Public: fetch event by registration_link token ─────────────────────────
-// No auth required. Used by RegistrationPage (/register/:token).
 export const getEventByToken = asyncHandler(async (req: Request, res: Response) => {
   const event = await getEventByTokenService(req.params.token)
   res.json(event)
@@ -108,17 +107,10 @@ export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
     ? req.body.remove_slideshow_urls
     : []
 
-  // ── staff_ids: only include in payload when explicitly sent by the client ──
-  // When omitted (e.g. modal still initializing), undefined tells the service
-  // to skip the staff update entirely and preserve existing assignments.
   const staffIdsPayload = req.body.staff_ids !== undefined
     ? { staff_ids: parseField(req.body.staff_ids) }
     : {}
 
-  // ── preset_url: distinguish three cases ───────────────────────────────────
-  // ''  (empty string) → admin explicitly cleared it → pass null to service
-  // URL string         → admin set or preserved it   → pass URL to service
-  // undefined          → field absent from FormData   → omit so service keeps existing
   const presetPayload = req.body.preset_url !== undefined
     ? { preset_url: req.body.preset_url === '' ? null : req.body.preset_url }
     : {}
@@ -168,10 +160,19 @@ export const restoreEvent = asyncHandler(async (req: Request, res: Response) => 
 })
 
 export const permanentDeleteEvent = asyncHandler(async (req: Request, res: Response) => {
-  const event = await getEventByIdService(Number(req.params.event_id))
-  const slideshowUrls: string[] = Array.isArray(event.slideshow_urls) ? event.slideshow_urls : []
+  const eventId = Number(req.params.event_id)
 
-  await permanentDeleteEventService(Number(req.params.event_id))
+  // ── Fetch slideshow_urls directly — cannot use getEventByIdService here
+  // because it filters WHERE deleted_at IS NULL, but trashed events have deleted_at set.
+  const result = await pool.query(
+    `SELECT slideshow_urls FROM events WHERE event_id = $1`,
+    [eventId]
+  )
+  const slideshowUrls: string[] = Array.isArray(result.rows[0]?.slideshow_urls)
+    ? result.rows[0].slideshow_urls
+    : []
+
+  await permanentDeleteEventService(eventId)
 
   if (slideshowUrls.length > 0) {
     await deleteCloudinaryUrls(slideshowUrls)
