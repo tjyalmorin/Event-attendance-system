@@ -34,26 +34,11 @@ interface LookupResult {
 }
 
 // ── Label Colors ─────────────────────────────────────────
-const LABEL_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  'Awardee': { bg: '#fef3c7', text: '#b45309', border: '#fcd34d' },
-  'VIP':     { bg: '#f3e8ff', text: '#7c3aed', border: '#d8b4fe' },
-  'Sponsor': { bg: '#dbeafe', text: '#1d4ed8', border: '#93c5fd' },
-  'Speaker': { bg: '#ccfbf1', text: '#0f766e', border: '#5eead4' },
-  'Staff':   { bg: '#f3f4f6', text: '#4b5563', border: '#d1d5db' },
-}
-const getLabelStyle = (label: string, isDarkMode: boolean) => {
-  const c = LABEL_COLORS[label] ?? { bg: '#fee2e2', text: '#b91c1c', border: '#fca5a5' }
+const getLabelStyle = (_label: string, isDarkMode: boolean) => {
   if (isDarkMode) {
-    const darkMap: Record<string, { bg: string; text: string; border: string }> = {
-      'Awardee': { bg: 'rgba(180,83,9,0.2)',   text: '#fcd34d', border: 'rgba(252,211,77,0.35)' },
-      'VIP':     { bg: 'rgba(124,58,237,0.2)',  text: '#c4b5fd', border: 'rgba(196,181,253,0.35)' },
-      'Sponsor': { bg: 'rgba(29,78,216,0.2)',   text: '#93c5fd', border: 'rgba(147,197,253,0.35)' },
-      'Speaker': { bg: 'rgba(15,118,110,0.2)',  text: '#5eead4', border: 'rgba(94,234,212,0.35)' },
-      'Staff':   { bg: 'rgba(75,85,99,0.25)',   text: '#d1d5db', border: 'rgba(209,213,219,0.3)' },
-    }
-    return darkMap[label] ?? { bg: 'rgba(185,28,28,0.2)', text: '#fca5a5', border: 'rgba(252,165,165,0.35)' }
+    return { bg: 'rgba(220,20,60,0.12)', text: '#f87171', border: 'rgba(220,20,60,0.3)' }
   }
-  return c
+  return { bg: '#fee2e2', text: '#DC143C', border: '#fca5a5' }
 }
 
 // ── Audio Helpers ────────────────────────────────────────
@@ -741,55 +726,41 @@ export default function ScannerPage() {
               }}>
 
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px 24px 0', overflowY: 'auto', minHeight: 0 }}>
-                  {/* Full name */}
+                  {/* Full name + status pill inline */}
                   <div style={{ marginBottom: 4 }}>
-                    <div style={{ fontSize: 26, fontWeight: 800, color: textPrimary, letterSpacing: '-0.5px', lineHeight: 1.2 }}>
-                      {lookup.participant.full_name}
-                    </div>
-                    {lookup.participant.agent_type && (
-                      <div style={{
-                        display: 'inline-block', marginTop: 6,
-                        padding: '2px 8px', borderRadius: 6,
-                        background: isDarkMode ? '#1a1a1a' : '#f3f4f6',
-                        border: `1px solid ${border}`,
-                        fontSize: 10, fontWeight: 700, color: textSecondary,
-                        letterSpacing: '0.5px', textTransform: 'uppercase' as const,
-                      }}>
-                        {lookup.participant.agent_type}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 26, fontWeight: 800, color: textPrimary, letterSpacing: '-0.5px', lineHeight: 1.2 }}>
+                        {lookup.participant.full_name}
                       </div>
-                    )}
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '5px 11px', borderRadius: 99,
+                        background: lookup.next_action === 'check_in'
+                          ? (isDarkMode ? 'rgba(220,20,60,0.12)' : 'rgba(220,20,60,0.08)')
+                          : lookup.next_action === 'check_out'
+                            ? (isDarkMode ? 'rgba(37,99,235,0.12)' : 'rgba(37,99,235,0.08)')
+                            : (isDarkMode ? 'rgba(107,114,128,0.15)' : 'rgba(107,114,128,0.08)'),
+                        border: `1px solid ${lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.25)' : lookup.next_action === 'check_out' ? 'rgba(37,99,235,0.25)' : 'rgba(107,114,128,0.2)'}`,
+                        fontSize: 11, fontWeight: 700,
+                        color: lookup.next_action === 'check_in' ? '#DC143C' : lookup.next_action === 'check_out' ? '#2563eb' : textSecondary,
+                        flexShrink: 0,
+                      }}>
+                        <span style={{
+                          width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                          background: lookup.next_action === 'check_in' ? '#DC143C' : lookup.next_action === 'check_out' ? '#2563eb' : textSecondary,
+                          animation: lookup.next_action !== 'blocked' ? 'pulse 1.8s infinite' : 'none',
+                        }} />
+                        {lookup.next_action === 'check_in' ? 'Not Yet Checked In' : lookup.next_action === 'check_out' ? 'Currently Inside' : 'Blocked'}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Divider */}
                   <div style={{ height: 1, background: border, margin: '14px 0' }} />
-
-                  {/* Status pill */}
-                  <div style={{ marginBottom: 14 }}>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      padding: '6px 12px', borderRadius: 99,
-                      background: lookup.next_action === 'check_in'
-                        ? (isDarkMode ? 'rgba(220,20,60,0.12)' : 'rgba(220,20,60,0.08)')
-                        : lookup.next_action === 'check_out'
-                          ? (isDarkMode ? 'rgba(37,99,235,0.12)' : 'rgba(37,99,235,0.08)')
-                          : (isDarkMode ? 'rgba(107,114,128,0.15)' : 'rgba(107,114,128,0.08)'),
-                      border: `1px solid ${lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.25)' : lookup.next_action === 'check_out' ? 'rgba(37,99,235,0.25)' : 'rgba(107,114,128,0.2)'}`,
-                      fontSize: 12, fontWeight: 700,
-                      color: lookup.next_action === 'check_in' ? '#DC143C' : lookup.next_action === 'check_out' ? '#2563eb' : textSecondary,
-                    }}>
-                      <span style={{
-                        width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-                        background: lookup.next_action === 'check_in' ? '#DC143C' : lookup.next_action === 'check_out' ? '#2563eb' : textSecondary,
-                        animation: lookup.next_action !== 'blocked' ? 'pulse 1.8s infinite' : 'none',
-                      }} />
-                      {lookup.next_action === 'check_in' ? 'Not Yet Checked In' : lookup.next_action === 'check_out' ? 'Currently Inside' : 'Blocked'}
-                    </span>
-                  </div>
-
-                  {/* Agent details */}
                   <div style={{ fontSize: 10, fontWeight: 700, color: textSecondary, letterSpacing: '0.8px', textTransform: 'uppercase' as const, marginBottom: 8 }}>Agent Profile</div>
                   <div style={{ border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
                     {[
+                      ...(lookup.participant.agent_type ? [{ label: 'Agent Type', value: lookup.participant.agent_type, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, color: '#DC143C' }}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> }] : []),
                       { label: 'Agent Code', value: lookup.participant.agent_code, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, color: '#DC143C' }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15h10M7 11h4"/></svg> },
                       { label: 'Branch', value: lookup.participant.branch_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, color: '#DC143C' }}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
                       { label: 'Team', value: lookup.participant.team_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, color: '#DC143C' }}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> },
