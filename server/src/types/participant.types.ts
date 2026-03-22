@@ -27,7 +27,7 @@ export interface RegisterPayload {
 
 // ── Custom Form Builder Types ──────────────────────────────────────────────
 
-export type FormFieldType = 'text' | 'textarea' | 'radio' | 'dropdown' | 'checkbox'
+export type FormFieldType = 'text' | 'textarea' | 'radio' | 'dropdown' | 'checkbox' | 'date'
 
 export interface ConditionRule {
   field_key: string   // plain field_key (no page prefix)

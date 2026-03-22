@@ -954,6 +954,16 @@ export default function RegistrationPage() {
                       />
                     )}
 
+                    {field.type === 'date' && (
+                      <input
+                        type="date"
+                        className="pru-input"
+                        value={customAnswers[field.field_key] ?? ''}
+                        onChange={e => handleCustomAnswer(field.field_key, e.target.value)}
+                        required={field.is_required}
+                      />
+                    )}
+
                     {field.type === 'textarea' && (
                       <textarea
                         className="pru-input"

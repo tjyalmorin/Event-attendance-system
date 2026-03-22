@@ -30,18 +30,27 @@ const pageConditionsSchema = z.object({
 })
 
 const formFieldSchema = z.object({
-  field_key:        z.string().min(1).max(100),
-  label:            z.string().min(1).max(255),
-  type:             z.enum(['text', 'textarea', 'radio', 'dropdown', 'checkbox']),
-  options:          z.array(z.string()).default([]),
-  page_number:      z.number().int().min(1),
-  page_label:       z.string().max(255).nullable().optional(),
-  page_conditions:  pageConditionsSchema.nullable().optional(),
-  condition:        conditionRuleSchema.nullable().optional(),
-  is_required:      z.boolean().default(false),
-  is_final:         z.boolean().default(false),
-  sort_order:       z.number().int().min(0).default(0),
-})
+  field_key:          z.string().min(1).max(100),
+  label:              z.string().min(1).max(255),
+  // Accept both "type" (new) and "field_type" (old UI) — coerce field_type → type
+  type:               z.enum(['text', 'textarea', 'radio', 'dropdown', 'checkbox', 'date']).optional(),
+  field_type:         z.enum(['text', 'textarea', 'radio', 'dropdown', 'checkbox', 'date']).optional(),
+  options:            z.array(z.string()).default([]),
+  page_number:        z.number().int().min(1),
+  page_label:         z.string().max(255).nullable().optional(),
+  page_title:         z.string().max(255).nullable().optional(),
+  page_description:   z.string().nullable().optional(),
+  page_conditions:    pageConditionsSchema.nullable().optional(),
+  condition:          conditionRuleSchema.nullable().optional(),
+  is_required:        z.boolean().default(false),
+  is_final:           z.boolean().default(false),
+  sort_order:         z.number().int().min(0).default(0),
+}).transform(data => ({
+  ...data,
+  // Normalize: use type if set, else fall back to field_type
+  type: (data.type ?? data.field_type ?? 'text') as 'text' | 'textarea' | 'radio' | 'dropdown' | 'checkbox',
+  page_label: data.page_label ?? data.page_title ?? null,
+}))
 
 export const saveFormFieldsSchema = z.object({
   fields: z.array(formFieldSchema),

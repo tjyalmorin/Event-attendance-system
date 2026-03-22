@@ -159,7 +159,7 @@ export interface GrantAdminPayload {
 }
 // ── Custom Form Builder Types ──────────────────────────────────────────────
 
-export type FormFieldType = 'text' | 'textarea' | 'radio' | 'dropdown' | 'checkbox'
+export type FormFieldType = 'text' | 'textarea' | 'radio' | 'dropdown' | 'checkbox' | 'date'
 
 export interface ConditionRule {
   field_key: string
