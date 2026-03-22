@@ -3,28 +3,6 @@ import { createPortal } from 'react-dom'
 import { Event, Participant, AttendanceSession, ScanLog } from '../../types'
 
 // ─────────────────────────────────────────────────────────────
-// Late helper — computed purely on the frontend, no DB changes
-// Logic:
-//   threshold = checkin_cutoff if set, else start_time
-//   isLate = check_in_time > threshold (on the same event date)
-// ─────────────────────────────────────────────────────────────
-const isLateCheckIn = (
-  checkInTime: string | null,
-  eventDate: string,
-  startTime: string | null,
-  checkinCutoff: string | null
-): boolean => {
-  if (!checkInTime || !eventDate) return false
-  const threshold = checkinCutoff || startTime
-  if (!threshold) return false
-  // Build a full datetime from the event date + threshold time (HH:MM or HH:MM:SS)
-  const datePart = eventDate.slice(0, 10) // YYYY-MM-DD
-  const thresholdDate = new Date(`${datePart}T${threshold}`)
-  const checkIn = new Date(checkInTime)
-  return checkIn > thresholdDate
-}
-
-// ─────────────────────────────────────────────────────────────
 // Re-exported types (for consumers of this file)
 // ─────────────────────────────────────────────────────────────
 export type TabType = 'registrants' | 'attendance' | 'scanlogs' | 'reports' | 'staff' | 'trash'
@@ -824,7 +802,6 @@ function StatusFilterDropdown({ value, onChange, ended, open, setOpen }: {
     { value: 'checked_in',  label: 'Checked In' },
     { value: 'checked_out', label: 'Checked Out' },
     { value: 'flagged',     label: 'Early Out' },
-    { value: 'late',        label: 'Late' },
     { value: 'no_show',     label: ended ? 'No-Show' : 'Waiting' },
   ]
   const label = options.find(o => o.value === value)?.label ?? 'All Status'
@@ -904,7 +881,7 @@ function StatusFilterDropdown({ value, onChange, ended, open, setOpen }: {
 // Main exported component
 // ─────────────────────────────────────────────────────────────
 export default function EventDetailTabs({
-  event,
+  event: _event,
   participants,
   cancelledParticipants,
   sessions: _sessions,
@@ -969,7 +946,7 @@ export default function EventDetailTabs({
   // ── Local tab + search/sort/filter state ──
   const [activeTab, setActiveTab] = useState<TabType>('registrants')
 
-  const [filterStatus, setFilterStatus] = useState<'all' | 'checked_in' | 'checked_out' | 'flagged' | 'late' | 'no_show'>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'checked_in' | 'checked_out' | 'flagged' | 'no_show'>('all')
 
   const [registrantsSearch, setRegistrantsSearch] = useState('')
   const [registrantsSort, setRegistrantsSort] = useState<'name' | 'date'>('date')
@@ -1055,10 +1032,9 @@ export default function EventDetailTabs({
         s.branch_name?.toLowerCase().includes(attendanceSearch.toLowerCase())
       const matchFilter =
         filterStatus === 'all'         ? true :
-        filterStatus === 'checked_in'  ? (s.check_in_time && !s.check_out_time && s.check_out_method !== 'early_out') :
+        filterStatus === 'checked_in'  ? (s.check_in_time && !s.check_out_time) :
         filterStatus === 'checked_out' ? !!s.check_out_time :
         filterStatus === 'flagged'     ? s.check_out_method === 'early_out' :
-        filterStatus === 'late'        ? (!s._isPending && !!s.check_in_time && isLateCheckIn(s.check_in_time, event.event_date, event.start_time, event.checkin_cutoff ?? null)) :
         filterStatus === 'no_show'     ? s._isPending : true
       const matchBranch = attendanceBranchFilter === 'all' || s.branch_name === attendanceBranchFilter
       const matchAgentType = attendanceAgentTypeFilter === 'all' || (() => {
@@ -1388,42 +1364,20 @@ export default function EventDetailTabs({
                               ) : (
                                 <span className="inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">Waiting</span>
                               )
-                            ) : (() => {
-                              const late = isLateCheckIn(s.check_in_time, event.event_date, event.start_time, event.checkin_cutoff ?? null)
-                              const earlyOut = s.check_out_method === 'early_out'
-                              if (late) {
-                                const lateLabel = earlyOut ? 'Early Out (Late)' : s.check_out_time ? 'Checked Out (Late)' : 'Checked In (Late)'
-                                return (
-                                  earlyOut ? (
-                                    <button onClick={() => onEarlyOutOpen(s as any)}
-                                      className="inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 hover:opacity-80 transition-opacity">
-                                      {lateLabel}
-                                    </button>
-                                  ) : (
-                                    <span className="inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
-                                      {lateLabel}
-                                    </span>
-                                  )
-                                )
-                              }
-                              if (earlyOut) {
-                                return (
-                                  <button onClick={() => onEarlyOutOpen(s as any)}
-                                    className="inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 hover:opacity-80 transition-opacity">
-                                    Early Out
-                                  </button>
-                                )
-                              }
-                              return (
-                                <span className={`inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full ${
-                                  s.check_out_time
-                                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                                    : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                                }`}>
-                                  {s.check_out_time ? 'Checked Out' : 'Checked In'}
-                                </span>
-                              )
-                            })()}
+                            ) : s.check_out_method === 'early_out' ? (
+                              <button onClick={() => onEarlyOutOpen(s as any)}
+                                className="inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 hover:opacity-80 transition-opacity">
+                                Early Out
+                              </button>
+                            ) : (
+                              <span className={`inline-flex items-center whitespace-nowrap text-[11px] font-semibold px-2 h-5 rounded-full ${
+                                s.check_out_time
+                                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                                  : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                              }`}>
+                                {s.check_out_time ? 'Checked Out' : 'Checked In'}
+                              </span>
+                            )}
                           </td>
                           {isAdmin && (
                             <td className="pl-5 pr-3 py-2.5">

@@ -4,7 +4,7 @@ import pool from '../../config/database.js'
 import {
   createUserService,
   getAllUsersService,
-  permanentDeleteUserService,
+  softDeleteUserService,
   updateProfileService,
   changePasswordService,
   adminResetPasswordService,
@@ -23,7 +23,7 @@ export const getAllUsers = asyncHandler(async (_req: Request, res: Response) => 
 })
 
 export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
-  await permanentDeleteUserService(req.params.user_id)
+  await softDeleteUserService(req.params.user_id)
   res.json({ message: 'User deleted successfully' })
 })
 

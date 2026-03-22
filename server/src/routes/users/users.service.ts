@@ -53,24 +53,19 @@ export const getAllUsersService = async () => {
   return result.rows
 }
 
-export const permanentDeleteUserService = async (user_id: string) => {
+export const softDeleteUserService = async (user_id: string) => {
   if (!user_id?.trim()) throw new ValidationError('User ID is required')
-
-  // Check the user exists (soft-deleted or not)
-  const check = await pool.query(
-    'SELECT user_id FROM users WHERE user_id = $1',
+  const result = await pool.query(
+    `UPDATE users SET deleted_at = NOW(), updated_at = NOW()
+     WHERE user_id = $1 AND deleted_at IS NULL RETURNING user_id`,
     [user_id]
   )
-  if (!check.rows[0]) throw new NotFoundError('User not found')
+  if (!result.rows[0]) throw new NotFoundError('User not found')
 
-  // Remove from event_permissions and admin_grants first to avoid FK violations
-  await pool.query('DELETE FROM event_permissions WHERE user_id = $1', [user_id])
-  await pool.query('DELETE FROM admin_grants WHERE granted_to_user_id = $1 OR granted_by_user_id = $1', [user_id])
-
-  // Hard delete the user row
-  await pool.query('DELETE FROM users WHERE user_id = $1', [user_id])
-
+  // Invalidate cache so deleted user is blocked on next request
   await invalidateUserActiveCache(user_id)
+
+  return result.rows[0]
 }
 
 export const updateProfileService = async (user_id: string, payload: {
@@ -206,6 +201,7 @@ export const toggleUserActiveService = async (user_id: string) => {
   )
   if (!result.rows[0]) throw new NotFoundError('User not found')
 
+  // Invalidate cache so deactivated user is blocked on next request within 30 seconds
   await invalidateUserActiveCache(user_id)
 
   return result.rows[0]

@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { io as socketIO } from 'socket.io-client'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { getEventByIdApi } from '../../api/events.api'
 import { lookupParticipantApi, resolveParticipantApi, scanAgentCodeApi, logDenialApi, getSessionsByEventApi } from '../../api/scan.api'
 import { Event, ScanResponse } from '../../types'
@@ -34,12 +33,28 @@ interface LookupResult {
   next_action: 'check_in' | 'check_out' | 'blocked'
 }
 
-// ── Label Colors ─────────────────────────────────────────
-const getLabelStyle = (_label: string, isDarkMode: boolean) => {
+// ── Label Colors (mirrors EventDetail) ───────────────────
+const LABEL_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  'Awardee': { bg: '#fef3c7', text: '#b45309', border: '#fcd34d' },
+  'VIP':     { bg: '#f3e8ff', text: '#7c3aed', border: '#d8b4fe' },
+  'Sponsor': { bg: '#dbeafe', text: '#1d4ed8', border: '#93c5fd' },
+  'Speaker': { bg: '#ccfbf1', text: '#0f766e', border: '#5eead4' },
+  'Staff':   { bg: '#f3f4f6', text: '#4b5563', border: '#d1d5db' },
+}
+const getLabelStyle = (label: string, isDarkMode: boolean) => {
+  const c = LABEL_COLORS[label] ?? { bg: '#fee2e2', text: '#b91c1c', border: '#fca5a5' }
   if (isDarkMode) {
-    return { bg: 'rgba(220,20,60,0.12)', text: '#f87171', border: 'rgba(220,20,60,0.3)' }
+    // darken for dark mode
+    const darkMap: Record<string, { bg: string; text: string; border: string }> = {
+      'Awardee': { bg: 'rgba(180,83,9,0.2)',   text: '#fcd34d', border: 'rgba(252,211,77,0.35)' },
+      'VIP':     { bg: 'rgba(124,58,237,0.2)',  text: '#c4b5fd', border: 'rgba(196,181,253,0.35)' },
+      'Sponsor': { bg: 'rgba(29,78,216,0.2)',   text: '#93c5fd', border: 'rgba(147,197,253,0.35)' },
+      'Speaker': { bg: 'rgba(15,118,110,0.2)',  text: '#5eead4', border: 'rgba(94,234,212,0.35)' },
+      'Staff':   { bg: 'rgba(75,85,99,0.25)',   text: '#d1d5db', border: 'rgba(209,213,219,0.3)' },
+    }
+    return darkMap[label] ?? { bg: 'rgba(185,28,28,0.2)', text: '#fca5a5', border: 'rgba(252,165,165,0.35)' }
   }
-  return { bg: '#fee2e2', text: '#DC143C', border: '#fca5a5' }
+  return c
 }
 
 // ── Audio Helpers ────────────────────────────────────────
@@ -80,10 +95,19 @@ const XIcon = () => (
     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
   </svg>
 )
+const UsersIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+    <circle cx="9" cy="7" r="4"/>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  </svg>
+)
 
 // ── Component ────────────────────────────────────────────
 export default function ScannerPage() {
   const { eventId } = useParams()
+  const navigate = useNavigate()
   const { isDarkMode } = useDarkMode()
   useStaffProtection()
 
@@ -102,12 +126,14 @@ export default function ScannerPage() {
   const [isEarlyOut, setIsEarlyOut] = useState(false)
   const [earlyOutReason, setEarlyOutReason] = useState('')
   const [resultTime, setResultTime] = useState('')
+  const [labelModalOpen, setLabelModalOpen] = useState(false)
 
   // ── Suggestions state ──
   const [suggestions, setSuggestions]         = useState<PickItem[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [sugLoading, setSugLoading]           = useState(false)
   const [activeSugIdx, setActiveSugIdx]       = useState(-1)
+  const [inputFocused, setInputFocused]       = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sugBoxRef   = useRef<HTMLDivElement>(null)
 
@@ -119,6 +145,7 @@ export default function ScannerPage() {
   const userRole    = storedUser?.role || 'staff'
   const userBranch  = storedUser?.branch_name || undefined
 
+  // Countdown duration in seconds
   const COUNTDOWN_SECS = 1
 
   useEffect(() => {
@@ -135,36 +162,6 @@ export default function ScannerPage() {
     } catch (_) {}
   }, [eventId])
 
-  // ── Socket.io — real-time count updates from other scanners ──
-  useEffect(() => {
-    if (!eventId) return
-
-    const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace('/api', '')
-    const socket = socketIO(SOCKET_URL, { transports: ['websocket'] })
-
-    socket.on('connect', () => {
-      socket.emit('join:event', Number(eventId))
-    })
-
-    socket.on('attendance:update', (data: any) => {
-      const { action } = data
-      if (action === 'check_in') {
-        setCheckedInCount(prev => prev + 1)
-      } else if (action === 'check_out') {
-        setCheckedInCount(prev => Math.max(0, prev - 1))
-      }
-    })
-
-    socket.on('attendance:bulk_checkout', (data: any) => {
-      setCheckedInCount(prev => Math.max(0, prev - (data.checked_out ?? 0)))
-    })
-
-    return () => {
-      socket.emit('leave:event', Number(eventId))
-      socket.disconnect()
-    }
-  }, [eventId])
-
   useEffect(() => {
     if (pageState === 'input') setTimeout(() => inputRef.current?.focus(), 80)
   }, [pageState])
@@ -172,6 +169,7 @@ export default function ScannerPage() {
   useEffect(() => {
     if (pageState === 'result' || pageState === 'error') {
       setCountdown(COUNTDOWN_SECS)
+      // Tick immediately after a short delay so bar starts draining right away
       const firstTick = setTimeout(() => {
         setCountdown(COUNTDOWN_SECS - 1)
         countdownRef.current = setInterval(() => {
@@ -388,6 +386,7 @@ export default function ScannerPage() {
   const border        = isDarkMode ? '#2a2a2a' : '#e5e7eb'
   const textPrimary   = isDarkMode ? '#ffffff' : '#111827'
   const textSecondary = isDarkMode ? '#9ca3af' : '#6b7280'
+  const inputBg       = isDarkMode ? '#141414' : '#f9fafb'
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: bg }}>
@@ -398,578 +397,557 @@ export default function ScannerPage() {
         }} />
       )}
 
-      {/* ── HEADER ── */}
-      <header className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a] shadow-sm flex-shrink-0">
-        <div className="px-12 h-[76px] flex items-center gap-4">
-          <div className="flex items-baseline gap-3">
-            <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
-              {event?.title ?? ''}
-            </h1>
-            <span className="text-sm font-semibold text-gray-400 dark:text-gray-500 whitespace-nowrap">Check-in Station</span>
-          </div>
-          <div className="flex-1" />
-          <div className="text-right">
-            <div className="text-2xl font-extrabold text-[#DC143C] leading-none">{checkedInCount}</div>
-            <div className="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold mt-0.5">Attendees Inside</div>
-          </div>
-        </div>
-      </header>
-
-      {/* ── EVENT INFO BAR ── */}
-      {event && (
-        <div className="bg-[#fafafa] dark:bg-[#161616] border-b border-gray-200 dark:border-[#2a2a2a] px-12 py-2.5 flex items-center gap-5 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-            <span className="text-sm text-gray-500 dark:text-gray-400">{formatDate(event.event_date)}</span>
-          </div>
-          <span className="text-gray-300 dark:text-gray-700">·</span>
-          <div className="flex items-center gap-2">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
-              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-            </svg>
-            <span className="text-sm text-gray-500 dark:text-gray-400">{formatTime(event.start_time)} – {formatTime(event.end_time)}</span>
-          </div>
-          {event.venue && (
-            <>
-              <span className="text-gray-300 dark:text-gray-700">·</span>
-              <div className="flex items-center gap-2">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-                </svg>
-                <span className="text-sm text-gray-500 dark:text-gray-400">{event.venue}</span>
-              </div>
-            </>
-          )}
-          <span style={{
-            marginLeft: 'auto', fontSize: 12, fontWeight: 700, padding: '3px 12px', borderRadius: 20,
-            background: event.status === 'open' ? 'rgba(22,163,74,0.10)' : 'rgba(107,114,128,0.10)',
-            color: event.status === 'open' ? '#16a34a' : '#6b7280',
-            border: `1px solid ${event.status === 'open' ? 'rgba(22,163,74,0.25)' : '#e5e7eb'}`
-          }}>
-            {event.status === 'open' ? 'Registration Open' : 'Registration Closed'}
-          </span>
-        </div>
-      )}
-
-      {/* ── MAIN CONTENT ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-        {/* ── INPUT STATE — Google-style search ── */}
-        {pageState === 'input' && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px 20px 60px' }}>
-            {/* Logo/title area */}
-            <div style={{ textAlign: 'center', marginBottom: 36 }}>
-              <div style={{ fontSize: 36, fontWeight: 900, color: textPrimary, letterSpacing: '-1px', marginBottom: 4 }}>
-                Prime<span style={{ color: '#DC143C' }}>Log</span>
-              </div>
-              <div style={{ fontSize: 13, color: textSecondary }}>Check-in Station</div>
-            </div>
-
-            {/* Google-style search bar */}
-            <div ref={sugBoxRef} style={{ width: '100%', maxWidth: 580, position: 'relative' }}>
-              <div style={{
-                display: 'flex', alignItems: 'center',
-                background: card,
-                border: `1.5px solid ${showSuggestions && suggestions.length > 0 ? border : border}`,
-                borderRadius: showSuggestions && suggestions.length > 0 ? '24px 24px 0 0' : 24,
-                boxShadow: showSuggestions && suggestions.length > 0
-                  ? '0 1px 6px rgba(0,0,0,0.10)'
-                  : '0 2px 12px rgba(0,0,0,0.08)',
-                transition: 'border-radius 0.1s, box-shadow 0.15s',
-                overflow: 'visible',
-              }}>
-                {/* Search icon inside bar */}
-                <div style={{ paddingLeft: 20, color: textSecondary, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                  {sugLoading ? (
-                    <svg style={{ width: 20, height: 20, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
-                      <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                    </svg>
-                  ) : (
-                    <SearchIcon />
-                  )}
-                </div>
-
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={query}
-                  onChange={e => { setQuery(e.target.value); setActiveSugIdx(-1) }}
-                  onKeyDown={handleKeyDown}
-                  onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true) }}
-                  disabled={loading}
-                  placeholder="Search by agent code or name..."
-                  style={{
-                    flex: 1,
-                    padding: '16px 16px',
-                    fontSize: 16,
-                    background: 'transparent',
-                    border: 'none',
-                    color: textPrimary,
-                    outline: 'none',
-                    letterSpacing: '0.2px',
-                  }}
-                  autoComplete="off"
-                />
-
-                {/* Clear button */}
-                {query && (
-                  <button
-                    onClick={() => { setQuery(''); setSuggestions([]); setShowSuggestions(false); inputRef.current?.focus() }}
-                    style={{ paddingRight: 8, color: textSecondary, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
-                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
-                )}
-
-                {/* Divider + search button */}
-                <div style={{ width: 1, height: 24, background: border, flexShrink: 0 }} />
-                <button
-                  onClick={() => handleLookup(query)}
-                  disabled={loading || !query.trim()}
-                  style={{
-                    padding: '12px 20px',
-                    background: 'none',
-                    border: 'none',
-                    color: !query.trim() ? textSecondary : '#DC143C',
-                    fontSize: 14,
-                    fontWeight: 700,
-                    cursor: !query.trim() ? 'default' : 'pointer',
-                    borderRadius: '0 22px 22px 0',
-                    transition: 'color 0.15s',
-                    flexShrink: 0,
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}>
-                  {loading
-                    ? <><svg style={{ width: 14, height: 14, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Searching...</>
-                    : 'Search'
-                  }
-                </button>
-              </div>
-
-              {/* Suggestions dropdown — max height so it never overflows screen */}
-              {showSuggestions && suggestions.length > 0 && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                  background: card,
-                  border: `1.5px solid ${border}`, borderTop: 'none',
-                  borderRadius: '0 0 24px 24px',
-                  overflow: 'hidden',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-                  maxHeight: '40vh',
-                  overflowY: 'auto',
-                }}>
-                  <div style={{ height: 1, background: isDarkMode ? '#333' : '#f0f0f0', margin: '0 16px' }} />
-                  {suggestions.map((item, idx) => {
-                    const isActive = idx === activeSugIdx
-                    return (
-                      <button
-                        key={item.participant_id}
-                        onMouseDown={e => { e.preventDefault(); handlePickSuggestion(item) }}
-                        onMouseEnter={() => setActiveSugIdx(idx)}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '11px 20px',
-                          textAlign: 'left', border: 'none', cursor: 'pointer',
-                          background: isActive ? (isDarkMode ? '#3a1a1a' : '#ffe4e4') : 'transparent',
-                          transition: 'background 0.1s',
-                        }}>
-                        <div style={{ color: textSecondary, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-                          <SearchIcon />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ fontWeight: 500, fontSize: 14, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.full_name}</span>
-                            <span style={{ fontSize: 12, color: '#DC143C', fontFamily: 'monospace', fontWeight: 700, flexShrink: 0 }}>{item.agent_code}</span>
-                          </div>
-                          <div style={{ fontSize: 11, color: textSecondary, marginTop: 1 }}>{item.branch_name} · {item.team_name}</div>
-                        </div>
-                      </button>
-                    )
-                  })}
-                  <div style={{ height: 8 }} />
-                </div>
-              )}
-
-              {showSuggestions && !sugLoading && suggestions.length === 0 && query.trim().length >= 2 && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                  background: card, border: `1.5px solid ${border}`, borderTop: 'none',
-                  borderRadius: '0 0 24px 24px', padding: '16px 20px',
-                  textAlign: 'center', fontSize: 13, color: textSecondary,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-                }}>
-                  No participants found for "{query}"
-                </div>
-              )}
-            </div>
-
-            {/* Hint text */}
-            <div style={{ marginTop: 24, fontSize: 12, color: textSecondary, textAlign: 'center' }}>
-              Press <kbd style={{ padding: '2px 6px', borderRadius: 4, border: `1px solid ${border}`, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', fontSize: 11 }}>Enter</kbd> to search or select from suggestions
-            </div>
-
-            <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-          </div>
-        )}
-
-        {/* ── PICK STATE ── */}
-        {pageState === 'pick' && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '28px 48px 48px' }}>
-            {/* Back button */}
+        {/* ── HEADER ── */}
+        <header className="bg-white dark:bg-[#1c1c1c] border-b border-gray-200 dark:border-[#2a2a2a] shadow-sm flex-shrink-0">
+          <div className="px-12 h-[76px] flex items-center gap-4">
             <button
-              onClick={resetToInput}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                marginBottom: 20,
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: textSecondary, fontSize: 13, fontWeight: 600,
-                padding: '6px 0', alignSelf: 'flex-start',
-                transition: 'color 0.15s',
-              }}
-              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = textPrimary}
-              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = textSecondary}
+              onClick={() => navigate(-1)}
+              className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors mr-2"
             >
               <ArrowLeftIcon />
-              Back to search
+              <span className="font-medium">Back</span>
             </button>
-
-            <div style={{ fontSize: 15, fontWeight: 600, color: textPrimary, marginBottom: 16, textAlign: 'center' }}>
-              {pickList.length} participants matched — select the correct person
+            <div className="flex items-baseline gap-3">
+              <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
+                {event?.title ?? ''}
+              </h1>
+              <span className="text-sm font-semibold text-gray-400 dark:text-gray-500 whitespace-nowrap">Check-in Station</span>
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 600, alignSelf: 'center' }}>
-              {pickList.map(item => {
-                const pUrl = getPhotoUrl(item.photo_url)
-                return (
-                  <button key={item.participant_id} onClick={() => handlePickParticipant(item)} disabled={loading}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: card, border: `1px solid ${border}`, borderRadius: 14, cursor: loading ? 'not-allowed' : 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#DC143C'; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1a1010' : '#fff5f5' }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = border; (e.currentTarget as HTMLElement).style.background = card }}>
-                    <div style={{ width: 48, height: 48, borderRadius: 12, overflow: 'hidden', border: `2px solid ${border}`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#e5e7eb' }}>
-                      {pUrl ? <img src={pUrl} alt={item.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
-                        <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>{item.full_name.charAt(0).toUpperCase()}</span>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.full_name}</div>
-                      <div style={{ fontSize: 12, color: '#DC143C', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px', marginTop: 2 }}>{item.agent_code}</div>
-                      <div style={{ fontSize: 11, color: textSecondary, marginTop: 2 }}>{item.branch_name} · {item.team_name}</div>
-                    </div>
-                    <div style={{ color: textSecondary, fontSize: 18 }}>›</div>
-                  </button>
-                )
-              })}
+            <div className="flex-1" />
+            <div className="text-right">
+              <div className="text-2xl font-extrabold text-[#DC143C] leading-none">{checkedInCount}</div>
+              <div className="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold mt-0.5">Attendees Inside</div>
             </div>
+          </div>
+        </header>
+
+        {/* ── EVENT INFO BAR ── */}
+        {event && (
+          <div className="bg-[#fafafa] dark:bg-[#161616] border-b border-gray-200 dark:border-[#2a2a2a] px-12 py-2.5 flex items-center gap-5 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              <span className="text-sm text-gray-500 dark:text-gray-400">{formatDate(event.event_date)}</span>
+            </div>
+            <span className="text-gray-300 dark:text-gray-700">·</span>
+            <div className="flex items-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
+                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span className="text-sm text-gray-500 dark:text-gray-400">{formatTime(event.start_time)} – {formatTime(event.end_time)}</span>
+            </div>
+            {event.venue && (
+              <>
+                <span className="text-gray-300 dark:text-gray-700">·</span>
+                <div className="flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-gray-400 flex-shrink-0">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">{event.venue}</span>
+                </div>
+              </>
+            )}
+            <span style={{
+              marginLeft: 'auto', fontSize: 12, fontWeight: 700, padding: '3px 12px', borderRadius: 20,
+              background: event.status === 'open' ? 'rgba(22,163,74,0.10)' : 'rgba(107,114,128,0.10)',
+              color: event.status === 'open' ? '#16a34a' : '#6b7280',
+              border: `1px solid ${event.status === 'open' ? 'rgba(22,163,74,0.25)' : '#e5e7eb'}`
+            }}>
+              {event.status === 'open' ? 'Registration Open' : 'Registration Closed'}
+            </span>
           </div>
         )}
 
-        {/* ── VERIFY STATE — 70/30 split layout ── */}
-        {pageState === 'verify' && lookup && (() => {
-          const hasLabel = !!lookup.participant.label
-          const lc = hasLabel ? getLabelStyle(String(lookup.participant.label), isDarkMode) : null
-
-          return (
-            <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-
-              {/* ── LEFT 70%: Back button + Photo + Label ── */}
-              <div style={{ flex: '0 0 70%', display: 'flex', flexDirection: 'column', padding: '28px 40px 48px', overflowY: 'auto' }}>
-                {/* Back button */}
+        {/* ── MAIN CONTENT ── */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px 60px', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, width: '100%', maxWidth: (pageState === 'verify' || pageState === 'result' ? 820 : 520) + 60 + (pageState === 'verify' ? 194 : 0), transition: 'max-width 0.2s' }}>
+            {/* ── Back button on the left — only shown in verify/pick/result/error states ── */}
+            {pageState !== 'input' && (
+              <div style={{ flexShrink: 0, alignSelf: 'stretch', display: 'flex' }}>
                 <button
-                  onClick={resetToInput}
+                  onClick={() => pageState === 'verify' || pageState === 'pick' ? resetToInput() : navigate(-1)}
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    marginBottom: 24,
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    color: textSecondary, fontSize: 13, fontWeight: 600,
-                    padding: '6px 0', alignSelf: 'flex-start',
-                    transition: 'color 0.15s',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 48, alignSelf: 'stretch',
+                    borderRadius: 14, border: `1px solid ${border}`, background: card,
+                    color: textSecondary, cursor: 'pointer', transition: 'all 0.15s',
+                    flexShrink: 0,
                   }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = textPrimary}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = textSecondary}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = textPrimary; (e.currentTarget as HTMLElement).style.borderColor = '#DC143C'; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1a1010' : '#fff5f5' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = textSecondary; (e.currentTarget as HTMLElement).style.borderColor = border; (e.currentTarget as HTMLElement).style.background = card }}
+                  title="Back"
                 >
                   <ArrowLeftIcon />
-                  Back to search
                 </button>
-
-                {/* Photo — centered, fixed square */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ width: 420, height: 420, flexShrink: 0, position: 'relative' }}>
-                    <div style={{ width: '100%', height: '100%', borderRadius: 20, background: isDarkMode ? '#2a2a2a' : '#f2f2f2', border: `2px solid ${border}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {verifyPhotoUrl && !photoError ? (
-                        <img src={verifyPhotoUrl} alt={lookup.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setPhotoError(true)} />
-                      ) : (
-                        <svg viewBox="0 0 80 80" fill="none" style={{ width: 80, height: 80 }}>
-                          <circle cx="40" cy="30" r="18" fill={isDarkMode ? '#444' : '#d0d0d0'} />
-                          <path d="M8 72c0-17.673 14.327-32 32-32s32 14.327 32 32" fill={isDarkMode ? '#444' : '#d0d0d0'} />
-                        </svg>
-                      )}
-                    </div>
-                    <div style={{ position: 'absolute', inset: -5, borderRadius: 24, border: '2px solid rgba(220,20,60,0.2)', pointerEvents: 'none' }} />
-                  </div>
-
-                  {/* Label section — below photo, fills full width with padding */}
-                  {hasLabel && lc && (
-                    <div style={{
-                      marginTop: 28,
-                      padding: '20px 24px',
-                      background: lc.bg,
-                      borderRadius: 14,
-                      border: `1px solid ${lc.border}`,
-                      display: 'flex', alignItems: 'center', gap: 14,
-                      width: '100%', boxSizing: 'border-box' as const,
-                    }}>
-                      {/* Left colored bar */}
-                      <div style={{ width: 4, alignSelf: 'stretch', minHeight: 40, borderRadius: 99, background: lc.text, flexShrink: 0, opacity: 0.7 }} />
-                      {/* Pill + note on same line */}
-                      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                        <span style={{
-                          display: 'inline-flex', alignItems: 'center', flexShrink: 0,
-                          padding: '5px 16px', borderRadius: 99,
-                          background: lc.text, fontSize: 13, fontWeight: 800,
-                          color: 'white', letterSpacing: '1.5px', textTransform: 'uppercase' as const,
-                        }}>
-                          {lookup.participant.label}
-                        </span>
-                        {lookup.participant.label_description ? (
-                          <div style={{ fontSize: 22, fontWeight: 500, color: lc.text, lineHeight: 1.3 }}>
-                            {lookup.participant.label_description}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 20, color: lc.text, opacity: 0.5, fontStyle: 'italic' }}>No note added.</div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
+            )}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-              {/* ── RIGHT 30%: Full height panel flush to edge ── */}
-              <div style={{
-                flex: '0 0 30%',
-                display: 'flex', flexDirection: 'column',
-                background: card,
-                borderLeft: `1px solid ${border}`,
-              }}>
-
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px 24px 0', overflowY: 'auto', minHeight: 0 }}>
-                  {/* Full name + status pill inline */}
-                  <div style={{ marginBottom: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <div style={{ fontSize: 26, fontWeight: 800, color: textPrimary, letterSpacing: '-0.5px', lineHeight: 1.2 }}>
-                        {lookup.participant.full_name}
-                      </div>
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '5px 11px', borderRadius: 99,
-                        background: lookup.next_action === 'check_in'
-                          ? (isDarkMode ? 'rgba(220,20,60,0.12)' : 'rgba(220,20,60,0.08)')
-                          : lookup.next_action === 'check_out'
-                            ? (isDarkMode ? 'rgba(37,99,235,0.12)' : 'rgba(37,99,235,0.08)')
-                            : (isDarkMode ? 'rgba(107,114,128,0.15)' : 'rgba(107,114,128,0.08)'),
-                        border: `1px solid ${lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.25)' : lookup.next_action === 'check_out' ? 'rgba(37,99,235,0.25)' : 'rgba(107,114,128,0.2)'}`,
-                        fontSize: 11, fontWeight: 700,
-                        color: lookup.next_action === 'check_in' ? '#DC143C' : lookup.next_action === 'check_out' ? '#2563eb' : textSecondary,
-                        flexShrink: 0,
-                      }}>
-                        <span style={{
-                          width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                          background: lookup.next_action === 'check_in' ? '#DC143C' : lookup.next_action === 'check_out' ? '#2563eb' : textSecondary,
-                          animation: lookup.next_action !== 'blocked' ? 'pulse 1.8s infinite' : 'none',
-                        }} />
-                        {lookup.next_action === 'check_in' ? 'Not Yet Checked In' : lookup.next_action === 'check_out' ? 'Currently Inside' : 'Blocked'}
-                      </span>
+            {/* ── INPUT STATE ── */}
+            {pageState === 'input' && (
+              <div style={{ background: card, border: `1px solid ${border}`, borderRadius: 20, boxShadow: '0 4px 24px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)' }} />
+                <div style={{ padding: '32px 32px 36px' }}>
+                  <div style={{ textAlign: 'center', marginBottom: 28 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14, color: textSecondary }}>
+                      <SearchIcon />
                     </div>
+                    <h2 style={{ fontSize: 22, fontWeight: 800, color: textPrimary, marginBottom: 6, letterSpacing: '-0.3px' }}>Search Agent</h2>
+                    <p style={{ fontSize: 13, color: textSecondary, lineHeight: 1.6 }}>Enter agent code or name</p>
                   </div>
 
-                  {/* Divider */}
-                  <div style={{ height: 1, background: border, margin: '14px 0' }} />
-                  <div style={{ fontSize: 10, fontWeight: 700, color: textSecondary, letterSpacing: '0.8px', textTransform: 'uppercase' as const, marginBottom: 8 }}>Agent Profile</div>
-                  <div style={{ border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
-                    {[
-                      ...(lookup.participant.agent_type ? [{ label: 'Agent Type', value: lookup.participant.agent_type, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, color: '#DC143C' }}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> }] : []),
-                      { label: 'Agent Code', value: lookup.participant.agent_code, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, color: '#DC143C' }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15h10M7 11h4"/></svg> },
-                      { label: 'Branch', value: lookup.participant.branch_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, color: '#DC143C' }}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-                      { label: 'Team', value: lookup.participant.team_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13, color: '#DC143C' }}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> },
-                    ].map(({ label, value, icon }, i, arr) => (
-                      <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none' }}>
-                        <div style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: 'rgba(220,20,60,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</div>
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: textSecondary, textTransform: 'uppercase' as const, letterSpacing: '0.8px', marginBottom: 1 }}>{label}</div>
-                          <div style={{ fontSize: 15, fontWeight: 600, color: textPrimary }}>{value}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div ref={sugBoxRef} style={{ position: 'relative' }}>
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={query}
+                        onChange={e => { setQuery(e.target.value); setActiveSugIdx(-1) }}
+                        onKeyDown={handleKeyDown}
+                        onFocus={() => { setInputFocused(true); if (suggestions.length > 0) setShowSuggestions(true) }}
+                        onBlur={() => setInputFocused(false)}
+                        disabled={loading}
+                        placeholder="Search..."
+                        style={{
+                          width: '100%', padding: `14px 44px 14px ${inputFocused ? '44px' : '18px'}`, fontSize: 16, fontWeight: 600,
+                          background: inputBg, border: `2px solid ${border}`,
+                          borderRadius: showSuggestions && suggestions.length > 0 ? '12px 12px 0 0' : 12,
+                          color: textPrimary, outline: 'none', boxSizing: 'border-box', letterSpacing: '0.5px',
+                          transition: 'border-radius 0.1s, padding 0.1s'
+                        }}
+                        autoComplete="off"
+                      />
+                      {inputFocused && !sugLoading && (
+                        <div style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: textSecondary, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                          <SearchIcon />
                         </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Early out toggle (check_out only) */}
-                  {lookup.next_action === 'check_out' && (
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{
-                        padding: '12px 14px',
-                        background: isEarlyOut ? (isDarkMode ? '#2a1f00' : '#fffbeb') : (isDarkMode ? '#141414' : '#f9fafb'),
-                        border: `1px solid ${isEarlyOut ? '#f59e0b' : border}`,
-                        borderRadius: 10, transition: 'all 0.2s',
-                      }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' as const }}>
-                          <div
-                            onClick={() => { setIsEarlyOut(v => !v); if (isEarlyOut) setEarlyOutReason('') }}
-                            style={{ width: 36, height: 20, borderRadius: 10, background: isEarlyOut ? '#f59e0b' : (isDarkMode ? '#3a3a3a' : '#d1d5db'), position: 'relative', transition: 'background 0.2s', flexShrink: 0, cursor: 'pointer' }}>
-                            <div style={{ position: 'absolute', top: 2, left: isEarlyOut ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: isEarlyOut ? '#d97706' : textPrimary }}>Mark as Early Out</div>
-                            <div style={{ fontSize: 10, color: textSecondary }}>Leaving before event ends</div>
-                          </div>
-                        </label>
-                        {isEarlyOut && (
-                          <input
-                            type="text" value={earlyOutReason}
-                            onChange={e => setEarlyOutReason(e.target.value)}
-                            placeholder="Reason (optional)..."
-                            style={{ marginTop: 8, width: '100%', padding: '7px 10px', fontSize: 12, background: isDarkMode ? '#1c1c1c' : '#fff', border: `1px solid #f59e0b`, borderRadius: 7, color: textPrimary, outline: 'none', boxSizing: 'border-box' as const }}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Action buttons — pinned to bottom */}
-                <div style={{ padding: '16px 24px 24px', borderTop: `1px solid ${border}`, display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
-                  <button
-                    onClick={handleConfirm}
-                    disabled={loading || lookup.next_action === 'blocked'}
-                    style={{
-                      width: '100%', height: 48, borderRadius: 12, border: 'none',
-                      background: loading || lookup.next_action === 'blocked' ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C',
-                      color: loading || lookup.next_action === 'blocked' ? textSecondary : '#fff',
-                      fontSize: 14, fontWeight: 700,
-                      cursor: loading || lookup.next_action === 'blocked' ? 'not-allowed' : 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                      boxShadow: loading || lookup.next_action === 'blocked' ? 'none' : '0 4px 16px rgba(220,20,60,0.3)',
-                      transition: 'all 0.15s',
-                    }}>
-                    {loading
-                      ? <><svg style={{ width: 15, height: 15, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Processing...</>
-                      : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16 }}><polyline points="20 6 9 17 4 12"/></svg>{lookup.next_action === 'check_in' ? 'Check-In' : 'Check-Out'}</>
-                    }
-                  </button>
-                  <button
-                    onClick={handleDeny}
-                    disabled={loading}
-                    style={{
-                      width: '100%', height: 44, borderRadius: 12,
-                      background: 'transparent',
-                      color: textSecondary,
-                      border: `1.5px solid ${border}`,
-                      fontSize: 13, fontWeight: 600,
-                      cursor: loading ? 'not-allowed' : 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={e => { if (!loading) { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#2a2a2a' : '#f3f4f6'; (e.currentTarget as HTMLElement).style.color = textPrimary } }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = textSecondary }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 15, height: 15 }}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    Deny
-                  </button>
-                </div>
-
-              </div>
-            </div>
-          )
-        })()}
-
-
-        {/* ── RESULT STATE ── */}
-        {pageState === 'result' && result && (() => {
-          const isIn = result.action === 'check_in'
-          return (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0px 48px 80px' }}>
-              <div style={{ background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 40px rgba(0,0,0,0.08)', border: `1px solid ${border}`, width: '100%', maxWidth: 600 }}>
-                <div style={{ height: 5, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)' }} />
-                <div style={{ padding: '36px 40px 32px', display: 'flex', gap: 40, alignItems: 'center' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, gap: 16 }}>
-                    <div style={{ position: 'relative', width: 96, height: 96 }}>
-                      <div style={{ position: 'absolute', inset: -12, borderRadius: '50%', border: '2px solid rgba(220,20,60,0.15)', animation: 'ripple 2s ease-out infinite' }} />
-                      <div style={{ position: 'absolute', inset: -24, borderRadius: '50%', border: '2px solid rgba(220,20,60,0.08)', animation: 'ripple 2s ease-out infinite', animationDelay: '0.5s' }} />
-                      <div style={{ width: 96, height: 96, borderRadius: '50%', background: 'linear-gradient(135deg, rgba(220,20,60,0.12), rgba(220,20,60,0.06))', border: '2px solid rgba(220,20,60,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="#DC143C" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 44, height: 44 }}>
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#DC143C', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 4 }}>Success</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: textPrimary, letterSpacing: '-0.5px', lineHeight: 1.1 }}>
-                        {isIn ? 'Check-In' : 'Check-Out'}<br />Successful
-                      </div>
-                      {result.is_early_out && (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 20, padding: '3px 10px' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#d97706' }}>⚠ Early Out</span>
+                      )}
+                      {sugLoading && (
+                        <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: textSecondary }}>
+                          <svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none">
+                            <circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                          </svg>
+                        </div>
+                      )}
+                      {showSuggestions && suggestions.length > 0 && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: card, border: `2px solid ${border}`, borderTop: 'none', borderRadius: '0 0 12px 12px', overflow: 'hidden', boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}>
+                          {suggestions.map((item, idx) => {
+                            const isActive = idx === activeSugIdx
+                            return (
+                              <button key={item.participant_id} onMouseDown={e => { e.preventDefault(); handlePickSuggestion(item) }} onMouseEnter={() => setActiveSugIdx(idx)}
+                                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', textAlign: 'left', border: 'none', cursor: 'pointer', background: isActive ? (isDarkMode ? '#251010' : '#fff5f5') : 'transparent', borderBottom: idx < suggestions.length - 1 ? `1px solid ${border}` : 'none', transition: 'background 0.1s' }}>
+                                <div style={{ color: textSecondary, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
+                                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                  </svg>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+                                  <span style={{ fontWeight: 500, fontSize: 14, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.full_name}</span>
+                                  <span style={{ width: 1, height: 14, background: border, flexShrink: 0 }} />
+                                  <span style={{ fontSize: 13, color: '#DC143C', fontFamily: 'inherit', fontWeight: 400, letterSpacing: '0.3px', flexShrink: 0 }}>{item.agent_code}</span>
+                                </div>
+                                <div style={{ fontSize: 11, color: textSecondary, flexShrink: 0, whiteSpace: 'nowrap' }}>{item.branch_name} · {item.team_name}</div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {showSuggestions && !sugLoading && suggestions.length === 0 && query.trim().length >= 2 && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: card, border: `2px solid ${border}`, borderTop: 'none', borderRadius: '0 0 12px 12px', padding: '14px 16px', textAlign: 'center', fontSize: 13, color: textSecondary }}>
+                          No participants found for "{query}"
                         </div>
                       )}
                     </div>
+
+                    <button onClick={() => handleLookup(query)} disabled={loading || !query.trim()}
+                      style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: loading || !query.trim() ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || !query.trim() ? textSecondary : '#fff', fontSize: 14, fontWeight: 700, cursor: loading || !query.trim() ? 'not-allowed' : 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                      {loading ? <><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Searching...</> : 'Enter'}
+                    </button>
                   </div>
-                  <div style={{ width: 1, alignSelf: 'stretch', background: border, flexShrink: 0 }} />
-                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
-                    <div style={{ fontSize: 28, fontWeight: 800, color: textPrimary, letterSpacing: '-0.8px', lineHeight: 1.1, marginBottom: 18 }}>
-                      {result.participant.full_name}
-                    </div>
-                    <div style={{ border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
+
+                  <div style={{ marginTop: 20, padding: '14px 16px', background: isDarkMode ? '#0f0f0f' : '#f9fafb', borderRadius: 12, border: `1px solid ${border}` }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: textSecondary, letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 10 }}>How it works</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {[
-                        { label: 'Agent Code', value: result.participant.agent_code, highlight: false },
-                        { label: isIn ? 'Checked In At' : 'Checked Out At', value: resultTime, highlight: true },
-                      ].map(({ label, value, highlight }, i, arr) => (
-                        <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none' }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: textSecondary, textTransform: 'uppercase', letterSpacing: '0.8px' }}>{label}</span>
-                          <span style={{ fontSize: highlight ? 16 : 14, fontWeight: highlight ? 800 : 700, color: highlight ? '#DC143C' : textPrimary, letterSpacing: highlight ? '-0.3px' : '0.5px', fontVariantNumeric: 'tabular-nums', fontFamily: !highlight ? 'monospace' : 'inherit' }}>{value}</span>
+                        { dot: '#DC143C', text: 'Type agent code or name — suggestions appear as you type' },
+                        { dot: '#f59e0b', text: 'Select from suggestions or press Enter to search' },
+                        { dot: '#16a34a', text: 'Verify identity, then Confirm to record attendance' },
+                      ].map(({ dot, text }, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, color: textSecondary, lineHeight: 1.5 }}>{text}</span>
                         </div>
                       ))}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <div style={{ fontSize: 11, color: textSecondary, fontWeight: 500 }}>Next scan in {countdown}s…</div>
-                      <div style={{ width: '100%', height: 5, background: isDarkMode ? '#2a2a2a' : '#f0f1f3', borderRadius: 99, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', borderRadius: 99, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)', width: `${(countdown / COUNTDOWN_SECS) * 100}%`, transition: 'width 1s linear' }} />
+                  </div>
+                </div>
+                <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+              </div>
+            )}
+
+            {/* ── PICK STATE ── */}
+            {pageState === 'pick' && (
+              <div style={{ background: card, border: `2px solid #f59e0b`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(245,158,11,0.15)' }}>
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />
+                <div style={{ padding: '28px 32px 32px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: isDarkMode ? '#2a2005' : '#fffbeb', border: `2px solid #f59e0b`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b', flexShrink: 0 }}>
+                      <UsersIcon />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 16, color: textPrimary }}>Multiple Matches Found</div>
+                      <div style={{ fontSize: 13, color: textSecondary }}>{pickList.length} participants matched — select the correct person</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {pickList.map(item => {
+                      const pUrl = getPhotoUrl(item.photo_url)
+                      return (
+                        <button key={item.participant_id} onClick={() => handlePickParticipant(item)} disabled={loading}
+                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: isDarkMode ? '#141414' : '#f9fafb', border: `1px solid ${border}`, borderRadius: 14, cursor: loading ? 'not-allowed' : 'pointer', textAlign: 'left', transition: 'all 0.15s' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#DC143C'; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1a1010' : '#fff5f5' }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = border; (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#141414' : '#f9fafb' }}>
+                          <div style={{ width: 48, height: 48, borderRadius: 12, overflow: 'hidden', border: `2px solid ${border}`, flexShrink: 0, background: isDarkMode ? '#2a2a2a' : '#e5e7eb' }}>
+                            {pUrl ? <img src={pUrl} alt={item.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (
+                              <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #DC143C, #9f0e2a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <span style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>{item.full_name.charAt(0).toUpperCase()}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 15, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.full_name}</div>
+                            <div style={{ fontSize: 12, color: '#DC143C', fontFamily: 'monospace', fontWeight: 700, letterSpacing: '1px', marginTop: 2 }}>{item.agent_code}</div>
+                            <div style={{ fontSize: 11, color: textSecondary, marginTop: 2 }}>{item.branch_name} · {item.team_name}</div>
+                          </div>
+                          <div style={{ color: textSecondary, fontSize: 18 }}>›</div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <button onClick={resetToInput} style={{ width: '100%', marginTop: 16, padding: '12px', background: 'none', border: `1px solid ${border}`, borderRadius: 12, color: textSecondary, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    ← Search Again
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── VERIFY STATE ── */}
+            {pageState === 'verify' && lookup && (
+              <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+              <div style={{ flex: 1, minWidth: 0, background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 40px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)', border: `1px solid ${border}` }}>
+                {lookup.participant.label ? (() => {
+                  const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
+                  return (
+                    <div style={{ height: 6, background: `linear-gradient(90deg, ${lc.border}, ${lc.text}, ${lc.border}, ${lc.text}, ${lc.border})`, backgroundSize: '300% 100%', animation: 'barShine 2s linear infinite' }} />
+                  )
+                })() : (
+                  <div style={{ height: 5, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)' }} />
+                )}
+                <div style={{ padding: '36px 36px 32px', display: 'flex', gap: 36, alignItems: 'flex-start' }}>
+
+                  {/* LEFT: photo + status pill */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, flexShrink: 0 }}>
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ width: 300, height: 300, borderRadius: 20, background: isDarkMode ? '#2a2a2a' : '#f2f2f2', border: `2px solid ${border}`, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {verifyPhotoUrl && !photoError ? (
+                          <img src={verifyPhotoUrl} alt={lookup.participant.full_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setPhotoError(true)} />
+                        ) : (
+                          <svg viewBox="0 0 80 80" fill="none" style={{ width: 80, height: 80 }}>
+                            <circle cx="40" cy="30" r="18" fill={isDarkMode ? '#444' : '#d0d0d0'} />
+                            <path d="M8 72c0-17.673 14.327-32 32-32s32 14.327 32 32" fill={isDarkMode ? '#444' : '#d0d0d0'} />
+                          </svg>
+                        )}
                       </div>
+                      <div style={{ position: 'absolute', inset: -5, borderRadius: 24, border: '2px solid rgba(220,20,60,0.2)', pointerEvents: 'none' }} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 100, fontSize: 13, fontWeight: 600, background: lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.07)' : 'rgba(37,99,235,0.07)', color: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', border: `1.5px solid ${lookup.next_action === 'check_in' ? 'rgba(220,20,60,0.2)' : 'rgba(37,99,235,0.2)'}`, width: 300, justifyContent: 'center' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lookup.next_action === 'check_in' ? '#DC143C' : '#2563eb', animation: 'pulse 1.8s infinite' }} />
+                      {lookup.next_action === 'check_in' ? 'Not Yet Checked In' : lookup.next_action === 'check_out' ? 'Currently Inside' : 'Blocked'}
+                    </div>
+
+                  </div>
+
+                  {/* RIGHT: name + info rows + actions */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+
+                    {/* ── Name row ── */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
+                      <div style={{ fontSize: 36, fontWeight: 700, color: textPrimary, letterSpacing: '-1px', lineHeight: 1.1 }}>
+                        {lookup.participant.full_name}
+                      </div>
+                      {lookup.participant.agent_type && (
+                        <div style={{ padding: '3px 10px', borderRadius: 8, background: isDarkMode ? '#1a1a1a' : '#f3f4f6', border: `1px solid ${border}`, fontSize: 11, fontWeight: 700, color: textSecondary, letterSpacing: '0.5px', textTransform: 'uppercase', alignSelf: 'center' }}>
+                          {lookup.participant.agent_type}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                      <div style={{ fontSize: 13, color: '#DC143C', fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Agent Profile</div>
+                    </div>
+
+                    <div style={{ border: `1px solid ${border}`, borderRadius: 14, overflow: 'hidden', marginBottom: 28 }}>
+                      {[
+                        { label: 'Agent Code', value: lookup.participant.agent_code, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16, color: '#DC143C' }}><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M7 15h10M7 11h4"/></svg> },
+                        { label: 'Branch', value: lookup.participant.branch_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16, color: '#DC143C' }}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
+                        { label: 'Team', value: lookup.participant.team_name, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 16, height: 16, color: '#DC143C' }}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> },
+                      ].map(({ label, value, icon }, i, arr) => (
+                        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px', borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none' }}>
+                          <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: 'rgba(220,20,60,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</div>
+                          <div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 2 }}>{label}</div>
+                            <div style={{ fontSize: 15, fontWeight: 500, color: textPrimary }}>{value}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {lookup.next_action === 'check_out' && (
+                      <div style={{ marginBottom: 20, padding: '14px 16px', background: isEarlyOut ? (isDarkMode ? '#2a1f00' : '#fffbeb') : (isDarkMode ? '#141414' : '#f9fafb'), border: `1px solid ${isEarlyOut ? '#f59e0b' : border}`, borderRadius: 12, transition: 'all 0.2s' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                          <div onClick={() => { setIsEarlyOut(v => !v); if (isEarlyOut) setEarlyOutReason('') }} style={{ width: 40, height: 22, borderRadius: 11, background: isEarlyOut ? '#f59e0b' : (isDarkMode ? '#3a3a3a' : '#d1d5db'), position: 'relative', transition: 'background 0.2s', flexShrink: 0, cursor: 'pointer' }}>
+                            <div style={{ position: 'absolute', top: 3, left: isEarlyOut ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: isEarlyOut ? '#d97706' : textPrimary }}>Mark as Early Out</div>
+                            <div style={{ fontSize: 11, color: textSecondary, marginTop: 1 }}>Participant is leaving before the event ends</div>
+                          </div>
+                        </label>
+                        {isEarlyOut && (
+                          <input type="text" value={earlyOutReason} onChange={e => setEarlyOutReason(e.target.value)} placeholder="Reason (optional)..."
+                            style={{ marginTop: 10, width: '100%', padding: '9px 12px', fontSize: 13, background: isDarkMode ? '#1c1c1c' : '#fff', border: `1px solid #f59e0b`, borderRadius: 8, color: textPrimary, outline: 'none', boxSizing: 'border-box' }} />
+                        )}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 14, marginTop: 'auto' }}>
+                      <button onClick={handleConfirm} disabled={loading || lookup.next_action === 'blocked'}
+                        style={{ flex: 1, height: 56, borderRadius: 14, border: 'none', background: loading || lookup.next_action === 'blocked' ? (isDarkMode ? '#2a2a2a' : '#e5e7eb') : '#DC143C', color: loading || lookup.next_action === 'blocked' ? textSecondary : '#fff', fontSize: 16, fontWeight: 600, cursor: loading || lookup.next_action === 'blocked' ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, boxShadow: loading || lookup.next_action === 'blocked' ? 'none' : '0 4px 20px rgba(220,20,60,0.3)', transition: 'all 0.18s', letterSpacing: '-0.2px' }}>
+                        {loading ? <><svg style={{ width: 16, height: 16, animation: 'spin 0.8s linear infinite' }} viewBox="0 0 24 24" fill="none"><circle opacity="0.25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path opacity="0.75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>Processing...</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}><polyline points="20 6 9 17 4 12"/></svg>{lookup.next_action === 'check_in' ? 'Check-In' : 'Check-Out'}</>}
+                      </button>
+                      <button onClick={handleDeny} disabled={loading}
+                        style={{ flex: 1, height: 56, borderRadius: 14, background: isDarkMode ? '#1c1c1c' : '#fff', color: isDarkMode ? '#9ca3af' : '#666', border: `1.5px solid ${border}`, fontSize: 16, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'all 0.18s', letterSpacing: '-0.2px' }}
+                        onMouseEnter={e => { if (!loading) { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#2a2a2a' : '#f2f2f2'; (e.currentTarget as HTMLElement).style.color = textPrimary } }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#1c1c1c' : '#fff'; (e.currentTarget as HTMLElement).style.color = isDarkMode ? '#9ca3af' : '#666' }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        Deny
+                      </button>
                     </div>
                   </div>
                 </div>
-                <style>{`@keyframes ripple { 0% { transform: scale(0.85); opacity: 1; } 100% { transform: scale(1.1); opacity: 0; } }`}</style>
+                <style>{`@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } } @keyframes spin { to { transform: rotate(360deg) } } @keyframes labelPulse { 0% { box-shadow: 0 0 0 0 currentColor; transform: scale(1); } 40% { box-shadow: 0 0 0 7px transparent; transform: scale(1.06); } 70% { box-shadow: 0 0 0 10px transparent; transform: scale(1); } 100% { box-shadow: 0 0 0 0 transparent; transform: scale(1); } } @keyframes barShine { 0% { background-position: 0% 0%; } 100% { background-position: 300% 0%; } }`}</style>
               </div>
-            </div>
-          )
-        })()}
 
-        {/* ── ERROR STATE ── */}
-        {pageState === 'error' && (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0px 48px 80px' }}>
-            <div style={{ background: card, border: `2px solid #DC143C`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(220,20,60,0.12)', width: '100%', maxWidth: 480 }}>
-              <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)' }} />
-              <div style={{ padding: '28px 32px 32px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-                  <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#DC143C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
-                    <XIcon />
+              {/* ── LABEL PANEL (right side, only when label exists) ── */}
+              {lookup.participant.label && (() => {
+                const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
+                return (
+                  <div style={{
+                    width: 180, flexShrink: 0,
+                    background: card, border: `1px solid ${border}`,
+                    borderRadius: 24, overflow: 'hidden',
+                    boxShadow: '0 4px 40px rgba(0,0,0,0.08)',
+                    display: 'flex', flexDirection: 'column',
+                  }}>
+                    {/* Colored top bar matching label */}
+                    <div style={{ height: 6, background: `linear-gradient(90deg, ${lc.border}, ${lc.text}, ${lc.border}, ${lc.text}, ${lc.border})`, backgroundSize: '300% 100%', animation: 'barShine 2s linear infinite', flexShrink: 0 }} />
+                    <div style={{ padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
+                      {/* Label badge */}
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 5,
+                        fontSize: 12, fontWeight: 800,
+                        padding: '5px 12px', borderRadius: 999,
+                        background: lc.bg, color: lc.text,
+                        border: `2px solid ${lc.border}`,
+                        whiteSpace: 'nowrap', alignSelf: 'flex-start',
+                        animation: 'labelPulse 1.6s ease-in-out 4',
+                        boxShadow: `0 0 0 0 ${lc.border}`,
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: lc.text, flexShrink: 0, opacity: 0.8 }} />
+                        {lookup.participant.label}
+                      </span>
+
+                      {/* Divider */}
+                      <div style={{ height: 1, background: border }} />
+
+                      {/* Description */}
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', margin: 0, marginBottom: 6 }}>Note</p>
+                        {lookup.participant.label_description ? (
+                          <p style={{ fontSize: 13, color: textPrimary, margin: 0, lineHeight: 1.6 }}>{lookup.participant.label_description}</p>
+                        ) : (
+                          <p style={{ fontSize: 12, color: textSecondary, fontStyle: 'italic', margin: 0 }}>No note added.</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: '#DC143C' }}>Access Denied</div>
-                    <div style={{ fontSize: 13, color: textSecondary, marginTop: 4 }}>{error}</div>
-                  </div>
-                </div>
-                <div style={{ width: '100%', height: 6, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', background: '#DC143C', borderRadius: 3, width: `${(countdown / COUNTDOWN_SECS) * 100}%`, transition: 'width 1s linear' }} />
-                </div>
-                <div style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: textSecondary }}>Next scan in {countdown}s</div>
+                )
+              })()}
               </div>
+            )}
+
+            {/* ── RESULT STATE ── */}
+            {pageState === 'result' && result && (() => {
+              const isIn = result.action === 'check_in'
+              return (
+                <div style={{ background: card, borderRadius: 24, overflow: 'hidden', boxShadow: '0 4px 40px rgba(0,0,0,0.08)', border: `1px solid ${border}` }}>
+                  <div style={{ height: 5, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)' }} />
+
+                  <div style={{ padding: '36px 40px 32px', display: 'flex', gap: 40, alignItems: 'center' }}>
+
+                    {/* LEFT: success icon */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flexShrink: 0, gap: 16 }}>
+                      <div style={{ position: 'relative', width: 96, height: 96 }}>
+                        <div style={{ position: 'absolute', inset: -12, borderRadius: '50%', border: '2px solid rgba(220,20,60,0.15)', animation: 'ripple 2s ease-out infinite' }} />
+                        <div style={{ position: 'absolute', inset: -24, borderRadius: '50%', border: '2px solid rgba(220,20,60,0.08)', animation: 'ripple 2s ease-out infinite', animationDelay: '0.5s' }} />
+                        <div style={{ width: 96, height: 96, borderRadius: '50%', background: 'linear-gradient(135deg, rgba(220,20,60,0.12), rgba(220,20,60,0.06))', border: '2px solid rgba(220,20,60,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#DC143C" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 44, height: 44 }}>
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#DC143C', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: 4 }}>Success</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: textPrimary, letterSpacing: '-0.5px', lineHeight: 1.1 }}>
+                          {isIn ? 'Check-In' : 'Check-Out'}<br />Successful
+                        </div>
+                        {result.is_early_out && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 20, padding: '3px 10px' }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#d97706' }}>⚠ Early Out</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* DIVIDER */}
+                    <div style={{ width: 1, alignSelf: 'stretch', background: border, flexShrink: 0 }} />
+
+                    {/* RIGHT: agent info + progress bar */}
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {/* Name */}
+                      <div style={{ fontSize: 28, fontWeight: 800, color: textPrimary, letterSpacing: '-0.8px', lineHeight: 1.1, marginBottom: 18 }}>
+                        {result.participant.full_name}
+                      </div>
+
+                      {/* Info rows */}
+                      <div style={{ border: `1px solid ${border}`, borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
+                        {[
+                          { label: 'Agent Code', value: result.participant.agent_code, highlight: false },
+                          { label: isIn ? 'Checked In At' : 'Checked Out At', value: resultTime, highlight: true },
+                        ].map(({ label, value, highlight }, i, arr) => (
+                          <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 16px', borderBottom: i < arr.length - 1 ? `1px solid ${border}` : 'none', background: 'transparent' }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: textSecondary, textTransform: 'uppercase', letterSpacing: '0.8px' }}>{label}</span>
+                            <span style={{ fontSize: highlight ? 16 : 14, fontWeight: highlight ? 800 : 700, color: highlight ? '#DC143C' : textPrimary, letterSpacing: highlight ? '-0.3px' : '0.5px', fontVariantNumeric: 'tabular-nums', fontFamily: !highlight ? 'monospace' : 'inherit' }}>{value}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Progress bar */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <div style={{ fontSize: 11, color: textSecondary, fontWeight: 500 }}>
+                          Next scan in {countdown}s…
+                        </div>
+                        <div style={{ width: '100%', height: 5, background: isDarkMode ? '#2a2a2a' : '#f0f1f3', borderRadius: 99, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 99, background: 'linear-gradient(90deg, #DC143C, #ff6b6b)', width: `${(countdown / COUNTDOWN_SECS) * 100}%`, transition: 'width 1s linear' }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <style>{`@keyframes ripple { 0% { transform: scale(0.85); opacity: 1; } 100% { transform: scale(1.1); opacity: 0; } }`}</style>
+                </div>
+              )
+            })()}
+
+            {/* ── ERROR STATE ── */}
+            {pageState === 'error' && (
+              <div style={{ background: card, border: `2px solid #DC143C`, borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 32px rgba(220,20,60,0.12)' }}>
+                <div style={{ height: 4, background: 'linear-gradient(90deg, #DC143C, #ff4d6d)' }} />
+                <div style={{ padding: '28px 32px 32px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                    <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#DC143C', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0 }}>
+                      <XIcon />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: '#DC143C' }}>Access Denied</div>
+                      <div style={{ fontSize: 13, color: textSecondary, marginTop: 4 }}>{error}</div>
+                    </div>
+                  </div>
+                  <div style={{ width: '100%', height: 6, background: isDarkMode ? '#2a2a2a' : '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', background: '#DC143C', borderRadius: 3, width: `${(countdown / COUNTDOWN_SECS) * 100}%`, transition: 'width 1s linear' }} />
+                  </div>
+                  <div style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: textSecondary }}>Next scan in {countdown}s</div>
+                </div>
+              </div>
+            )}
+
             </div>
           </div>
-        )}
+        </div>
 
-      </div>
+      {/* ── LABEL DETAIL MODAL ── */}
+      {labelModalOpen && lookup?.participant.label && (() => {
+        const lc = getLabelStyle(String(lookup.participant.label), isDarkMode)
+        return (
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setLabelModalOpen(false)}
+          >
+            <div
+              style={{ background: card, border: `1px solid ${border}`, borderRadius: 24, width: '100%', maxWidth: 420, margin: '0 16px', padding: 32, boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+                <div>
+                  <h2 style={{ fontSize: 20, fontWeight: 800, color: textPrimary, margin: 0, marginBottom: 4 }}>Label Details</h2>
+                  <p style={{ fontSize: 13, color: textSecondary, margin: 0 }}>
+                    {lookup.participant.full_name} · <span style={{ fontFamily: 'monospace', color: '#DC143C' }}>{lookup.participant.agent_code}</span>
+                  </p>
+                </div>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center',
+                  fontSize: 12, fontWeight: 700,
+                  padding: '4px 12px', borderRadius: 999,
+                  background: lc.bg, color: lc.text,
+                  border: `1.5px solid ${lc.border}`,
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}>
+                  {lookup.participant.label}
+                </span>
+              </div>
+
+              {/* Body */}
+              <div style={{ background: isDarkMode ? '#141414' : '#f9fafb', borderRadius: 16, padding: 20, marginBottom: 24 }}>
+                <div>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', margin: 0, marginBottom: 4 }}>Label</p>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: textPrimary, margin: 0 }}>{lookup.participant.label}</p>
+                </div>
+                <div style={{ height: 1, background: border, margin: '14px 0' }} />
+                {lookup.participant.label_description ? (
+                  <div>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: textSecondary, textTransform: 'uppercase', letterSpacing: '1px', margin: 0, marginBottom: 4 }}>Note</p>
+                    <p style={{ fontSize: 14, color: textPrimary, margin: 0, lineHeight: 1.6 }}>{lookup.participant.label_description}</p>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 13, color: textSecondary, fontStyle: 'italic', margin: 0 }}>No note added.</p>
+                )}
+              </div>
+
+              {/* Close button */}
+              <button
+                onClick={() => setLabelModalOpen(false)}
+                style={{ width: '100%', height: 48, borderRadius: 14, border: `1.5px solid ${border}`, background: 'transparent', color: textSecondary, fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = isDarkMode ? '#2a2a2a' : '#f3f4f6' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
