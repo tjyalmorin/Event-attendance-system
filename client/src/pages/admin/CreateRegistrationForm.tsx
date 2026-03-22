@@ -102,12 +102,22 @@ const ConditionBuilder: React.FC<{
   sources: FormField[]
   onChange: (c: Conditions | null) => void
 }> = ({ conditions, sources, onChange }) => {
+  // rule.field_key stored as "pageNum__fieldKey" internally so we can
+  // disambiguate same-key fields across pages. Stripped to plain fieldKey
+  // before saving to DB (in handleSave).
+  const toOptVal   = (f: FormField) => `${f.page_number}__${f.field_key}`
+  const findSrc    = (ruleKey: string) =>
+    sources.find(f => toOptVal(f) === ruleKey)           // exact match (new format)
+    ?? sources.find(f => f.field_key === ruleKey)        // fallback for old plain format
+
+  const defaultKey = sources[0] ? toOptVal(sources[0]) : ''
+
   if (sources.length === 0) return (
     <p className="text-xs text-gray-400 italic">No radio or dropdown fields found on earlier pages.</p>
   )
   if (!conditions || conditions.rules.length === 0) return (
     <button type="button"
-      onClick={() => onChange({ logic: 'AND', rules: [{ field_key: sources[0] ? `${sources[0].page_number}:${sources[0].field_key}` : '', operator: 'eq', value: sources[0]?.options?.[0] ?? '' }] })}
+      onClick={() => onChange({ logic: 'AND', rules: [{ field_key: defaultKey, operator: 'eq', value: sources[0]?.options?.[0] ?? '' }] })}
       className="text-xs text-[#DC143C] hover:underline">+ Add condition</button>
   )
   return (
@@ -125,22 +135,25 @@ const ConditionBuilder: React.FC<{
         </div>
       )}
       {conditions.rules.map((rule, i) => {
-        // rule.field_key stored as "pageNum:fieldKey" to disambiguate duplicates
-        const src = sources.find(f => `${f.page_number}:${f.field_key}` === rule.field_key)
-          ?? sources.find(f => f.field_key === rule.field_key) // fallback for old data
-        const comboVal = src ? `${src.page_number}:${src.field_key}` : rule.field_key
+        const src = findSrc(rule.field_key)
+        // If src found but rule was in old plain format, upgrade to new format for display
+        const selectVal = src ? toOptVal(src) : rule.field_key
         return (
           <div key={i} className="flex items-center gap-1.5 flex-wrap">
             <select className="flex-1 min-w-0 px-2.5 py-1.5 text-xs bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-lg outline-none focus:border-[#DC143C]"
-              value={comboVal}
+              value={selectVal}
               onChange={e => {
                 const r = [...conditions.rules]
-                // Store the full "pageNum:fieldKey" as field_key so selection is sticky
+                // Store "pageNum__fieldKey" — stripped to plain in handleSave before DB
                 r[i] = { ...rule, field_key: e.target.value, value: '' }
                 onChange({ ...conditions, rules: r })
               }}>
               <option value="">— field —</option>
-              {sources.map(f => <option key={f._id} value={`${f.page_number}:${f.field_key}`}>Page {f.page_number} · {f.label || f.field_key}</option>)}
+              {sources.map(f => (
+                <option key={f._id} value={toOptVal(f)}>
+                  Page {f.page_number} · {f.label || f.field_key}
+                </option>
+              ))}
             </select>
             <select className="px-2.5 py-1.5 text-xs bg-gray-50 dark:bg-[#0f0f0f] border border-gray-200 dark:border-[#2a2a2a] rounded-lg outline-none focus:border-[#DC143C]"
               value={rule.operator}
@@ -167,7 +180,7 @@ const ConditionBuilder: React.FC<{
       })}
       <div className="flex items-center gap-3">
         <button type="button"
-          onClick={() => onChange({ ...conditions, rules: [...conditions.rules, { field_key: sources[0] ? `${sources[0].page_number}:${sources[0].field_key}` : '', operator: 'eq', value: '' }] })}
+          onClick={() => onChange({ ...conditions, rules: [...conditions.rules, { field_key: defaultKey, operator: 'eq', value: '' }] })}
           className="text-xs text-[#DC143C] hover:underline">+ Add rule</button>
         <button type="button" onClick={() => onChange(null)}
           className="text-xs text-gray-400 hover:text-red-500 hover:underline">Remove all</button>
@@ -498,7 +511,14 @@ export default function CreateRegistrationForm() {
           sort_order: f.sort_order, page_number: f.page_number,
           page_title: page?.title ?? f.page_title,
           page_description: page?.description ?? f.page_description,
-          page_conditions: page?.conditions ?? null,
+          page_conditions: page?.conditions ? {
+            ...page.conditions,
+            rules: page.conditions.rules.map(r => ({
+              ...r,
+              // Strip "pageNum__" prefix before saving to DB
+              field_key: r.field_key.includes('__') ? r.field_key.split('__').slice(1).join('__') : r.field_key,
+            }))
+          } : null,
           is_final: page?.is_final ?? false,
           condition: f.condition,
           section_key: null, section_label: null, section_conditions: null,

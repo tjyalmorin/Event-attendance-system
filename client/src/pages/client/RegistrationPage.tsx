@@ -507,7 +507,9 @@ export default function RegistrationPage() {
 
   // Evaluate a single condition rule against current answers
   const evalRule = (rule: { field_key: string; operator: 'eq' | 'neq'; value: string }, ans: Record<string, string>): boolean => {
-    const userVal = ans[rule.field_key] ?? ''
+    // Strip "pageNum__" prefix if present (safety net for any stored data with prefix)
+    const key = rule.field_key.includes('__') ? rule.field_key.split('__').slice(1).join('__') : rule.field_key
+    const userVal = ans[key] ?? ''
     return rule.operator === 'eq' ? userVal === rule.value : userVal !== rule.value
   }
 

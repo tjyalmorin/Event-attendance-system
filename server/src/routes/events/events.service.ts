@@ -177,13 +177,9 @@ export const getEventByTokenService = async (token: string) => {
                   'page_number',     ff.page_number,
                   'page_title',      ff.page_title,
                   'page_description',ff.page_description,
-                  'page_condition',  ff.page_condition,
                   'page_conditions', ff.page_conditions,
                   'is_final',        ff.is_final,
-                  'condition',       ff.condition,
-                  'section_key',        ff.section_key,
-                  'section_label',      ff.section_label,
-                  'section_conditions', ff.section_conditions
+                  'condition',       ff.condition
                 ) ORDER BY ff.page_number, ff.sort_order
               )
                FROM event_form_fields ff WHERE ff.event_id = e.event_id),
