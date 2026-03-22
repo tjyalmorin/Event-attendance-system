@@ -1,5 +1,5 @@
 import pool from '../../config/database.js'
-import { RegisterPayload } from '../../types/participant.types.js'
+import { RegisterPayload, FormField } from '../../types/participant.types.js'
 import {
   cacheGet, cacheSet,
   CK, invalidateParticipantCache
@@ -212,4 +212,61 @@ export const getCancelledParticipantsByEventService = async (event_id: number) =
     [event_id]
   )
   return result.rows
+}
+// ── Custom Form Fields ─────────────────────────────────────────────────────
+
+export const getFormFieldsService = async (event_id: number): Promise<FormField[]> => {
+  if (!event_id || isNaN(event_id)) throw new ValidationError('Valid event ID is required')
+
+  const result = await pool.query(
+    `SELECT
+       field_id, event_id, field_key, label, type,
+       options, page_number, page_label,
+       page_conditions, condition,
+       is_required, is_final, sort_order
+     FROM event_form_fields
+     WHERE event_id = $1
+     ORDER BY page_number ASC, sort_order ASC`,
+    [event_id]
+  )
+  return result.rows
+}
+
+export const saveFormFieldsService = async (event_id: number, fields: FormField[]): Promise<FormField[]> => {
+  if (!event_id || isNaN(event_id)) throw new ValidationError('Valid event ID is required')
+
+  // Delete all existing fields for this event, then re-insert
+  // Simple replace strategy — clean and reliable
+  await pool.query(`DELETE FROM event_form_fields WHERE event_id = $1`, [event_id])
+
+  if (fields.length === 0) return []
+
+  const inserted: FormField[] = []
+
+  for (const f of fields) {
+    const result = await pool.query(
+      `INSERT INTO event_form_fields
+        (event_id, field_key, label, type, options, page_number, page_label,
+         page_conditions, condition, is_required, is_final, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       RETURNING *`,
+      [
+        event_id,
+        f.field_key,
+        f.label,
+        f.type,
+        f.options ?? [],
+        f.page_number,
+        f.page_label ?? null,
+        f.page_conditions ? JSON.stringify(f.page_conditions) : null,
+        f.condition ? JSON.stringify(f.condition) : null,
+        f.is_required,
+        f.is_final,
+        f.sort_order,
+      ]
+    )
+    inserted.push(result.rows[0])
+  }
+
+  return inserted
 }

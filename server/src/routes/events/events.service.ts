@@ -163,7 +163,27 @@ export const getEventByTokenService = async (token: string) => {
               (SELECT json_agg(json_build_object('branch_name', branch_name, 'team_names', team_names))
                FROM event_branches WHERE event_id = e.event_id),
               '[]'
-            ) AS event_branches
+            ) AS event_branches,
+            COALESCE(
+              (SELECT json_agg(
+                json_build_object(
+                  'field_id',       ff.field_id,
+                  'field_key',      ff.field_key,
+                  'label',          ff.label,
+                  'type',           ff.type,
+                  'options',        ff.options,
+                  'page_number',    ff.page_number,
+                  'page_label',     ff.page_label,
+                  'page_conditions',ff.page_conditions,
+                  'condition',      ff.condition,
+                  'is_required',    ff.is_required,
+                  'is_final',       ff.is_final,
+                  'sort_order',     ff.sort_order
+                ) ORDER BY ff.page_number ASC, ff.sort_order ASC
+              )
+               FROM event_form_fields ff WHERE ff.event_id = e.event_id),
+              '[]'
+            ) AS form_fields
      FROM events e
      LEFT JOIN (
        SELECT event_id, COUNT(*)::int AS registered_count

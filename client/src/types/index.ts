@@ -157,3 +157,33 @@ export interface GrantAdminPayload {
   event_id: number
   is_edit_allowed: boolean
 }
+// ── Custom Form Builder Types ──────────────────────────────────────────────
+
+export type FormFieldType = 'text' | 'textarea' | 'radio' | 'dropdown' | 'checkbox'
+
+export interface ConditionRule {
+  field_key: string
+  operator: 'eq' | 'neq'
+  value: string
+}
+
+export interface PageConditions {
+  logic: 'AND' | 'OR'
+  rules: ConditionRule[]
+}
+
+export interface FormField {
+  field_id?: number
+  event_id?: number
+  field_key: string
+  label: string
+  type: FormFieldType
+  options: string[]
+  page_number: number
+  page_label?: string | null
+  page_conditions?: PageConditions | null
+  condition?: ConditionRule | null
+  is_required: boolean
+  is_final: boolean
+  sort_order: number
+}

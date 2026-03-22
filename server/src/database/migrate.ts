@@ -222,6 +222,39 @@ const migrate = async (): Promise<void> => {
       );
     `);
 
+    // ── event_form_fields ──────────────────────────────────────────
+    // Stores custom registration form fields per event.
+    // Each row = one field on a specific page.
+    // page_conditions: { logic: 'AND'|'OR', rules: [{field_key, operator, value}] }
+    //   → controls whether the entire page is shown
+    // condition: { field_key, operator, value }
+    //   → controls whether this individual field is shown
+    // is_final: marks the last page of the form
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS event_form_fields (
+        field_id          SERIAL        PRIMARY KEY,
+        event_id          INT           NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+        field_key         VARCHAR(100)  NOT NULL,
+        label             VARCHAR(255)  NOT NULL,
+        type              VARCHAR(50)   NOT NULL,
+        options           TEXT[]        NOT NULL DEFAULT '{}',
+        page_number       INT           NOT NULL DEFAULT 1,
+        page_label        VARCHAR(255),
+        page_conditions   JSONB,
+        condition         JSONB,
+        is_required       BOOLEAN       NOT NULL DEFAULT FALSE,
+        is_final          BOOLEAN       NOT NULL DEFAULT FALSE,
+        sort_order        INT           NOT NULL DEFAULT 0,
+        created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        UNIQUE(event_id, page_number, field_key)
+      );
+    `);
+
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_form_fields_event_id ON event_form_fields(event_id);
+    `);
+
     // ── Safe column additions for existing tables ──────────────────
     await pool.query(`
       ALTER TABLE participants
@@ -440,6 +473,7 @@ const migrate = async (): Promise<void> => {
     console.log('     • teams');
     console.log('     • event_branches');
     console.log('     • account_audit_logs');
+    console.log('     • event_form_fields   ← custom registration form fields');
     console.log('');
     console.log('  💡 Next: npm run db:migrate   (re-run safe — all idempotent)');
     console.log('          npm run dev            (start the server)');

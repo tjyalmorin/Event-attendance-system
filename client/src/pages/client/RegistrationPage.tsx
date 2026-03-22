@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getEventByTokenApi } from '../../api/events.api'
 import { registerParticipantApi } from '../../api/participants.api'
-import { Event } from '../../types'
+import { Event, FormField, PageConditions, ConditionRule } from '../../types'
 import { useBranches } from '../../hooks/useBranches'
 import pruLogo from '../../assets/pru.webp'
 import imgFamily     from '../../assets/Family.webp'
@@ -277,6 +277,7 @@ interface EventBranchEntry {
 
 interface EventWithBranches extends Event {
   event_branches?: EventBranchEntry[]
+  form_fields?: FormField[]
 }
 
 // ── Slideshow data ────────────────────────────────────────────────
@@ -468,6 +469,86 @@ export default function RegistrationPage() {
 
   const [showConfirmModal, setShowConfirmModal] = useState(false)
 
+  // ── Multi-page custom form state ──────────────────────────────
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({})
+  const [currentPageNum, setCurrentPageNum] = useState(1)
+
+  // Derive sorted pages from event.form_fields
+  const formFields: FormField[] = (event as any)?.form_fields ?? []
+  const hasCustomForm = formFields.length > 0
+
+  const allPageNums = hasCustomForm
+    ? [...new Set(formFields.map(f => f.page_number))].sort((a, b) => a - b)
+    : []
+
+  /**
+   * evalRule — evaluates a single ConditionRule against current answers.
+   * Strips "pageNum__" prefix from field_key (safety net for any stored prefix).
+   */
+  const evalRule = (rule: ConditionRule, ans: Record<string, string>): boolean => {
+    const key = rule.field_key.includes('__') ? rule.field_key.split('__').slice(1).join('__') : rule.field_key
+    const userVal = ans[key] ?? ''
+    return rule.operator === 'eq' ? userVal === rule.value : userVal !== rule.value
+  }
+
+  /**
+   * isPageVisible — returns true if page should be shown given current answers.
+   * Always true if no page_conditions.
+   */
+  const isPageVisible = (pageNum: number, ans: Record<string, string>): boolean => {
+    const pageField = formFields.find(f => f.page_number === pageNum)
+    const cond = pageField?.page_conditions as PageConditions | null | undefined
+    if (!cond || !cond.rules?.length) return true
+    if (cond.logic === 'AND') return cond.rules.every(r => evalRule(r, ans))
+    return cond.rules.some(r => evalRule(r, ans))
+  }
+
+  /** Visible page numbers in order */
+  const visiblePageNums = allPageNums.filter(pn => isPageVisible(pn, customAnswers))
+
+  /** Current page index within visible pages */
+  const currentVisibleIdx = visiblePageNums.indexOf(currentPageNum)
+
+  /** Fields for the current page, filtered by individual field conditions */
+  const currentPageFields = formFields
+    .filter(f => f.page_number === currentPageNum)
+    .filter(f => {
+      if (!f.condition) return true
+      return evalRule(f.condition, customAnswers)
+    })
+    .sort((a, b) => a.sort_order - b.sort_order)
+
+  const currentPageData = {
+    label:    formFields.find(f => f.page_number === currentPageNum)?.page_label ?? `Page ${currentPageNum}`,
+    is_final: formFields.filter(f => f.page_number === currentPageNum).some(f => f.is_final),
+  }
+
+  const isLastVisiblePage = currentVisibleIdx === visiblePageNums.length - 1
+
+  const goToNextPage = () => {
+    const nextPageNum = visiblePageNums[currentVisibleIdx + 1]
+    if (nextPageNum) setCurrentPageNum(nextPageNum)
+  }
+
+  const goToPrevPage = () => {
+    const prevPageNum = visiblePageNums[currentVisibleIdx - 1]
+    if (prevPageNum) setCurrentPageNum(prevPageNum)
+  }
+
+  const handleCustomAnswer = (field_key: string, value: string) => {
+    setCustomAnswers(prev => ({ ...prev, [field_key]: value }))
+  }
+
+  /** Validate required fields on current page */
+  const validateCurrentPage = (): string | null => {
+    for (const f of currentPageFields) {
+      if (f.is_required && !customAnswers[f.field_key]?.trim()) {
+        return `"${f.label}" is required.`
+      }
+    }
+    return null
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (form.agent_code.length !== 8) {
@@ -478,7 +559,18 @@ export default function RegistrationPage() {
       setError('Please select your agent type.')
       return
     }
-    // Show confirmation modal instead of submitting directly
+
+    // If custom form: validate current page + advance, show confirm only on final page
+    if (hasCustomForm) {
+      const pageErr = validateCurrentPage()
+      if (pageErr) { setError(pageErr); return }
+      setError('')
+      if (!isLastVisiblePage && !currentPageData.is_final) {
+        goToNextPage()
+        return
+      }
+    }
+
     setShowConfirmModal(true)
   }
 
@@ -487,7 +579,11 @@ export default function RegistrationPage() {
     setSubmitting(true)
     setError('')
     try {
-      const data = await registerParticipantApi(event!.event_id, form)
+      const payload = {
+        ...form,
+        ...(hasCustomForm && Object.keys(customAnswers).length > 0 ? { custom_answers: customAnswers } : {}),
+      }
+      const data = await registerParticipantApi(event!.event_id, payload)
       navigate('/confirmation', { state: { participant: data.participant, event } })
     } catch (err: any) {
       setError(err.response?.data?.error || 'Registration failed. Please try again.')
@@ -762,87 +858,225 @@ export default function RegistrationPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} style={s.form}>
-            <div style={s.formGrid}>
-              <div style={s.field}>
-                <label style={s.label}>AGENT CODE</label>
-                <input
-                  className="pru-input"
-                  name="agent_code"
-                  value={form.agent_code}
-                  onChange={handleChange}
-                  required
-                  placeholder="Enter your agent code here..."
-                  inputMode="numeric"
-                  maxLength={8}
-                />
-                {agentCodeError && (
-                  <span style={{ fontSize: 11, color: '#dc2626', marginTop: 3 }}>{agentCodeError}</span>
+
+            {/* ── Page 1: Standard fields (agent info) — always shown first ── */}
+            {(!hasCustomForm || currentPageNum === allPageNums[0]) && (
+              <div style={s.formGrid}>
+                <div style={s.field}>
+                  <label style={s.label}>AGENT CODE</label>
+                  <input
+                    className="pru-input"
+                    name="agent_code"
+                    value={form.agent_code}
+                    onChange={handleChange}
+                    required
+                    placeholder="Enter your agent code here..."
+                    inputMode="numeric"
+                    maxLength={8}
+                  />
+                  {agentCodeError && (
+                    <span style={{ fontSize: 11, color: '#dc2626', marginTop: 3 }}>{agentCodeError}</span>
+                  )}
+                </div>
+                <div style={s.field}>
+                  <label style={s.label}>FULL NAME</label>
+                  <input
+                    className="pru-input"
+                    name="full_name"
+                    value={form.full_name}
+                    onChange={handleChange}
+                    required
+                    placeholder="Enter your full name here..."
+                  />
+                </div>
+                <div style={s.field}>
+                  <label style={s.label}>BRANCH NAME</label>
+                  <CustomSelect
+                    value={form.branch_name}
+                    onChange={val => setForm(prev => ({ ...prev, branch_name: val, team_name: '' }))}
+                    placeholder="— Select branch —"
+                    options={availableBranches.map(b => ({ label: b.name, value: b.name }))}
+                  />
+                </div>
+                <div style={s.field}>
+                  <label style={s.label}>TEAM NAME</label>
+                  <CustomSelect
+                    value={form.team_name}
+                    onChange={val => setForm(prev => ({ ...prev, team_name: val }))}
+                    placeholder={form.branch_name ? '— Select team —' : '— Select branch first —'}
+                    disabled={!form.branch_name}
+                    options={getTeamsForSelectedBranch(form.branch_name).map(t => ({ label: t, value: t }))}
+                  />
+                </div>
+                <div style={s.field}>
+                  <label style={s.label}>AGENT TYPE</label>
+                  <CustomSelect
+                    value={form.agent_type}
+                    onChange={val => setForm(prev => ({ ...prev, agent_type: val }))}
+                    placeholder="— Select agent type —"
+                    centered
+                    options={[
+                      { label: 'District Manager', value: 'District Manager' },
+                      { label: 'Area Manager', value: 'Area Manager' },
+                      { label: 'Branch Manager', value: 'Branch Manager' },
+                      { label: 'Unit Manager', value: 'Unit Manager' },
+                      { label: 'Agent', value: 'Agent' },
+                    ]}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* ── Custom form pages ── */}
+            {hasCustomForm && currentPageFields.length > 0 && (
+              <div style={s.formGrid}>
+                {/* Page label header */}
+                {currentPageData.label && (
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1f2937', marginBottom: 4, paddingBottom: 8, borderBottom: '1px solid #e5e7eb' }}>
+                    {currentPageData.label}
+                  </div>
                 )}
+
+                {currentPageFields.map(field => (
+                  <div key={field.field_key} style={s.field}>
+                    <label style={s.label}>
+                      {field.label.toUpperCase()}
+                      {field.is_required && <span style={{ color: '#DC143C', marginLeft: 4 }}>*</span>}
+                    </label>
+
+                    {field.type === 'text' && (
+                      <input
+                        className="pru-input"
+                        value={customAnswers[field.field_key] ?? ''}
+                        onChange={e => handleCustomAnswer(field.field_key, e.target.value)}
+                        placeholder={`Enter ${field.label.toLowerCase()}...`}
+                        required={field.is_required}
+                      />
+                    )}
+
+                    {field.type === 'textarea' && (
+                      <textarea
+                        className="pru-input"
+                        value={customAnswers[field.field_key] ?? ''}
+                        onChange={e => handleCustomAnswer(field.field_key, e.target.value)}
+                        placeholder={`Enter ${field.label.toLowerCase()}...`}
+                        required={field.is_required}
+                        rows={3}
+                        style={{ resize: 'vertical', fontFamily: 'inherit' }}
+                      />
+                    )}
+
+                    {field.type === 'dropdown' && (
+                      <CustomSelect
+                        value={customAnswers[field.field_key] ?? ''}
+                        onChange={val => handleCustomAnswer(field.field_key, val)}
+                        placeholder="— Select —"
+                        options={field.options.map(o => ({ label: o, value: o }))}
+                      />
+                    )}
+
+                    {field.type === 'radio' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                        {field.options.map(opt => (
+                          <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151' }}>
+                            <input
+                              type="radio"
+                              name={field.field_key}
+                              value={opt}
+                              checked={customAnswers[field.field_key] === opt}
+                              onChange={() => handleCustomAnswer(field.field_key, opt)}
+                              style={{ accentColor: '#DC143C', width: 16, height: 16 }}
+                            />
+                            {opt}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {field.type === 'checkbox' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                        {field.options.map(opt => {
+                          const current = customAnswers[field.field_key] ?? ''
+                          const selected = current.split(',').filter(Boolean)
+                          const isChecked = selected.includes(opt)
+                          return (
+                            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, color: '#374151' }}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  const next = isChecked
+                                    ? selected.filter(s => s !== opt)
+                                    : [...selected, opt]
+                                  handleCustomAnswer(field.field_key, next.join(','))
+                                }}
+                                style={{ accentColor: '#DC143C', width: 16, height: 16 }}
+                              />
+                              {opt}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-              <div style={s.field}>
-                <label style={s.label}>FULL NAME</label>
-                <input
-                  className="pru-input"
-                  name="full_name"
-                  value={form.full_name}
-                  onChange={handleChange}
-                  required
-                  placeholder="Enter your full name here..."
-                />
+            )}
+
+            {/* ── Page progress indicator ── */}
+            {hasCustomForm && visiblePageNums.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', marginTop: 8 }}>
+                {visiblePageNums.map((pn, i) => (
+                  <div key={pn} style={{
+                    width: currentPageNum === pn ? 20 : 6,
+                    height: 6,
+                    borderRadius: 3,
+                    background: currentPageNum === pn ? '#DC143C' : i < currentVisibleIdx ? '#DC143C' : '#e5e7eb',
+                    transition: 'width 0.3s ease, background 0.3s ease',
+                  }} />
+                ))}
               </div>
-              <div style={s.field}>
-                <label style={s.label}>BRANCH NAME</label>
-                <CustomSelect
-                  value={form.branch_name}
-                  onChange={val => setForm(prev => ({ ...prev, branch_name: val, team_name: '' }))}
-                  placeholder="— Select branch —"
-                  options={availableBranches.map(b => ({ label: b.name, value: b.name }))}
-                />
-              </div>
-              <div style={s.field}>
-                <label style={s.label}>TEAM NAME</label>
-                <CustomSelect
-                  value={form.team_name}
-                  onChange={val => setForm(prev => ({ ...prev, team_name: val }))}
-                  placeholder={form.branch_name ? '— Select team —' : '— Select branch first —'}
-                  disabled={!form.branch_name}
-                  options={getTeamsForSelectedBranch(form.branch_name).map(t => ({ label: t, value: t }))}
-                />
-              </div>
-              <div style={s.field}>
-                <label style={s.label}>AGENT TYPE</label>
-                <CustomSelect
-                  value={form.agent_type}
-                  onChange={val => setForm(prev => ({ ...prev, agent_type: val }))}
-                  placeholder="— Select agent type —"
-                  centered
-                  options={[
-                    { label: 'District Manager', value: 'District Manager' },
-                    { label: 'Area Manager', value: 'Area Manager' },
-                    { label: 'Branch Manager', value: 'Branch Manager' },
-                    { label: 'Unit Manager', value: 'Unit Manager' },
-                    { label: 'Agent', value: 'Agent' },
-                  ]}
-                />
-              </div>
-            </div>
+            )}
 
             <div style={s.notice}>
               <span style={{ flexShrink: 0, marginTop: 1, display: 'flex' }}><IconInfo size={14} color="#92400e" /></span>
               <span>Your <strong>Agent Code</strong> will be used for check-in at the venue.</span>
             </div>
 
-            <button type="submit" disabled={submitting} className="pru-btn">
-              {submitting ? (
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <span className="btn-spinner" /> Registering...
-                </span>
-              ) : (
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  Complete Registration <IconArrowRight size={16} color="white" />
-                </span>
+            {/* Navigation buttons */}
+            <div style={{ display: 'flex', gap: 10 }}>
+              {/* Back button — only for custom form pages beyond first */}
+              {hasCustomForm && currentVisibleIdx > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setError(''); goToPrevPage() }}
+                  style={{
+                    flex: '0 0 auto', height: 48, borderRadius: 12,
+                    border: '1.5px solid #e5e7eb', background: 'white',
+                    fontSize: 14, fontWeight: 600, color: '#374151',
+                    cursor: 'pointer', fontFamily: 'inherit', padding: '0 20px',
+                  }}
+                >
+                  ← Back
+                </button>
               )}
-            </button>
+
+              <button type="submit" disabled={submitting} className="pru-btn" style={{ flex: 1 }}>
+                {submitting ? (
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <span className="btn-spinner" /> Registering...
+                  </span>
+                ) : hasCustomForm && !isLastVisiblePage && !currentPageData.is_final ? (
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    Next <IconArrowRight size={16} color="white" />
+                  </span>
+                ) : (
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    Complete Registration <IconArrowRight size={16} color="white" />
+                  </span>
+                )}
+              </button>
+            </div>
           </form>
         </div>
 
@@ -1081,6 +1315,11 @@ export default function RegistrationPage() {
                 { label: 'Branch',     value: form.branch_name },
                 { label: 'Team',       value: form.team_name },
                 { label: 'Agent Type', value: form.agent_type },
+                // Custom answers
+                ...Object.entries(customAnswers).map(([key, val]) => {
+                  const fieldDef = formFields.find(f => f.field_key === key)
+                  return { label: fieldDef?.label ?? key, value: val }
+                }),
               ].map((row, i, arr) => (
                 <div key={row.label} style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1088,7 +1327,7 @@ export default function RegistrationPage() {
                   borderBottom: i < arr.length - 1 ? '1px solid #f3f4f6' : 'none',
                 }}>
                   <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500 }}>{row.label}</span>
-                  <span style={{ fontSize: 13, color: '#111827', fontWeight: 600 }}>{row.value}</span>
+                  <span style={{ fontSize: 13, color: '#111827', fontWeight: 600, textAlign: 'right', maxWidth: '60%' }}>{row.value}</span>
                 </div>
               ))}
             </div>

@@ -15,6 +15,7 @@ import EventDetail from './pages/admin/EventDetail'
 import ScannerPage from './pages/admin/ScannerPage'
 import TrashBin from './pages/admin/TrashBin'
 import EventArchive from './pages/admin/EventArchive'
+import CreateRegistrationForm from './pages/admin/CreateRegistrationForm'
 
 // Forgot Password pages
 import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
@@ -84,6 +85,7 @@ function App() {
               <Route path="/admin/events/archive" element={<EventArchive />} />
               <Route path="/admin/events/create" element={<CreateEvent />} />
               <Route path="/admin/events/:eventId" element={<EventDetail />} />
+              <Route path="/admin/events/:eventId/form-builder" element={<CreateRegistrationForm />} />
               <Route path="/admin/settings/profile" element={<ProfileSettingsPage />} />
               <Route path="/admin/settings/accounts" element={<AccountManagement />} />
               <Route path="/admin/settings/branches" element={<BranchManagement />} />
