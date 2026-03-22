@@ -49,6 +49,18 @@ const AdminLayout = () => {
   )
 }
 
+// ── Scanner layout: fullscreen, no sidebar, auth-guarded ──
+const ScannerLayout = () => {
+  const token = localStorage.getItem('authToken')
+  if (!token) return <Navigate to="/admin/login" />
+
+  return (
+    <div className="flex min-h-screen bg-[#f0f1f3] dark:bg-[#0f0f0f]">
+      <Outlet />
+    </div>
+  )
+}
+
 function App() {
   return (
     <DarkModeProvider>
@@ -74,7 +86,6 @@ function App() {
               <Route path="/admin/events/create" element={<CreateEvent />} />
               <Route path="/admin/events/:event_id/form-builder" element={<CreateRegistrationForm />} />
               <Route path="/admin/events/:eventId" element={<EventDetail />} />
-              <Route path="/admin/events/:eventId/scanner" element={<ScannerPage />} />
               <Route path="/admin/settings/profile" element={<ProfileSettingsPage />} />
               <Route path="/admin/settings/accounts" element={<AccountManagement />} />
               <Route path="/admin/settings/branches" element={<BranchManagement />} />
@@ -85,6 +96,11 @@ function App() {
             <Route element={<AdminLayout />}>
               <Route path="/staff/events" element={<EventManagement />} />
               <Route path="/staff/events/:eventId" element={<EventDetail />} />
+            </Route>
+
+            {/* ── Scanner Routes (fullscreen, no sidebar) ── */}
+            <Route element={<ScannerLayout />}>
+              <Route path="/admin/events/:eventId/scanner" element={<ScannerPage />} />
               <Route path="/staff/events/:eventId/scanner" element={<ScannerPage />} />
             </Route>
 

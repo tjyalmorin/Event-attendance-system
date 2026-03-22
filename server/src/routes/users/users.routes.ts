@@ -39,11 +39,11 @@ router.get('/admin-grants/me',          getMyAdminGrants)
 router.delete('/admin-grant/:grant_id', roleGuard('admin'), revokeAdminAccess)
 
 // ── User management (admin only) ──────────────────────────
-router.post('/',                       roleGuard('admin'), validate(createUserSchema),         createUser)
-router.get('/',                        roleGuard('admin'),                                     getAllUsers)
-router.put('/:user_id',                roleGuard('admin'), validate(updateUserSchema),         updateUser)
-router.patch('/:user_id/active',       roleGuard('admin'),                                     toggleUserActive)
-router.delete('/:user_id',             roleGuard('admin'),                                     deleteUser)
-router.put('/:user_id/reset-password', roleGuard('admin'), validate(adminResetPasswordSchema), adminResetPassword)
+router.post('/',                          roleGuard('admin'), validate(createUserSchema),         createUser)
+router.get('/',                           roleGuard('admin'),                                     getAllUsers)
+router.put('/:user_id',                   roleGuard('admin'), validate(updateUserSchema),         updateUser)
+router.patch('/:user_id/active',          roleGuard('admin'),                                     toggleUserActive)
+router.delete('/:user_id',                roleGuard('admin'),                                     deleteUser)
+router.put('/:user_id/reset-password',    roleGuard('admin'), validate(adminResetPasswordSchema), adminResetPassword)
 
 export default router

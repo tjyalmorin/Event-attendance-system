@@ -11,6 +11,7 @@ import {
   getArchivedEventsService, restoreArchivedEventService,
   copyEventService
 } from './events.service.js'
+import pool from '../../config/database.js'
 
 const parseField = (val: any) => {
   if (!val) return []
@@ -91,8 +92,6 @@ export const getEventById = asyncHandler(async (req: Request, res: Response) => 
   res.json(event)
 })
 
-// ── Public: fetch event by registration_link token ─────────────────────────
-// No auth required. Used by RegistrationPage (/register/:token).
 export const getEventByToken = asyncHandler(async (req: Request, res: Response) => {
   const event = await getEventByTokenService(req.params.token)
   res.json(event)
@@ -109,17 +108,10 @@ export const updateEvent = asyncHandler(async (req: Request, res: Response) => {
     ? req.body.remove_slideshow_urls
     : []
 
-  // ── staff_ids: only include in payload when explicitly sent by the client ──
-  // When omitted (e.g. modal still initializing), undefined tells the service
-  // to skip the staff update entirely and preserve existing assignments.
   const staffIdsPayload = req.body.staff_ids !== undefined
     ? { staff_ids: parseField(req.body.staff_ids) }
     : {}
 
-  // ── preset_url: distinguish three cases ───────────────────────────────────
-  // ''  (empty string) → admin explicitly cleared it → pass null to service
-  // URL string         → admin set or preserved it   → pass URL to service
-  // undefined          → field absent from FormData   → omit so service keeps existing
   const presetPayload = req.body.preset_url !== undefined
     ? { preset_url: req.body.preset_url === '' ? null : req.body.preset_url }
     : {}
