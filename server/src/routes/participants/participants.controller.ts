@@ -93,14 +93,12 @@ export const getCancelledParticipantsByEvent = asyncHandler(async (req: Request,
   const participants = await getCancelledParticipantsByEventService(Number(req.params.event_id))
   res.json(participants)
 })
-// ── Custom Form Fields ─────────────────────────────────────────────────────
-
 export const getFormFields = asyncHandler(async (req: Request, res: Response) => {
   const fields = await getFormFieldsService(Number(req.params.event_id))
   res.json(fields)
 })
 
 export const saveFormFields = asyncHandler(async (req: Request, res: Response) => {
-  const fields = await saveFormFieldsService(Number(req.params.event_id), req.body.fields)
-  res.json(fields)
+  const result = await saveFormFieldsService(Number(req.params.event_id), req.body.fields)
+  res.json(result)
 })

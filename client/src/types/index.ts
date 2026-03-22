@@ -86,11 +86,12 @@ export interface Participant {
 }
 
 export interface RegisterPayload {
-  agent_code: string
-  full_name: string
-  branch_name: string
-  team_name: string
-  agent_type: string
+  agent_code?: string
+  full_name?: string
+  branch_name?: string
+  team_name?: string
+  agent_type?: string
+  custom_responses?: Record<string, string | boolean | number | string[] | null>
 }
 
 // Attendance types

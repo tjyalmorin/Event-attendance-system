@@ -14,15 +14,16 @@ export interface Participant {
   deleted_at: Date | null
   label: boolean
   label_description: string | null
+  custom_responses: Record<string, string | boolean | number | string[] | null>
 }
 
 export interface RegisterPayload {
-  agent_code: string
-  full_name: string
-  branch_name: string
-  team_name: string
-  agent_type: string
-  custom_answers?: Record<string, string>
+  agent_code?: string
+  full_name?: string
+  branch_name?: string
+  team_name?: string
+  agent_type?: string
+  custom_responses?: Record<string, string | boolean | number | string[] | null>
 }
 
 // ── Custom Form Builder Types ──────────────────────────────────────────────
@@ -30,7 +31,7 @@ export interface RegisterPayload {
 export type FormFieldType = 'text' | 'textarea' | 'radio' | 'dropdown' | 'checkbox' | 'date'
 
 export interface ConditionRule {
-  field_key: string   // plain field_key (no page prefix)
+  field_key: string
   operator: 'eq' | 'neq'
   value: string
 }
@@ -49,9 +50,9 @@ export interface FormField {
   options: string[]
   page_number: number
   page_label?: string | null
-  page_conditions?: PageConditions | null  // show/hide entire page
-  condition?: ConditionRule | null         // show/hide individual field
+  page_conditions?: PageConditions | null
+  condition?: ConditionRule | null
   is_required: boolean
-  is_final: boolean                        // marks last page
+  is_final: boolean
   sort_order: number
 }
