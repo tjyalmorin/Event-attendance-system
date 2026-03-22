@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { io as socketIO } from 'socket.io-client'
 import { useParams } from 'react-router-dom'
 import { getEventByIdApi } from '../../api/events.api'
 import { lookupParticipantApi, resolveParticipantApi, scanAgentCodeApi, logDenialApi, getSessionsByEventApi } from '../../api/scan.api'
@@ -132,6 +133,36 @@ export default function ScannerPage() {
       const sessions = await getSessionsByEventApi(Number(eventId))
       setCheckedInCount(sessions.filter((s: any) => s.check_in_time && !s.check_out_time).length)
     } catch (_) {}
+  }, [eventId])
+
+  // ── Socket.io — real-time count updates from other scanners ──
+  useEffect(() => {
+    if (!eventId) return
+
+    const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace('/api', '')
+    const socket = socketIO(SOCKET_URL, { transports: ['websocket'] })
+
+    socket.on('connect', () => {
+      socket.emit('join:event', Number(eventId))
+    })
+
+    socket.on('attendance:update', (data: any) => {
+      const { action } = data
+      if (action === 'check_in') {
+        setCheckedInCount(prev => prev + 1)
+      } else if (action === 'check_out') {
+        setCheckedInCount(prev => Math.max(0, prev - 1))
+      }
+    })
+
+    socket.on('attendance:bulk_checkout', (data: any) => {
+      setCheckedInCount(prev => Math.max(0, prev - (data.checked_out ?? 0)))
+    })
+
+    return () => {
+      socket.emit('leave:event', Number(eventId))
+      socket.disconnect()
+    }
   }, [eventId])
 
   useEffect(() => {

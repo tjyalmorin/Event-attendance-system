@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { io as socketIO } from 'socket.io-client'
 import { useNavigate, useParams } from 'react-router-dom'
 import ExcelJS from 'exceljs'
 import { getEventByIdApi, updateEventStatusApi, getEventStaffApi, removeEventStaffApi } from '../../api/events.api'
@@ -127,6 +128,47 @@ function StatCard({ num, label, accent, barWidth, icon, iconRed }: StatCardProps
 // ─────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────
+// Socket hook
+// ─────────────────────────────────────────────────────────────
+const SOCKET_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace('/api', '')
+
+function useEventSocket(
+  eventId: string | undefined,
+  onAttendanceUpdate: (data: any) => void,
+  onAttendanceBulkCheckout: (data: any) => void,
+  onParticipantsUpdate: (data: any) => void,
+) {
+  const socketRef = useRef<ReturnType<typeof socketIO> | null>(null)
+
+  useEffect(() => {
+    if (!eventId) return
+
+    const socket = socketIO(SOCKET_URL, { transports: ['websocket'] })
+    socketRef.current = socket
+
+    socket.on('connect', () => {
+      console.log('⚡ Socket connected, joining event:', eventId)
+      socket.emit('join:event', Number(eventId))
+    })
+
+    socket.on('attendance:update', onAttendanceUpdate)
+    socket.on('attendance:bulk_checkout', onAttendanceBulkCheckout)
+    socket.on('participants:update', onParticipantsUpdate)
+
+    socket.on('disconnect', () => {
+      console.log('🔌 Socket disconnected')
+    })
+
+    return () => {
+      socket.emit('leave:event', Number(eventId))
+      socket.disconnect()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId])
+}
+
 export default function EventDetail() {
   const { eventId } = useParams()
   const navigate = useNavigate()
@@ -208,6 +250,41 @@ export default function EventDetail() {
   }, [eventId])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  // ── Real-time socket updates ──────────────────────────────
+  useEventSocket(
+    eventId,
+    // attendance:update — someone checked in or out
+    (data) => {
+      const { session, participant } = data
+      setSessions(prev => {
+        const exists = prev.find(s => s.session_id === session.session_id)
+        if (exists) {
+          return prev.map(s => s.session_id === session.session_id ? { ...s, ...session } : s)
+        }
+        // new check-in — prepend with participant info merged in
+        return [{ ...session, full_name: participant.full_name, agent_code: participant.agent_code, branch_name: participant.branch_name, team_name: participant.team_name }, ...prev]
+      })
+    },
+    // attendance:bulk_checkout — bulk check-out happened
+    (_data) => {
+      // Refresh sessions since multiple rows changed
+      fetchData()
+    },
+    // participants:update — new registration or cancellation
+    (data) => {
+      if (data.action === 'registered') {
+        setParticipants(prev => {
+          const exists = prev.find(p => p.participant_id === data.participant.participant_id)
+          if (exists) return prev
+          return [data.participant, ...prev]
+        })
+      } else if (data.action === 'cancelled') {
+        setParticipants(prev => prev.filter(p => p.participant_id !== data.participant_id))
+      }
+    },
+  )
+
 
   // ─────────────────────────────────────────────────────────
   // Handlers
@@ -1038,37 +1115,42 @@ export default function EventDetail() {
             </div>
           </div>
           {/* Desktop header */}
-          <div className="hidden md:flex px-12 h-[76px] items-center gap-4">
+          <div className="hidden md:flex px-12 h-[76px] items-center gap-3 overflow-hidden">
             <button onClick={() => navigate('/admin/events')}
-              className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors mr-2">
+              className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors flex-shrink-0">
               <ArrowLeftIcon />
               <span className="font-medium">Back</span>
             </button>
-            <h1 className="text-[32px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none">
-              {event.title}
-            </h1>
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getStatusBadge(event.status)}`}>
-              {event.status.toUpperCase()}
-            </span>
-            {ongoing && (
-              <span className="flex items-center gap-1.5 text-xs font-bold text-green-600 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                LIVE
+            {/* Title + badges — takes available space, truncates if needed */}
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <h1 className="text-[26px] font-extrabold text-gray-800 dark:text-white tracking-tight leading-none truncate">
+                {event.title}
+              </h1>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex-shrink-0 ${getStatusBadge(event.status)}`}>
+                {event.status.toUpperCase()}
               </span>
-            )}
-            <div className="flex-1" />
-            {isAdmin && (
-              <button onClick={() => setEditModalOpen(true)}
-                className="flex items-center gap-2 border border-gray-200 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 px-5 py-2.5 rounded-xl font-semibold text-sm hover:border-[#DC143C] hover:text-[#DC143C] dark:hover:border-[#DC143C] dark:hover:text-[#DC143C] transition-all">
-                <EditIcon />
-                Edit Event
+              {ongoing && (
+                <span className="flex items-center gap-1.5 text-xs font-bold text-green-600 bg-green-50 border border-green-200 px-2.5 py-1 rounded-full flex-shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  LIVE
+                </span>
+              )}
+            </div>
+            {/* Action buttons — always visible, never squeezed */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {isAdmin && (
+                <button onClick={() => setEditModalOpen(true)}
+                  className="flex items-center gap-2 border border-gray-200 dark:border-[#2a2a2a] text-gray-700 dark:text-gray-300 px-4 py-2.5 rounded-xl font-semibold text-sm hover:border-[#DC143C] hover:text-[#DC143C] dark:hover:border-[#DC143C] dark:hover:text-[#DC143C] transition-all whitespace-nowrap">
+                  <EditIcon />
+                  Edit Event
+                </button>
+              )}
+              <button onClick={() => window.open(`${isAdmin ? '/admin' : '/staff'}/events/${eventId}/scanner`, '_blank')}
+                className="flex items-center gap-2 bg-[#DC143C] text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#b01030] transition-all shadow-[0_4px_16px_rgba(220,20,60,0.22)] whitespace-nowrap">
+                <ScannerIcon />
+                Check-in Station
               </button>
-            )}
-            <button onClick={() => window.open(`${isAdmin ? '/admin' : '/staff'}/events/${eventId}/scanner`, '_blank')}
-              className="flex items-center gap-2 bg-[#DC143C] text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#b01030] transition-all shadow-[0_4px_16px_rgba(220,20,60,0.22)]">
-              <ScannerIcon />
-              Check-in Station
-            </button>
+            </div>
           </div>
         </header>
 
