@@ -3,7 +3,6 @@ import jwt from 'jsonwebtoken'
 import pool from '../config/database.js'
 import { cacheGet, cacheSet, cacheDel } from '../utils/cache.js'
 
-// ── Define JwtPayload locally to avoid import issues ─────────────────────────
 interface JwtPayload {
   user_id: string
   role: string
@@ -24,10 +23,16 @@ const authenticate = async (req: Request, res: Response, next: NextFunction): Pr
 
   const token = authHeader.split(' ')[1]
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as JwtPayload
+  const jwtSecret = process.env.JWT_SECRET
+  if (!jwtSecret) {
+    console.error('❌ JWT_SECRET is not configured')
+    res.status(500).json({ error: 'Server configuration error' })
+    return
+  }
 
-    // ── Check Redis cache first before hitting the DB ─────────────────────
+  try {
+    const decoded = jwt.verify(token, jwtSecret) as JwtPayload
+
     const cacheKey = `user:active:${decoded.user_id}`
     let userStatus = await cacheGet<{ is_active: boolean; deleted_at: string | null }>(cacheKey)
 
@@ -44,8 +49,6 @@ const authenticate = async (req: Request, res: Response, next: NextFunction): Pr
       }
 
       userStatus = { is_active: user.is_active, deleted_at: user.deleted_at }
-
-      // Cache for 30 seconds — short enough for near-instant deactivation
       await cacheSet(cacheKey, userStatus, 30)
     }
 
