@@ -6,12 +6,6 @@ import { UnauthorizedError, ValidationError, AppError } from '../../errors/AppEr
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-const getJwtSecret = (): string => {
-  const secret = process.env.JWT_SECRET
-  if (!secret) throw new AppError('JWT_SECRET is not configured', 500)
-  return secret
-}
-
 export const loginService = async (email: string, password: string) => {
   if (!email || typeof email !== 'string') throw new ValidationError('Valid email is required')
   if (!password || typeof password !== 'string') throw new ValidationError('Password is required')
@@ -40,7 +34,7 @@ export const loginService = async (email: string, password: string) => {
 
   const token = jwt.sign(
     { user_id: user.user_id, role: user.role, branch_name: user.branch_name },
-    getJwtSecret(),
+    process.env.JWT_SECRET!,
     { expiresIn: '8h' }
   )
 

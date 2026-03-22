@@ -3,25 +3,23 @@ export type AgentType = 'District Manager' | 'Area Manager' | 'Branch Manager' |
 export interface Participant {
   participant_id: number
   event_id: number
-  agent_code: string | null
+  agent_code: string
   full_name: string
-  branch_name: string | null
-  team_name: string | null
+  branch_name: string
+  team_name: string
   agent_type: AgentType | null
-  custom_responses: Record<string, string | boolean | number | string[] | null>
   registration_status: 'confirmed' | 'cancelled'
   registered_at: Date
   updated_at: Date
   deleted_at: Date | null
-  label: string | null
+  label: boolean
   label_description: string | null
 }
 
 export interface RegisterPayload {
-  agent_code?: string
-  full_name?: string
-  branch_name?: string
-  team_name?: string
-  agent_type?: string
-  custom_responses?: Record<string, string | boolean | number | string[] | null>
+  agent_code: string
+  full_name: string
+  branch_name: string
+  team_name: string
+  agent_type: string
 }

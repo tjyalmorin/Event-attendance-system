@@ -7,11 +7,16 @@ import {
 import { NotFoundError, ValidationError, AppError } from '../../errors/AppError.js'
 
 export const registerParticipantService = async (event_id: number, payload: RegisterPayload) => {
-  const { agent_code, full_name, branch_name, team_name, agent_type, custom_responses = {} } = payload
+  const { agent_code, full_name, branch_name, team_name, agent_type } = payload
 
   if (!event_id || isNaN(event_id)) throw new ValidationError('Valid event ID is required')
-  if (agent_code && agent_code.length > 50) throw new ValidationError('Agent code too long')
-  if (full_name && full_name.length > 100) throw new ValidationError('Full name too long')
+  if (!agent_code?.trim()) throw new ValidationError('Agent code is required')
+  if (!full_name?.trim()) throw new ValidationError('Full name is required')
+  if (!branch_name?.trim()) throw new ValidationError('Branch name is required')
+  if (!team_name?.trim()) throw new ValidationError('Team name is required')
+  if (!agent_type?.trim()) throw new ValidationError('Agent type is required')
+  if (agent_code.length > 50) throw new ValidationError('Agent code too long')
+  if (full_name.length > 100) throw new ValidationError('Full name too long')
 
   const eventResult = await pool.query(
     'SELECT * FROM events WHERE event_id = $1 AND deleted_at IS NULL',
@@ -21,7 +26,6 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (!event) throw new NotFoundError('Event not found')
   if (event.status !== 'open') throw new ValidationError('Event registration is not open')
 
-  // ── Registration window check in DB time (Asia/Manila) ───────────────────
   const windowCheck = await pool.query(
     `SELECT
        ($1::timestamptz IS NULL OR NOW() >= $1::timestamptz) AS after_start,
@@ -31,77 +35,22 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (!windowCheck.rows[0].after_start) throw new ValidationError('Registration has not started yet')
   if (!windowCheck.rows[0].before_end)  throw new ValidationError('Registration has already closed')
 
-  // ── Validate required custom fields ──────────────────────────────────────
-  // Core fields submitted as top-level AND in custom_responses — check both
-  const coreKeys: Record<string, string | undefined> = { agent_code, full_name, branch_name, team_name, agent_type }
-
-  const formFieldsResult = await pool.query(
-    `SELECT field_key, label, is_required, condition, page_number, page_conditions, page_condition, is_final,
-            section_key, section_conditions
-     FROM event_form_fields
-     WHERE event_id = $1 ORDER BY page_number, sort_order`,
-    [event_id]
+  const duplicate = await pool.query(
+    'SELECT participant_id FROM participants WHERE event_id = $1 AND agent_code = $2 AND deleted_at IS NULL',
+    [event_id, agent_code.trim()]
   )
-
-  // Build a combined answers map for condition evaluation
-  const allAnswers: Record<string, string> = {
-    ...Object.fromEntries(Object.entries(coreKeys).filter(([, v]) => v != null) as [string, string][]),
-    ...Object.fromEntries(Object.entries(custom_responses).map(([k, v]) => [k, String(v ?? '')])),
-  }
-
-  // Helper: evaluate a single condition rule
-  const evalRule = (rule: { field_key: string; operator: string; value: string }) => {
-    const userVal = allAnswers[rule.field_key] ?? ''
-    return rule.operator === 'eq' ? userVal === rule.value : userVal !== rule.value
-  }
-
-  // Helper: is a section visible?
-  const isSectionVisible = (sectionConditions: any): boolean => {
-    if (!sectionConditions?.rules?.length) return true
-    const { logic, rules } = sectionConditions
-    if (logic === 'AND') return rules.every(evalRule)
-    return rules.some(evalRule)
-  }
-
-  for (const field of formFieldsResult.rows) {
-    if (!field.is_required) continue
-    // Skip fields whose SECTION is not visible
-    if (field.section_key && !isSectionVisible(field.section_conditions)) continue
-    // Skip fields with an unmet field-level condition
-    if (field.condition && !evalRule(field.condition)) continue
-    // Check answer in core fields first, then custom_responses
-    const answer = coreKeys[field.field_key] ?? custom_responses[field.field_key]
-    if (answer === undefined || answer === null || String(answer).trim() === '') {
-      throw new ValidationError(`"${field.label}" is required`)
-    }
-  }
-
-  if (agent_code) {
-    const duplicate = await pool.query(
-      'SELECT participant_id FROM participants WHERE event_id = $1 AND agent_code = $2 AND deleted_at IS NULL',
-      [event_id, agent_code.trim()]
-    )
-    if (duplicate.rows.length > 0) {
-      throw new AppError('This agent is already registered for this event', 409)
-    }
+  if (duplicate.rows.length > 0) {
+    throw new AppError('This agent is already registered for this event', 409)
   }
 
   try {
     const result = await pool.query(
       `INSERT INTO participants
         (event_id, agent_code, full_name, branch_name, team_name, agent_type,
-         custom_responses, registration_status, registered_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'confirmed', NOW())
+         registration_status, registered_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'confirmed', NOW())
        RETURNING *`,
-      [
-        event_id,
-        (agent_code  || custom_responses['agent_code']  as string)?.trim() || null,
-        (full_name   || custom_responses['full_name']   as string)?.trim() || null,
-        (branch_name || custom_responses['branch_name'] as string)?.trim() || null,
-        (team_name   || custom_responses['team_name']   as string)?.trim() || null,
-        (agent_type  || custom_responses['agent_type']  as string)?.trim() || null,
-        JSON.stringify(custom_responses),
-      ]
+      [event_id, agent_code.trim(), full_name.trim(), branch_name.trim(), team_name.trim(), agent_type.trim()]
     )
 
     await Promise.all([
@@ -250,68 +199,4 @@ export const getCancelledParticipantsByEventService = async (event_id: number) =
     [event_id]
   )
   return result.rows
-}
-
-// ── Form Fields ────────────────────────────────────────────────────────────
-
-export const getFormFieldsService = async (event_id: number) => {
-  if (!event_id || isNaN(event_id)) throw new ValidationError('Valid event ID is required')
-
-  const result = await pool.query(
-    `SELECT field_id, field_key, label, field_type, options, is_required,
-            sort_order, page_number, page_title, page_description, page_condition, page_conditions, is_final, condition,
-            section_key, section_label, section_conditions
-     FROM event_form_fields
-     WHERE event_id = $1
-     ORDER BY page_number ASC, sort_order ASC`,
-    [event_id]
-  )
-  return result.rows
-}
-
-export const saveFormFieldsService = async (event_id: number, fields: any[]) => {
-  if (!event_id || isNaN(event_id)) throw new ValidationError('Valid event ID is required')
-
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-
-    // Delete all existing fields for this event then re-insert
-    // Simple replace strategy — fine since form builder always sends the full list
-    await client.query(
-      `DELETE FROM event_form_fields WHERE event_id = $1`,
-      [event_id]
-    )
-
-    for (const f of fields) {
-      await client.query(
-        `INSERT INTO event_form_fields
-          (event_id, field_key, label, field_type, options, is_required,
-           sort_order, page_number, page_title, page_description, page_condition, page_conditions, is_final, condition,
-           section_key, section_label, section_conditions)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-        [
-          event_id, f.field_key, f.label, f.field_type,
-          f.options ? JSON.stringify(f.options) : null,
-          f.is_required ?? false, f.sort_order ?? 0, f.page_number ?? 1,
-          f.page_title ?? null, f.page_description ?? null,
-          f.page_condition ? JSON.stringify(f.page_condition) : null,
-          f.page_conditions ? JSON.stringify(f.page_conditions) : null,
-          f.is_final ?? false,
-          f.condition ? JSON.stringify(f.condition) : null,
-          f.section_key ?? null,
-          f.section_label ?? null,
-          f.section_conditions ? JSON.stringify(f.section_conditions) : null,
-        ]
-      )
-    }
-
-    await client.query('COMMIT')
-    return { saved: fields.length }
-  } catch (err) {
-    await client.query('ROLLBACK')
-    throw err
-  } finally {
-    client.release()
-  }
 }

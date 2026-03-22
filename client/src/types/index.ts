@@ -86,41 +86,11 @@ export interface Participant {
 }
 
 export interface RegisterPayload {
-  agent_code?: string
-  full_name?: string
-  branch_name?: string
-  team_name?: string
-  agent_type?: string
-  custom_responses?: Record<string, string | boolean | number | string[] | null>
-}
-
-// ── Form Builder types ─────────────────────────────────────────────────────
-
-export type FormFieldType = 'text' | 'dropdown' | 'radio' | 'checkbox' | 'date'
-
-export interface FormFieldCondition {
-  field_key: string
-  operator: 'eq' | 'neq'
-  value: string
-}
-
-export interface FormField {
-  field_id?: number
-  field_key: string
-  label: string
-  field_type: FormFieldType
-  options?: string[] | null
-  is_required: boolean
-  sort_order: number
-  page_number: number
-  page_title?: string | null
-  condition?: FormFieldCondition | null
-}
-
-export interface FormPage {
-  page_number: number
-  page_title: string
-  fields: FormField[]
+  agent_code: string
+  full_name: string
+  branch_name: string
+  team_name: string
+  agent_type: string
 }
 
 // Attendance types

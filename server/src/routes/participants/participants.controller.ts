@@ -12,8 +12,6 @@ import {
   restoreParticipantService,
   permanentDeleteParticipantService,
   getCancelledParticipantsByEventService,
-  getFormFieldsService,
-  saveFormFieldsService,
 } from './participants.service.js'
 
 export const registerParticipant = asyncHandler(async (req: Request, res: Response) => {
@@ -92,16 +90,4 @@ export const permanentDeleteParticipant = asyncHandler(async (req: Request, res:
 export const getCancelledParticipantsByEvent = asyncHandler(async (req: Request, res: Response) => {
   const participants = await getCancelledParticipantsByEventService(Number(req.params.event_id))
   res.json(participants)
-})
-
-// ── Form Fields ───────────────────────────────────────────────────────────────
-
-export const getFormFields = asyncHandler(async (req: Request, res: Response) => {
-  const fields = await getFormFieldsService(Number(req.params.event_id))
-  res.json(fields)
-})
-
-export const saveFormFields = asyncHandler(async (req: Request, res: Response) => {
-  const result = await saveFormFieldsService(Number(req.params.event_id), req.body.fields)
-  res.json(result)
 })
