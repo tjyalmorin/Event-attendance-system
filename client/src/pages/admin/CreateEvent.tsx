@@ -306,8 +306,8 @@ const CreateEvent: React.FC = () => {
         const preset = PRESET_IMAGES.find(p => p.id === selectedPreset);
         if (preset) fd.append('preset_url', preset.url);
       }
-      await api.post('/events', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      navigate('/admin/events', { state: { created: true } });
+      const { data } = await api.post('/events', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      navigate(`/admin/events/${data.event_id}/form-builder`, { state: { justCreated: true } });
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to create event');
     } finally {

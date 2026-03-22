@@ -2,7 +2,7 @@ import { Router } from 'express'
 import authenticate from '../../middlewares/authenticate.js'
 import roleGuard from '../../middlewares/roleGuard.js'
 import validate from '../../middlewares/validate.js'
-import { registerParticipantSchema, setLabelSchema } from '../../schemas/participants.schema.js'
+import { registerParticipantSchema, setLabelSchema, saveFormFieldsSchema } from '../../schemas/participants.schema.js'
 import { scanLimiter } from '../../middlewares/rateLimiters.js'
 import {
   registerParticipant,
@@ -12,6 +12,9 @@ import {
   setLabel,
   restoreParticipant,
   permanentDeleteParticipant,
+  getCancelledParticipantsByEvent,
+  getFormFields,
+  saveFormFields,
 } from './participants.controller.js'
 
 const router = Router()
@@ -32,5 +35,13 @@ router.patch('/:participant_id/label', authenticate, roleGuard('admin', 'staff')
 // ── Trash Bin (admin only) ────────────────────────────────────────────────────
 router.patch('/:participant_id/restore', authenticate, roleGuard('admin'), restoreParticipant)
 router.delete('/:participant_id/permanent', authenticate, roleGuard('admin'), permanentDeleteParticipant)
+
+// ── Cancelled participants (for trash bin view) ───────────────────────────────
+router.get('/cancelled/:event_id', authenticate, roleGuard('admin'), getCancelledParticipantsByEvent)
+
+// ── Registration form fields ──────────────────────────────────────────────────
+// GET is public — registration page needs to fetch form structure without auth
+router.get('/form-fields/:event_id', getFormFields)
+router.put('/form-fields/:event_id', authenticate, roleGuard('admin', 'staff'), validate(saveFormFieldsSchema), saveFormFields)
 
 export default router
