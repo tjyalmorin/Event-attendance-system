@@ -5,6 +5,7 @@ import {
   CK, invalidateParticipantCache
 } from '../../utils/cache.js'
 import { NotFoundError, ValidationError, AppError } from '../../errors/AppError.js'
+import { io } from '../../server.js'
 
 export const registerParticipantService = async (event_id: number, payload: RegisterPayload) => {
   const { agent_code, full_name, branch_name, team_name, agent_type } = payload
@@ -26,8 +27,6 @@ export const registerParticipantService = async (event_id: number, payload: Regi
   if (!event) throw new NotFoundError('Event not found')
   if (event.status !== 'open') throw new ValidationError('Event registration is not open')
 
-  // ── Registration window check in DB time (Asia/Manila) ───────────────────
-  // Avoids timezone mismatch between Railway (UTC) and Supabase (Asia/Manila)
   const windowCheck = await pool.query(
     `SELECT
        ($1::timestamptz IS NULL OR NOW() >= $1::timestamptz) AS after_start,
@@ -59,6 +58,12 @@ export const registerParticipantService = async (event_id: number, payload: Regi
       invalidateParticipantCache(event_id),
       import('../../utils/cache.js').then(m => m.cacheDel(CK.EVENT_DETAIL(event_id))),
     ])
+
+    // ── Notify clients of new registration ───────────────────────────────
+    io.to('event:' + event_id).emit('participants:update', {
+      action: 'registered',
+      participant: result.rows[0]
+    })
 
     return { participant: result.rows[0] }
   } catch (err: any) {
@@ -122,6 +127,12 @@ export const cancelParticipantService = async (participant_id: number) => {
   if (!result.rows[0]) throw new NotFoundError('Participant not found')
 
   await invalidateParticipantCache(result.rows[0].event_id)
+
+  // ── Notify clients of cancellation ───────────────────────────────────────
+  io.to('event:' + result.rows[0].event_id).emit('participants:update', {
+    action: 'cancelled',
+    participant_id
+  })
 }
 
 export const setLabelService = async (

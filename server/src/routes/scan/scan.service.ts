@@ -1,8 +1,9 @@
 import pool from '../../config/database.js'
 import { AppError, NotFoundError, ValidationError } from '../../errors/AppError.js'
 import { cacheGet, cacheSet, cacheDel } from '../../utils/cache.js'
+import { io } from '../../server.js'
 
-const SESSIONS_CACHE_TTL = 10 // 10 seconds — short enough for live feel
+const SESSIONS_CACHE_TTL = 10
 
 const invalidateSessionsCache = async (event_id: number) => {
   await cacheDel(`sessions:event:${event_id}`)
@@ -19,15 +20,6 @@ export const lookupParticipantService = async (query: string, event_id: number, 
   )
   const event = eventResult.rows[0]
   if (!event) throw new AppError('Event not found.', 404)
-
-  // ── Cutoff check in SQL using DB timezone ─────────────────────────────────
-  if (event.checkin_cutoff) {
-    const cutoffResult = await pool.query(
-      `SELECT (NOW()::time > $1::time) AS is_past`,
-      [event.checkin_cutoff]
-    )
-    if (cutoffResult.rows[0].is_past) throw new AppError('Check-in time has already passed.', 400)
-  }
 
   const isNumeric = /^\d+$/.test(query.trim())
 
@@ -122,14 +114,6 @@ export const resolveParticipantService = async (participant_id: number, event_id
   )
   const event = eventResult.rows[0]
   if (!event) throw new AppError('Event not found.', 404)
-
-  if (event.checkin_cutoff) {
-    const cutoffResult = await pool.query(
-      `SELECT (NOW()::time > $1::time) AS is_past`,
-      [event.checkin_cutoff]
-    )
-    if (cutoffResult.rows[0].is_past) throw new AppError('Check-in time has already passed.', 400)
-  }
 
   const pResult = await pool.query(
     `SELECT p.*, a.photo_url
@@ -230,18 +214,6 @@ export const scanAgentCodeService = async (
   const session = existingSession.rows[0] ?? null
   const isCheckedIn = session?.check_in_time && !session?.check_out_time
 
-  // ── Only enforce cutoff for check-in, not check-out ───────────────────────
-  if (!isCheckedIn && event.checkin_cutoff) {
-    const cutoffResult = await pool.query(
-      `SELECT (NOW()::time > $1::time) AS is_past`,
-      [event.checkin_cutoff]
-    )
-    if (cutoffResult.rows[0].is_past) {
-      await logScan('denied', 'Check-in time has passed')
-      throw new AppError('Check-in time has already passed.', 400)
-    }
-  }
-
   const participantPayload = {
     full_name:   participant.full_name,
     agent_code:  participant.agent_code,
@@ -262,12 +234,18 @@ export const scanAgentCodeService = async (
     )
     await logScan('check_in')
     await invalidateSessionsCache(event_id)
-    return {
-      action: 'check_in',
+
+    const result = {
+      action: 'check_in' as const,
       message: 'Check-in successful',
       participant: participantPayload,
       session: newSession.rows[0]
     }
+
+    // ── Emit to all clients watching this event ───────────────────────────
+    io.to('event:' + event_id).emit('attendance:update', result)
+
+    return result
   }
 
   // ── Check out ─────────────────────────────────────────────────────────────
@@ -287,13 +265,19 @@ export const scanAgentCodeService = async (
     )
     await logScan('check_out')
     await invalidateSessionsCache(event_id)
-    return {
-      action: 'check_out',
+
+    const result = {
+      action: 'check_out' as const,
       message: is_early_out ? 'Early out recorded' : 'Check-out successful',
       is_early_out,
       participant: participantPayload,
       session: updatedSession.rows[0]
     }
+
+    // ── Emit to all clients watching this event ───────────────────────────
+    io.to('event:' + event_id).emit('attendance:update', result)
+
+    return result
   }
 
   await logScan('denied', 'Participant already completed check-in and check-out')
@@ -316,7 +300,6 @@ export const logDenialService = async (agent_code: string, event_id: number, rea
 }
 
 export const getSessionsByEventService = async (event_id: number) => {
-  // ── Cache sessions — invalidated on every scan ────────────────────────────
   const cacheKey = `sessions:event:${event_id}`
   const cached = await cacheGet<any[]>(cacheKey)
   if (cached) return cached
@@ -393,7 +376,6 @@ export const bulkCheckOutService = async (event_id: number, session_ids: number[
     throw new ValidationError('session_ids must be a non-empty array')
   }
 
-  // ── Verify event exists ───────────────────────────────────────────────────
   const eventCheck = await pool.query(
     `SELECT event_id FROM events WHERE event_id = $1 AND deleted_at IS NULL`,
     [event_id]
@@ -415,8 +397,13 @@ export const bulkCheckOutService = async (event_id: number, session_ids: number[
 
   await invalidateSessionsCache(event_id)
 
-  return {
+  const checkoutResult = {
     checked_out: result.rowCount ?? 0,
     session_ids: result.rows.map((r: { session_id: number }) => r.session_id),
   }
+
+  // ── Notify all clients of bulk checkout ──────────────────────────────────
+  io.to('event:' + event_id).emit('attendance:bulk_checkout', checkoutResult)
+
+  return checkoutResult
 }
